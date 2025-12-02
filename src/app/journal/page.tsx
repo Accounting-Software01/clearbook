@@ -16,8 +16,9 @@ import {
   TableRow,
   TableFooter
 } from "@/components/ui/table";
-import { PlusCircle, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 interface JournalEntryLine {
     id: number;
@@ -112,6 +113,7 @@ const JournalPage = () => {
         { id: 1, accountId: '', debit: 0, credit: 0 },
         { id: 2, accountId: '', debit: 0, credit: 0 },
     ]);
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleAddLine = () => {
         setLines([...lines, { id: Date.now(), accountId: '', debit: 0, credit: 0 }]);
@@ -154,7 +156,16 @@ const JournalPage = () => {
         };
     }, [lines]);
     
-    const handlePostEntry = () => {
+    const resetForm = () => {
+        setEntryDate(new Date());
+        setNarration('');
+        setLines([
+            { id: 1, accountId: '', debit: 0, credit: 0 },
+            { id: 2, accountId: '', debit: 0, credit: 0 },
+        ]);
+    }
+    
+    const handlePostEntry = async () => {
         if (!isBalanced) {
              toast({
                 variant: 'destructive',
@@ -181,28 +192,52 @@ const JournalPage = () => {
             });
             return;
         }
+        
+        setIsLoading(true);
 
-        // TODO: Post the journal entry to your API
-        console.log({
-            entryDate,
+        const payload = {
+            entryDate: format(entryDate, 'yyyy-MM-dd'),
             narration,
-            lines,
+            lines: lines.map(({id, ...rest}) => rest), // Remove client-side id before sending
             totalDebits,
             totalCredits
-        });
+        };
 
-        toast({
-            title: 'Journal Entry Posted!',
-            description: 'The entry has been successfully recorded.',
-        });
+        try {
+            const response = await fetch('https://hariindustries.net/busa-api/database/journal-entry.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
 
-        // Reset form
-        setEntryDate(new Date());
-        setNarration('');
-        setLines([
-            { id: 1, accountId: '', debit: 0, credit: 0 },
-            { id: 2, accountId: '', debit: 0, credit: 0 },
-        ]);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({error: 'An unknown error occurred.'}));
+                throw new Error(errorData.error || `Server responded with status ${response.status}`);
+            }
+            
+            const result = await response.json();
+
+            if (result.success) {
+                toast({
+                    title: 'Journal Entry Posted!',
+                    description: 'The entry has been successfully recorded.',
+                });
+                resetForm();
+            } else {
+                throw new Error(result.error || 'The server indicated a failure, but did not provide an error message.');
+            }
+
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Failed to post entry.',
+                description: error.message || 'An unexpected error occurred. Please try again.',
+            });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -322,7 +357,8 @@ const JournalPage = () => {
                     </div>
                 </CardContent>
                 <CardFooter className="justify-end">
-                    <Button size="lg" onClick={handlePostEntry} disabled={!isBalanced}>
+                    <Button size="lg" onClick={handlePostEntry} disabled={!isBalanced || isLoading}>
+                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Post Journal Entry
                     </Button>
                 </CardFooter>
