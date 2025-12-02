@@ -33,15 +33,80 @@ const mockLedgerEntries = [
     { date: '2024-07-28', description: 'Payment to Supplier B', debit: null, credit: 25000.00, balance: 105000.00 },
 ];
 
+const chartOfAccounts = [
+    { code: '101100', name: 'Cash at Bank - Main Account' },
+    { code: '101110', name: 'Cash at Bank - Operations Account' },
+    { code: '101120', name: 'Cash at Bank - Sales Collection Account' },
+    { code: '101130', name: 'Cash at Hand - Head Office' },
+    { code: '101140', name: 'Cash at Hand - Factory' },
+    { code: '101150', name: 'Cash at Hand - Depot/Branches' },
+    { code: '101200', name: 'Trade Receivables - Customers' },
+    { code: '101210', name: 'Accounts Receivable Control (AUTO)' },
+    { code: '101220', name: 'Staff Debtors' },
+    { code: '101230', name: 'Other Receivables' },
+    { code: '101240', name: 'Prepayments - Insurance' },
+    { code: '101250', name: 'Prepayments - Rent' },
+    { code: '101260', name: 'Prepayments - Other' },
+    { code: '101300', name: 'Inventory - Raw Materials' },
+    { code: '101310', name: 'Inventory Control - Raw Materials (AUTO)' },
+    { code: '101320', name: 'Inventory - Work-in-Progress' },
+    { code: '101330', name: 'Inventory Control - WIP (AUTO)' },
+    { code: '101340', name: 'Inventory - Finished Goods' },
+    { code: '101350', name: 'Inventory Control - Finished Goods (AUTO)' },
+    { code: '101360', name: 'Inventory - Packaging Materials' },
+    { code: '101370', name: 'Inventory - Spare Parts & Consumables' },
+    { code: '101400', name: 'Inter-Branch Receivable (AUTO)' },
+    { code: '101410', name: 'Withholding Tax Receivable' },
+    { code: '101420', name: 'VAT Refundable (Input VAT)' },
+    { code: '101430', name: 'Deposits with Suppliers' },
+    { code: '102100', name: 'Property, Plant & Equipment Control (AUTO)' },
+    { code: '102110', name: 'Land' },
+    { code: '102120', name: 'Buildings - Factory' },
+    { code: '102130', name: 'Buildings - Administrative' },
+    { code: '102140', name: 'Plant & Machinery - Production Lines' },
+    { code: '102150', name: 'Borehole & Water Treatment Facilities' },
+    { code: '102160', name: 'Factory Generators' },
+    { code: '102170', name: 'Motor Vehicles - Distribution' },
+    { code: '102180', name: 'Office Equipment' },
+    { code: '102190', name: 'Furniture & Fixtures' },
+    { code: '102200', name: 'Capital Work-in-Progress (CWIP)' },
+    { code: '102300', name: 'Intangible Assets - Software' },
+    { code: '102310', name: 'Accumulated Depreciation - Buildings' },
+    { code: '102320', name: 'Accumulated Depreciation - Plant & Machinery' },
+    { code: '102330', name: 'Accumulated Depreciation - Motor Vehicles' },
+    { code: '102340', name: 'Accumulated Depreciation - Office Equipment' },
+    { code: '102350', name: 'Impairment Loss Assets' },
+    { code: '201010', name: 'Accounts Payable Control (AUTO)' },
+    { code: '201020', name: 'Trade Creditors - Suppliers' },
+    { code: '201030', name: 'Accrued Expenses' },
+    { code: '201040', name: 'Accrued Payroll' },
+    { code: '201110', name: 'Payroll Control Account (AUTO)' },
+    { code: '201210', name: 'VAT Output Payable' },
+    { code: '201220', name: 'VAT Input Offset' },
+    { code: '201230', name: 'PAYE Tax Payable' },
+    { code: '201240', name: 'Withholding Tax (WHT) Payable' },
+    { code: '201250', name: 'Corporate Income Tax Payable' },
+    { code: '201260', name: 'Pension Payable' },
+    { code: '201270', name: 'NHF Payable' },
+    { code: '201280', name: 'NSITF Payable' },
+    { code: '201290', name: 'Other Statutory Deductions Payable' },
+    { code: '201300', name: 'Short-Term Loan - Bank OD' },
+    { code: '201310', name: 'Current Portion of Long-Term Loan' },
+    { code: '201400', name: 'Inter-Branch Payable (AUTO)' },
+    { code: '202100', name: 'Long-Term Loan - Bank' },
+];
+
+
 const GeneralLedgerPage = () => {
   const [ledgerEntries, setLedgerEntries] = useState(mockLedgerEntries);
-  const [selectedAccount, setSelectedAccount] = useState('1010');
+  const [selectedAccount, setSelectedAccount] = useState('101100');
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
     from: new Date(2024, 6, 1),
     to: addDays(new Date(2024, 6, 31), 0),
   })
 
   const endingBalance = ledgerEntries.length > 0 ? ledgerEntries[ledgerEntries.length - 1].balance : 0;
+  const selectedAccountName = chartOfAccounts.find(acc => acc.code === selectedAccount)?.name || '';
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -61,10 +126,11 @@ const GeneralLedgerPage = () => {
                                 <SelectValue placeholder="Select an account..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="1010">1010 - Cash at Bank</SelectItem>
-                                <SelectItem value="1100">1100 - Accounts Receivable</SelectItem>
-                                <SelectItem value="2000">2000 - Accounts Payable</SelectItem>
-                                <SelectItem value="4010">4010 - Product Sales</SelectItem>
+                                {chartOfAccounts.map(account => (
+                                    <SelectItem key={account.code} value={account.code}>
+                                        {account.code} - {account.name}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -79,7 +145,7 @@ const GeneralLedgerPage = () => {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Account: 1010 - Cash at Bank</CardTitle>
+                        <CardTitle>Account: {selectedAccount} - {selectedAccountName}</CardTitle>
                         <CardDescription>
                             Transactions from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
                         </CardDescription>
