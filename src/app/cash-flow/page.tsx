@@ -1,0 +1,183 @@
+
+'use client';
+import React, { useState, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from "@/components/ui/button";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
+import { DateRange } from 'react-day-picker';
+import { format } from 'date-fns';
+import { Loader2, AlertCircle } from 'lucide-react';
+
+interface CashFlowItem {
+    description: string;
+    amount: number;
+}
+
+interface CashFlowSection {
+    title: string;
+    items: CashFlowItem[];
+    total: number;
+}
+
+interface CashFlowData {
+    operating: CashFlowSection;
+    investing: CashFlowSection;
+    financing: CashFlowSection;
+    openingBalance: number;
+    closingBalance: number;
+    netCashFlow: number;
+}
+
+const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) {
+        return '0.00';
+    }
+    const formatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(amount);
+    
+    return amount < 0 ? `(${formatted.substring(1)})` : formatted;
+};
+
+const CashFlowPage = () => {
+    const [reportData, setReportData] = useState<CashFlowData | null>(null);
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: new Date(new Date().getFullYear(), 0, 1),
+        to: new Date(),
+    });
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const generateReport = useCallback(async () => {
+        if (!dateRange?.from || !dateRange?.to) {
+            setError("Please select a valid date range.");
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+        
+        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
+        const toDate = format(dateRange.to, 'yyyy-MM-dd');
+        
+        const url = new URL('https://hariindustries.net/busa-api/database/cash-flow.php');
+        url.searchParams.append('fromDate', fromDate);
+        url.searchParams.append('toDate', toDate);
+
+        try {
+            const response = await fetch(url.toString());
+            if (!response.ok) {
+                const errorJson = await response.json().catch(() => ({}));
+                throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            setReportData(data);
+        } catch (e: any) {
+            setError(`Failed to load data: ${e.message}`);
+            setReportData(null);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [dateRange]);
+
+    const renderSection = (section: CashFlowSection) => (
+        <>
+            <TableRow className="font-semibold bg-muted/30">
+                <TableCell colSpan={2}>{section.title}</TableCell>
+            </TableRow>
+            {section.items.map(item => (
+                <TableRow key={item.description}>
+                    <TableCell className="pl-8">{item.description}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
+                </TableRow>
+            ))}
+            <TableRow>
+                <TableCell className="pl-4 font-semibold">Net Cash from {section.title.split(' ').pop()} Activities</TableCell>
+                <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(section.total)}</TableCell>
+            </TableRow>
+        </>
+    );
+
+  return (
+    <div className="container mx-auto p-4 md:p-8">
+        <Card className="max-w-3xl mx-auto">
+            <CardHeader>
+                <CardTitle>Statement of Cash Flows</CardTitle>
+                <CardDescription>
+                    Track the movement of cash from operating, investing, and financing activities.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-muted/20">
+                    <div className="md:col-span-2 space-y-2">
+                        <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
+                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
+                    </div>
+                    <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Generate Report
+                    </Button>
+                </div>
+
+                {isLoading ? (
+                    <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : error ? (
+                    <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
+                ) : reportData ? (
+                    <div className="border rounded-lg p-4">
+                        <h3 className="text-lg font-bold text-center">Statement of Cash Flows</h3>
+                        <p className="text-center text-muted-foreground mb-6">
+                            For the period from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                        </p>
+                        
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {renderSection(reportData.operating)}
+                                <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+                                {renderSection(reportData.investing)}
+                                 <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+                                {renderSection(reportData.financing)}
+
+                                <TableRow className="font-semibold bg-muted/30">
+                                    <TableCell>Net Increase/Decrease in Cash</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.netCashFlow)}</TableCell>
+                                </TableRow>
+                                <TableRow className="font-semibold">
+                                    <TableCell>Cash at Beginning of Period</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.openingBalance)}</TableCell>
+                                </TableRow>
+                                <TableRow className="font-bold text-lg bg-primary/10">
+                                    <TableCell>Cash at End of Period</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.closingBalance)}</TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
+                ) : (
+                    <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the cash flow statement.</p></div>
+                )}
+            </CardContent>
+        </Card>
+    </div>
+  );
+};
+
+export default CashFlowPage;
