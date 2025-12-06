@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   Table,
   TableBody,
@@ -16,6 +16,7 @@ import {
 import { format } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
+import type { DateRange } from 'react-day-picker';
 
 interface ReportAccount {
     name: string;
@@ -35,10 +36,11 @@ interface BalanceSheetData {
     totalLiabilitiesAndEquity: number;
 }
 
-interface BackendBalance {
-    accountId: string;
-    balance: number;
+interface BackendResponse {
+    balances: { [accountId: string]: number };
+    periodChanges: { [accountId: string]: number };
 }
+
 
 const formatCurrency = (amount: number | null | undefined) => {
     if (amount === null || amount === undefined || isNaN(amount)) {
@@ -52,23 +54,28 @@ const formatCurrency = (amount: number | null | undefined) => {
 
 const BalanceSheetPage = () => {
     const [reportData, setReportData] = useState<BalanceSheetData | null>(null);
-    const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: new Date(new Date().getFullYear(), 0, 1),
+        to: new Date(),
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const generateReport = useCallback(async () => {
-        if (!reportDate) {
-            setError("Please select a date for the report.");
+        if (!dateRange?.from || !dateRange.to) {
+            setError("Please select a date range for the report.");
             return;
         }
 
         setIsLoading(true);
         setError(null);
         
-        const asOfDate = format(reportDate, 'yyyy-MM-dd');
+        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
+        const toDate = format(dateRange.to, 'yyyy-MM-dd');
         
         const url = new URL('https://hariindustries.net/busa-api/database/balance-sheet.php');
-        url.searchParams.append('asOfDate', asOfDate);
+        url.searchParams.append('fromDate', fromDate);
+        url.searchParams.append('toDate', toDate);
 
         try {
             const response = await fetch(url.toString());
@@ -76,20 +83,21 @@ const BalanceSheetPage = () => {
                 const errorJson = await response.json().catch(() => ({}));
                 throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
             }
-            const data: BackendBalance[] = await response.json();
+            const data: BackendResponse = await response.json();
 
-            if (Array.isArray(data)) {
+            if (data.balances && data.periodChanges) {
                 const assets: ReportSection = { title: 'Assets', accounts: [], total: 0 };
                 const liabilities: ReportSection = { title: 'Liabilities', accounts: [], total: 0 };
                 const equity: ReportSection = { title: 'Equity', accounts: [], total: 0 };
-                let revenueTotal = 0;
-                let expenseTotal = 0;
+                let periodRevenue = 0;
+                let periodExpense = 0;
 
-                data.forEach(item => {
-                    const account = chartOfAccounts.find(acc => acc.code === item.accountId);
-                    if (!account) return;
-
-                    const balance = item.balance;
+                // Process final balances for Assets, Liabilities, Equity
+                for (const accountId in data.balances) {
+                    const account = chartOfAccounts.find(acc => acc.code === accountId);
+                    if (!account) continue;
+                    
+                    const balance = data.balances[accountId];
 
                     switch (account.type) {
                         case 'Asset':
@@ -97,29 +105,37 @@ const BalanceSheetPage = () => {
                             assets.total += balance;
                             break;
                         case 'Liability':
-                            // Liabilities have credit balances, so we flip the sign of (debit-credit) for reporting
                             liabilities.accounts.push({ name: account.name, amount: -balance });
                             liabilities.total -= balance;
                             break;
                         case 'Equity':
-                             // Equity has a credit balance, so we flip the sign of (debit-credit) for reporting
-                            equity.accounts.push({ name: account.name, amount: -balance });
-                            equity.total -= balance;
-                            break;
-                        case 'Revenue':
-                            // Revenue has a credit balance
-                            revenueTotal -= balance;
-                            break;
-                        case 'Expense':
-                            // Expenses have a debit balance
-                            expenseTotal += balance;
+                             equity.accounts.push({ name: account.name, amount: -balance });
+                             equity.total -= balance;
                             break;
                     }
-                });
+                }
+                
+                // Calculate net profit for the selected period
+                for (const accountId in data.periodChanges) {
+                    const account = chartOfAccounts.find(acc => acc.code === accountId);
+                    if (!account) continue;
 
-                const netProfit = revenueTotal - expenseTotal;
-                equity.accounts.push({ name: 'Current Year Net Profit', amount: netProfit });
-                equity.total += netProfit;
+                    const periodChange = data.periodChanges[accountId];
+
+                     switch (account.type) {
+                        case 'Revenue':
+                            periodRevenue += periodChange;
+                            break;
+                        case 'Expense':
+                            // periodChange is (credit-debit), so it's already negative for expenses
+                            periodExpense += periodChange;
+                            break;
+                    }
+                }
+
+                const netProfitForPeriod = periodRevenue + periodExpense; // expense is negative
+                equity.accounts.push({ name: 'Current Period Net Profit', amount: netProfitForPeriod });
+                equity.total += netProfitForPeriod;
 
                 setReportData({
                     assets,
@@ -136,7 +152,7 @@ const BalanceSheetPage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [reportDate]);
+    }, [dateRange]);
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -144,14 +160,14 @@ const BalanceSheetPage = () => {
             <CardHeader>
                 <CardTitle>Balance Sheet</CardTitle>
                 <CardDescription>
-                    Generate a balance sheet to see a snapshot of your company's financial health at a specific point in time.
+                    Generate a balance sheet to see a snapshot of your company's financial health as of a specific date.
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-muted/20">
                     <div className="md:col-span-2 space-y-2">
-                        <label htmlFor="report-date" className="font-semibold text-sm">As of Date</label>
-                        <DatePicker date={reportDate} onDateChange={setReportDate} id="report-date"/>
+                        <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
+                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
                     </div>
                     <Button onClick={generateReport} disabled={isLoading} className="w-full">
                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -167,7 +183,7 @@ const BalanceSheetPage = () => {
                     <div className="border rounded-lg p-4">
                         <h3 className="text-lg font-bold text-center">Balance Sheet</h3>
                         <p className="text-center text-muted-foreground mb-6">
-                            As of {reportDate ? format(reportDate, 'LLL dd, y') : ''}
+                            As of {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
                         </p>
                         
                         <Table>
