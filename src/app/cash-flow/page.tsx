@@ -15,6 +15,9 @@ import {
 import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Cell } from 'recharts';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+
 
 interface CashFlowItem {
     description: string;
@@ -36,7 +39,7 @@ interface CashFlowData {
     netCashFlow: number;
 }
 
-const formatCurrency = (amount: number | null | undefined) => {
+const formatCurrency = (amount: number | null | undefined, options: { withBrackets?: boolean } = {}) => {
     if (amount === null || amount === undefined || isNaN(amount)) {
         return '0.00';
     }
@@ -45,7 +48,14 @@ const formatCurrency = (amount: number | null | undefined) => {
         maximumFractionDigits: 2
     }).format(Math.abs(amount));
     
-    return amount < 0 ? `(${formatted})` : formatted;
+    if (options.withBrackets && amount < 0) {
+        return `(${formatted})`;
+    }
+    
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(amount);
 };
 
 const CashFlowPage = () => {
@@ -100,15 +110,22 @@ const CashFlowPage = () => {
             {section.items.map((item, index) => (
                 <TableRow key={index}>
                     <TableCell className="pl-8">{item.description}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(item.amount)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(item.amount, { withBrackets: true })}</TableCell>
                 </TableRow>
             ))}
             <TableRow>
                 <TableCell className="pl-4 font-semibold">Net Cash from {section.title.split(' ').pop()} Activities</TableCell>
-                <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(section.total)}</TableCell>
+                <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(section.total, { withBrackets: true })}</TableCell>
             </TableRow>
         </>
     );
+
+    const chartData = reportData ? [
+        { name: 'Opening Balance', value: reportData.openingBalance },
+        { name: 'Inflows', value: reportData.operating.items.filter(i => i.amount > 0).reduce((sum, i) => sum + i.amount, 0) },
+        { name: 'Outflows', value: reportData.operating.items.filter(i => i.amount < 0).reduce((sum, i) => sum + i.amount, 0) },
+        { name: 'Closing Balance', value: reportData.closingBalance }
+      ] : [];
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -136,42 +153,64 @@ const CashFlowPage = () => {
                 ) : error ? (
                     <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
                 ) : reportData ? (
-                    <div className="border rounded-lg p-4">
-                        <h3 className="text-lg font-bold text-center">Statement of Cash Flows</h3>
-                        <p className="text-center text-muted-foreground mb-6">
-                            For the period from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
-                        </p>
+                    <div className="space-y-8">
+                        <Card>
+                             <CardHeader>
+                                <CardTitle>Cash Movement</CardTitle>
+                             </CardHeader>
+                             <CardContent className="h-72">
+                                <ChartContainer config={{}} className="w-full h-full">
+                                    <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
+                                        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                                        <Bar dataKey="value" radius={4}>
+                                            {chartData.map((entry, index) => (
+                                                 <Cell key={`cell-${index}`} fill={entry.value >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--chart-5))"} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ChartContainer>
+                             </CardContent>
+                        </Card>
                         
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow>
-                                    <TableCell className="font-semibold">Cash at Beginning of Period</TableCell>
-                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(reportData.openingBalance)}</TableCell>
-                                </TableRow>
+                        <div className="border rounded-lg p-4">
+                            <h3 className="text-lg font-bold text-center">Statement of Cash Flows</h3>
+                            <p className="text-center text-muted-foreground mb-6">
+                                For the period from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                            </p>
+                            
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead className="text-right">Amount</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell className="font-semibold">Cash at Beginning of Period</TableCell>
+                                        <TableCell className="text-right font-bold font-mono">{formatCurrency(reportData.openingBalance)}</TableCell>
+                                    </TableRow>
 
-                                {renderSection(reportData.operating)}
-                                <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
-                                {renderSection(reportData.investing)}
-                                 <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
-                                {renderSection(reportData.financing)}
+                                    {renderSection(reportData.operating)}
+                                    <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+                                    {renderSection(reportData.investing)}
+                                     <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+                                    {renderSection(reportData.financing)}
 
-                                <TableRow className="font-semibold bg-muted/30">
-                                    <TableCell>Net Increase/Decrease in Cash</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.netCashFlow)}</TableCell>
-                                </TableRow>
-                                
-                                <TableRow className="font-bold text-lg bg-primary/10">
-                                    <TableCell>Cash at End of Period</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.closingBalance)}</TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
+                                    <TableRow className="font-semibold bg-muted/30">
+                                        <TableCell>Net Increase/Decrease in Cash</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(reportData.netCashFlow, { withBrackets: true })}</TableCell>
+                                    </TableRow>
+                                    
+                                    <TableRow className="font-bold text-lg bg-primary/10">
+                                        <TableCell>Cash at End of Period</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(reportData.closingBalance)}</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the cash flow statement.</p></div>
