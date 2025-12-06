@@ -15,10 +15,16 @@ import {
 } from "@/components/ui/table";
 import { format } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
+import { chartOfAccounts } from '@/lib/chart-of-accounts';
+
+interface ReportAccount {
+    name: string;
+    amount: number;
+}
 
 interface ReportSection {
     title: string;
-    accounts: { name: string; amount: number }[];
+    accounts: ReportAccount[];
     total: number;
 }
 
@@ -27,6 +33,11 @@ interface BalanceSheetData {
     liabilities: ReportSection;
     equity: ReportSection;
     totalLiabilitiesAndEquity: number;
+}
+
+interface BackendBalance {
+    accountId: string;
+    balance: number;
 }
 
 const formatCurrency = (amount: number | null | undefined) => {
@@ -65,11 +76,60 @@ const BalanceSheetPage = () => {
                 const errorJson = await response.json().catch(() => ({}));
                 throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
             }
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
+            const data: BackendBalance[] = await response.json();
+
+            if (Array.isArray(data)) {
+                const assets: ReportSection = { title: 'Assets', accounts: [], total: 0 };
+                const liabilities: ReportSection = { title: 'Liabilities', accounts: [], total: 0 };
+                const equity: ReportSection = { title: 'Equity', accounts: [], total: 0 };
+                let revenueTotal = 0;
+                let expenseTotal = 0;
+
+                data.forEach(item => {
+                    const account = chartOfAccounts.find(acc => acc.code === item.accountId);
+                    if (!account) return;
+
+                    const balance = item.balance;
+
+                    switch (account.type) {
+                        case 'Asset':
+                            assets.accounts.push({ name: account.name, amount: balance });
+                            assets.total += balance;
+                            break;
+                        case 'Liability':
+                            // Liabilities have credit balances, so we flip the sign of (debit-credit) for reporting
+                            liabilities.accounts.push({ name: account.name, amount: -balance });
+                            liabilities.total -= balance;
+                            break;
+                        case 'Equity':
+                             // Equity has a credit balance, so we flip the sign of (debit-credit) for reporting
+                            equity.accounts.push({ name: account.name, amount: -balance });
+                            equity.total -= balance;
+                            break;
+                        case 'Revenue':
+                            // Revenue has a credit balance
+                            revenueTotal -= balance;
+                            break;
+                        case 'Expense':
+                            // Expenses have a debit balance
+                            expenseTotal += balance;
+                            break;
+                    }
+                });
+
+                const netProfit = revenueTotal - expenseTotal;
+                equity.accounts.push({ name: 'Current Year Net Profit', amount: netProfit });
+                equity.total += netProfit;
+
+                setReportData({
+                    assets,
+                    liabilities,
+                    equity,
+                    totalLiabilitiesAndEquity: liabilities.total + equity.total,
+                });
+            } else {
+                 throw new Error("Invalid data format received from server.");
             }
-            setReportData(data);
         } catch (e: any) {
             setError(`Failed to load data: ${e.message}`);
             setReportData(null);
