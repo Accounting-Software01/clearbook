@@ -12,23 +12,24 @@ import {
   TableRow,
   TableFooter
 } from "@/components/ui/table";
-import { DatePicker } from '@/components/ui/date-picker';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { format } from 'date-fns';
 import { Loader2, AlertCircle, AlertTriangle, CheckCircle } from 'lucide-react';
 import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { DateRange } from 'react-day-picker';
 
+interface BackendBalance {
+    accountId: string;
+    debit: number;
+    credit: number;
+}
 
 interface TrialBalanceEntry {
     accountId: string;
     accountName: string;
     debit: number | null;
     credit: number | null;
-}
-
-interface BackendBalance {
-    accountId: string;
-    balance: number;
 }
 
 const formatCurrency = (amount: number | null | undefined) => {
@@ -41,63 +42,51 @@ const formatCurrency = (amount: number | null | undefined) => {
     }).format(amount);
 };
 
-
 const TrialBalancePage = () => {
     const [reportData, setReportData] = useState<TrialBalanceEntry[]>([]);
-    const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: new Date(new Date().getFullYear(), 0, 1),
+        to: new Date(),
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const generateReport = useCallback(async () => {
-        if (!reportDate) {
-            setError("Please select a date for the report.");
+        if (!dateRange?.from || !dateRange?.to) {
+            setError("Please select a valid date range for the report.");
             return;
         }
 
         setIsLoading(true);
         setError(null);
         
-        const asOfDate = format(reportDate, 'yyyy-MM-dd');
+        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
+        const toDate = format(dateRange.to, 'yyyy-MM-dd');
         
         const url = new URL('https://hariindustries.net/busa-api/database/trial-balance.php');
-        url.searchParams.append('asOfDate', asOfDate);
+        url.searchParams.append('fromDate', fromDate);
+        url.searchParams.append('toDate', toDate);
 
         try {
             const response = await fetch(url.toString());
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status}; ${errorText}`);
+                const errorJson = await response.json().catch(() => ({}));
+                throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
             }
             const data: BackendBalance[] = await response.json();
 
             if (Array.isArray(data)) {
                  const formattedData = data.map(backendEntry => {
                     const account = chartOfAccounts.find(acc => acc.code === backendEntry.accountId);
-                    if (!account) return null; // Skip if account not found in frontend COA
-
-                    const balance = backendEntry.balance;
-                    let debit: number | null = null;
-                    let credit: number | null = null;
-
-                    // For Asset and Expense accounts, a positive balance is a Debit.
-                    if (['Asset', 'Expense'].includes(account.type)) {
-                        if (balance > 0) debit = balance;
-                        else credit = -balance;
-                    } 
-                    // For Liability, Equity, and Revenue accounts, a negative balance is a Debit
-                    // and a positive balance is a Credit.
-                    else {
-                        if (balance < 0) debit = -balance;
-                        else credit = balance;
-                    }
+                    if (!account) return null;
 
                     return {
                         accountId: account.code,
                         accountName: account.name,
-                        debit,
-                        credit,
+                        debit: backendEntry.debit > 0 ? backendEntry.debit : null,
+                        credit: backendEntry.credit > 0 ? backendEntry.credit : null,
                     };
-                }).filter((entry): entry is TrialBalanceEntry => entry !== null && (entry.debit !== 0 || entry.credit !== 0));
+                }).filter((entry): entry is TrialBalanceEntry => entry !== null);
 
                 setReportData(formattedData);
             } else {
@@ -110,7 +99,7 @@ const TrialBalancePage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [reportDate]);
+    }, [dateRange]);
     
     const { totalDebits, totalCredits, isBalanced } = React.useMemo(() => {
         const debits = reportData.reduce((acc, entry) => acc + (entry.debit || 0), 0);
@@ -128,7 +117,7 @@ const TrialBalancePage = () => {
             <CardHeader>
                 <CardTitle>Trial Balance &amp; Chart of Accounts</CardTitle>
                 <CardDescription>
-                    View the chart of accounts or generate a trial balance to verify that total debits equal total credits.
+                    View the chart of accounts or generate a trial balance to verify that total debits equal total credits for a period.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -141,13 +130,13 @@ const TrialBalancePage = () => {
                         <Card>
                             <CardHeader>
                                 <CardTitle>Generate Trial Balance</CardTitle>
-                                <CardDescription>Select a date to see the balance of all accounts up to that point.</CardDescription>
+                                <CardDescription>Select a date range to see the movement of all accounts in that period.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-muted/20">
                                     <div className="md:col-span-2 space-y-2">
-                                        <label htmlFor="report-date" className="font-semibold text-sm">As of Date</label>
-                                        <DatePicker date={reportDate} onDateChange={setReportDate} id="report-date"/>
+                                        <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
+                                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
                                     </div>
                                     <Button onClick={generateReport} disabled={isLoading} className="w-full">
                                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
