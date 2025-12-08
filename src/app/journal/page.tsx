@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import {
   TableRow,
   TableFooter
 } from "@/components/ui/table";
-import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2, Upload } from 'lucide-react';
+import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
@@ -52,7 +52,6 @@ const JournalPage = () => {
         { id: 2, accountId: '', debit: 0, credit: 0 },
     ]);
     const [isLoading, setIsLoading] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleAddLine = () => {
         setLines([...lines, { id: Date.now(), accountId: '', debit: 0, credit: 0 }]);
@@ -91,7 +90,7 @@ const JournalPage = () => {
         return {
             totalDebits: debits,
             totalCredits: credits,
-            isBalanced: debits === credits && debits !== 0,
+            isBalanced: Math.abs(debits - credits) < 0.01 && debits > 0,
         };
     }, [lines]);
     
@@ -102,74 +101,7 @@ const JournalPage = () => {
             { id: 1, accountId: '', debit: 0, credit: 0 },
             { id: 2, accountId: '', debit: 0, credit: 0 },
         ]);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
     }
-    
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const text = e.target?.result as string;
-                const rows = text.split('\n').filter(row => row.trim() !== '');
-                
-                // Ignore header if it exists by checking if first column is numeric
-                const dataRows = /^\d/.test(rows[0]) ? rows : rows.slice(1);
-                
-                if (dataRows.length === 0) {
-                     toast({
-                        variant: 'destructive',
-                        title: 'CSV Error',
-                        description: 'CSV file is empty or has only a header.',
-                    });
-                    return;
-                }
-
-                const newLines: JournalEntryLine[] = dataRows.map((row, index) => {
-                    const [accountId, debitStr, creditStr] = row.split(',');
-                    const accountIdTrimmed = accountId?.trim();
-                    const debit = parseCurrency(debitStr?.trim() || '0');
-                    const credit = parseCurrency(creditStr?.trim() || '0');
-
-                    if (!accountIdTrimmed || isNaN(debit) || isNaN(credit)) {
-                       throw new Error(`Invalid data on row ${index + 1}. Each row must have accountId, debit, and credit.`);
-                    }
-                    
-                    const accountExists = chartOfAccounts.some(acc => acc.code === accountIdTrimmed);
-                    if (!accountExists) {
-                        throw new Error(`Invalid Account ID '${accountIdTrimmed}' on row ${index + 1}.`);
-                    }
-
-                    return { id: Date.now() + index, accountId: accountIdTrimmed, debit, credit };
-                });
-
-                setLines(newLines);
-                toast({
-                    title: 'Upload Successful',
-                    description: `${newLines.length} lines have been loaded from the CSV file.`,
-                });
-
-            } catch (error: any) {
-                 toast({
-                    variant: 'destructive',
-                    title: 'Failed to parse CSV',
-                    description: error.message || 'Please check the file format and content.',
-                });
-            }
-        };
-        reader.onerror = () => {
-             toast({
-                variant: 'destructive',
-                title: 'File Read Error',
-                description: 'Could not read the selected file.',
-            });
-        }
-        reader.readAsText(file);
-    };
 
     const handlePostEntry = async () => {
         if (!isBalanced) {
@@ -228,7 +160,7 @@ const JournalPage = () => {
             if (result.success) {
                 toast({
                     title: 'Journal Entry Posted!',
-                    description: 'The entry has been successfully recorded.',
+                    description: `Voucher #${result.journalVoucherId} has been successfully recorded.`,
                 });
                 resetForm();
             } else {
@@ -250,27 +182,10 @@ const JournalPage = () => {
         <div className="container mx-auto p-4 md:p-8">
             <Card className="max-w-4xl mx-auto">
                 <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                        <div>
-                            <CardTitle>New Journal Entry</CardTitle>
-                            <CardDescription>
-                                Record a new manual journal voucher. Ensure that total debits equal total credits.
-                            </CardDescription>
-                        </div>
-                        <div>
-                             <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                className="hidden" 
-                                accept=".csv"
-                                onChange={handleFileUpload}
-                            />
-                            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                <Upload className="mr-2 h-4 w-4" />
-                                Upload CSV
-                            </Button>
-                        </div>
-                    </div>
+                    <CardTitle>New Journal Entry</CardTitle>
+                    <CardDescription>
+                        Record a new manual journal voucher. Ensure that total debits equal total credits.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid md:grid-cols-3 gap-6 mb-6">
@@ -391,3 +306,5 @@ const JournalPage = () => {
 };
 
 export default JournalPage;
+
+    
