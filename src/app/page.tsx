@@ -1,12 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, Library } from "lucide-react";
+import { FileText, BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, Library, FilePlus } from "lucide-react";
 import Link from "next/link";
 
 const reports = [
     {
+        href: '/invoice/new',
+        title: 'Create Invoice',
+        description: 'Create a new sales invoice and post journal.',
+        icon: <FilePlus className="w-8 h-8 text-primary" />,
+    },
+    {
         href: '/invoice/1',
-        title: 'Sample Invoice',
+        title: 'View Invoice',
         description: 'View a sample sales invoice.',
         icon: <FileText className="w-8 h-8 text-primary" />,
     },
