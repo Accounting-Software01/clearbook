@@ -34,7 +34,7 @@ export function Sidebar() {
     return (
         <aside className="w-64 flex-shrink-0 rounded-2xl bg-black/10 dark:bg-white/5 backdrop-blur-lg border border-white/10 shadow-lg flex flex-col animate-zoom-in-fade">
             <div className="p-6 text-center">
-                <h2 className="text-2xl font-bold text-white">Accounting Hub</h2>
+                <h2 className="text-2xl font-bold text-white">ClearBooks</h2>
             </div>
             <nav className="flex-grow px-4">
                 <ul className="space-y-2">
@@ -54,7 +54,7 @@ export function Sidebar() {
                 </ul>
             </nav>
             <div className="p-4 border-t border-white/10 text-center text-xs text-gray-400">
-                <p>&copy; 2024 Accounting Hub</p>
+                <p>&copy; 2024 ClearBooks</p>
             </div>
         </aside>
     );

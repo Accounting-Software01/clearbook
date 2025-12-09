@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -32,7 +31,7 @@ export default function LoginPage() {
         title: 'Login Successful',
         description: 'Welcome back!',
       });
-      router.push('/dashboard');
+      router.push('/home');
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -45,7 +44,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background/80 backdrop-blur-sm p-4 sm:p-6 lg:p-8">
+    <div className="w-full flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="w-full max-w-4xl animate-zoom-in-fade">
         <Card className="overflow-hidden rounded-lg shadow-2xl">
           <CardHeader className="flex flex-row items-center gap-2 bg-muted/50 p-4 border-b">
@@ -58,7 +57,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div className="p-8 bg-muted/50 hidden md:flex flex-col justify-center items-center text-center">
               <Library className="h-12 w-12 text-primary mb-4" />
-              <h2 className="text-2xl font-bold">Accounting Hub</h2>
+              <h2 className="text-2xl font-bold">ClearBooks</h2>
               <p className="text-muted-foreground mt-2">
                 Your comprehensive financial command center.
               </p>
