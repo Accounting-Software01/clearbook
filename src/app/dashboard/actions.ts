@@ -1,7 +1,6 @@
 
 'use server';
 
-import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import { format } from 'date-fns';
 
 // Helper to format currency in Naira
@@ -16,9 +15,9 @@ const formatCurrency = (amount: number) => {
 
 // Unified fetch function
 async function getDashboardData() {
-    const API_BASE_URL = 'https://hariindustries.net/busa-api/database';
+    const API_URL = 'https://hariindustries.net/busa-api/database/dashboard.php';
     try {
-        const res = await fetch(`${API_BASE_URL}/dashboard.php`);
+        const res = await fetch(API_URL);
         if (!res.ok) {
             throw new Error(`API request failed with status ${res.status}`);
         }
