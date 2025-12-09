@@ -1,4 +1,3 @@
-
 'use client';
 import Link from 'next/link';
 import { Library, LogOut } from 'lucide-react';
@@ -9,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { getCurrentUser, logout } from '@/lib/auth';
+import { Sidebar } from './Sidebar';
 
 const useUser = () => {
     const [user, setUser] = useState<{ uid: string } | null>(null);
@@ -48,7 +48,7 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
     const handleClose = () => {
         setIsClosing(true);
         setTimeout(() => {
-            router.push('/dashboard');
+            router.push('/home');
         }, 300); // Match animation duration
     };
 
@@ -70,21 +70,18 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
     }
 
     return (
-        <div className={cn(
-            "min-h-screen bg-background/80 backdrop-blur-sm p-4 sm:p-6 lg:p-8 flex items-center justify-center transition-all duration-300",
-            isMaximized ? "p-0" : ""
-        )}>
+        <div className="min-h-screen w-full bg-muted/20 p-4 flex gap-4">
+            <Sidebar />
             <div className={cn(
                 "w-full transition-all duration-500 ease-in-out",
-                isMaximized ? "h-screen" : "max-w-6xl",
                 isClosing ? "animate-zoom-out-fade" : "animate-zoom-in-fade"
             )}>
-                <Card className={cn("overflow-hidden w-full h-full flex flex-col transition-all duration-500 ease-in-out shadow-2xl", isMaximized ? "rounded-none" : "rounded-lg max-h-[90vh]")}>
-                    <CardHeader className="flex flex-row items-center justify-between bg-muted/50 p-4 border-b">
+                <Card className="w-full h-full flex flex-col transition-all duration-500 ease-in-out shadow-2xl bg-card/80 backdrop-blur-xl">
+                    <CardHeader className="flex flex-row items-center justify-between p-4 border-b border-white/20">
                         <div className="flex items-center gap-2">
                            <div className="flex items-center gap-1.5">
                                 <button onClick={handleClose} className="h-3 w-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors"></button>
-                                <button onClick={handleClose} className="h-3 w-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors"></button>
+                                <button className="h-3 w-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors"></button>
                                 <button onClick={handleMaximize} className="h-3 w-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors"></button>
                            </div>
                             <div className="flex items-center gap-2 ml-4">
