@@ -17,9 +17,13 @@ interface AppLayoutProps {
 export function AppLayout({ children, title, description }: AppLayoutProps) {
     const router = useRouter();
     const [isMaximized, setIsMaximized] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
 
     const handleClose = () => {
-        router.push('/');
+        setIsClosing(true);
+        setTimeout(() => {
+            router.push('/');
+        }, 300); // Match animation duration
     };
 
     const handleMaximize = () => {
@@ -31,7 +35,11 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
             "min-h-screen bg-background/80 backdrop-blur-sm p-4 sm:p-6 lg:p-8 flex items-center justify-center transition-all duration-300",
             isMaximized ? "p-0" : ""
         )}>
-            <div className={cn("w-full transition-all duration-500 ease-in-out", isMaximized ? "h-screen" : "max-w-6xl")}>
+            <div className={cn(
+                "w-full transition-all duration-500 ease-in-out",
+                isMaximized ? "h-screen" : "max-w-6xl",
+                isClosing ? "animate-zoom-out-fade" : "animate-zoom-in-fade"
+            )}>
                 <Card className={cn("overflow-hidden w-full h-full flex flex-col transition-all duration-500 ease-in-out shadow-2xl", isMaximized ? "rounded-none" : "rounded-lg max-h-[90vh]")}>
                     <CardHeader className="flex flex-row items-center justify-between bg-muted/50 p-4 border-b">
                         <div className="flex items-center gap-2">
