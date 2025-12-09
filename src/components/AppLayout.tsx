@@ -108,10 +108,10 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                             <SidebarMenuSubItem key={subItem.href}>
                                                 <Link href={subItem.href}>
                                                     <SidebarMenuSubButton asChild isActive={isActive(subItem.href)}>
-                                                        <a>
+                                                        <>
                                                           {subItem.icon}
                                                           <span>{subItem.title}</span>
-                                                        </a>
+                                                        </>
                                                     </SidebarMenuSubButton>
                                                 </Link>
                                             </SidebarMenuSubItem>
