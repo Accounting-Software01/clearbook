@@ -13,7 +13,6 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import Link from 'next/link';
@@ -108,9 +107,11 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                         {item.items.map((subItem) => (
                                             <SidebarMenuSubItem key={subItem.href}>
                                                 <Link href={subItem.href}>
-                                                    <SidebarMenuSubButton isActive={isActive(subItem.href)}>
-                                                        {subItem.icon}
-                                                        <span>{subItem.title}</span>
+                                                    <SidebarMenuSubButton asChild isActive={isActive(subItem.href)}>
+                                                        <a>
+                                                          {subItem.icon}
+                                                          <span>{subItem.title}</span>
+                                                        </a>
                                                     </SidebarMenuSubButton>
                                                 </Link>
                                             </SidebarMenuSubItem>
@@ -120,9 +121,11 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                             ) : (
                                 <SidebarMenuItem key={item.href}>
                                     <Link href={item.href}>
-                                        <SidebarMenuButton isActive={isActive(item.href)}>
-                                            {item.icon}
-                                            {item.title}
+                                        <SidebarMenuButton asChild isActive={isActive(item.href)}>
+                                            <span>
+                                              {item.icon}
+                                              {item.title}
+                                            </span>
                                         </SidebarMenuButton>
                                     </Link>
                                 </SidebarMenuItem>
