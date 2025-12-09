@@ -33,16 +33,6 @@ body {
     --chart-4: 15 75% 60%;
     --chart-5: 350 70% 65%;
     --radius: 0.5rem;
-
-    /* Sidebar Light Theme */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 210 40% 98%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 210 40% 98%;
   }
 
   .dark {
@@ -70,16 +60,6 @@ body {
     --chart-3: 45 75% 50%;
     --chart-4: 15 75% 60%;
     --chart-5: 350 70% 65%;
-
-    /* Sidebar Dark Theme */
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 210 40% 98%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 210 40% 98%;
   }
 }
 

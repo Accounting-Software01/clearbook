@@ -1,30 +1,23 @@
-
 'use client';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-  SidebarTrigger,
-} from '@/components/ui/sidebar';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Library, LayoutDashboard, FilePlus, BookPlus, BookOpen, Scale, FileBarChart2, Landmark, ArrowRightLeft } from 'lucide-react';
-
+import { Library, LayoutDashboard, FilePlus, BookPlus, BookOpen, Scale, FileBarChart2, Landmark, ArrowRightLeft, Menu } from 'lucide-react';
+import {
+    Menubar,
+    MenubarContent,
+    MenubarItem,
+    MenubarMenu,
+    MenubarTrigger,
+} from "@/components/ui/menubar";
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import React from 'react';
 
 const menuItems = [
     {
         href: '/',
         title: 'Dashboard',
-        icon: <LayoutDashboard />,
+        icon: <LayoutDashboard className="mr-2 h-4 w-4" />,
     },
     {
         title: 'Data Entry',
@@ -32,12 +25,12 @@ const menuItems = [
             {
                 href: '/payment-voucher/new',
                 title: 'New Payment Voucher',
-                icon: <FilePlus />,
+                icon: <FilePlus className="mr-2 h-4 w-4" />,
             },
             {
                 href: '/journal',
                 title: 'Journal Entry',
-                icon: <BookPlus />,
+                icon: <BookPlus className="mr-2 h-4 w-4" />,
             },
         ]
     },
@@ -47,27 +40,27 @@ const menuItems = [
             {
                 href: '/ledger',
                 title: 'General Ledger',
-                icon: <BookOpen />,
+                icon: <BookOpen className="mr-2 h-4 w-4" />,
             },
             {
                 href: '/trial-balance',
                 title: 'Trial Balance',
-                icon: <Scale />,
+                icon: <Scale className="mr-2 h-4 w-4" />,
             },
             {
                 href: '/profit-loss',
                 title: 'Profit & Loss',
-                icon: <FileBarChart2 />,
+                icon: <FileBarChart2 className="mr-2 h-4 w-4" />,
             },
             {
                 href: '/balance-sheet',
                 title: 'Balance Sheet',
-                icon: <Landmark />,
+                icon: <Landmark className="mr-2 h-4 w-4" />,
             },
             {
                 href: '/cash-flow',
                 title: 'Cash Flow',
-                icon: <ArrowRightLeft />,
+                icon: <ArrowRightLeft className="mr-2 h-4 w-4" />,
             }
         ]
     }
@@ -79,67 +72,84 @@ interface AppLayoutProps {
     description: string;
 }
 
-export function AppLayout({ children, title, description }: AppLayoutProps) {
+const NavLinks = ({ className }: { className?: string }) => {
     const pathname = usePathname();
+    const isActive = (href: string) => pathname === href;
 
-    const isActive = (href: string) => {
-        return pathname === href;
-    };
-    
+    return (
+        <nav className={className}>
+            {menuItems.map((item) => (
+                item.items ? (
+                    <MenubarMenu key={item.title}>
+                        <MenubarTrigger>{item.title}</MenubarTrigger>
+                        <MenubarContent>
+                            {item.items.map((subItem) => (
+                                <Link href={subItem.href} key={subItem.href} passHref>
+                                    <MenubarItem>
+                                        {subItem.icon} {subItem.title}
+                                    </MenubarItem>
+                                </Link>
+                            ))}
+                        </MenubarContent>
+                    </MenubarMenu>
+                ) : (
+                    <Link href={item.href} key={item.href} passHref>
+                        <Button variant={isActive(item.href) ? 'secondary' : 'ghost'}>
+                            {item.icon} {item.title}
+                        </Button>
+                    </Link>
+                )
+            ))}
+        </nav>
+    );
+};
+
+
+export function AppLayout({ children, title, description }: AppLayoutProps) {
+    const [open, setOpen] = React.useState(false);
+
     return (
         <div className="min-h-screen bg-background">
-            <Sidebar>
-                <SidebarHeader>
-                    <div className="flex items-center gap-2">
-                        <div className="bg-primary text-primary-foreground rounded-lg p-2">
-                            <Library />
-                        </div>
+            <header className="sticky top-0 z-40 w-full border-b bg-background">
+                <div className="container flex h-16 items-center space-x-4">
+                    <div className="flex items-center gap-2 mr-6">
+                        <Library className="h-6 w-6 text-primary" />
                         <h1 className="text-xl font-semibold">Accounting</h1>
                     </div>
-                </SidebarHeader>
-                <SidebarContent>
-                    <SidebarMenu>
-                         {menuItems.map((item) => (
-                            item.items ? (
-                                <SidebarGroup key={item.title}>
-                                    <SidebarGroupLabel>{item.title}</SidebarGroupLabel>
-                                    <SidebarMenuSub>
-                                        {item.items.map((subItem) => (
-                                            <SidebarMenuSubItem key={subItem.href}>
-                                                <Link href={subItem.href}>
-                                                    <SidebarMenuSubButton isActive={isActive(subItem.href)}>
-                                                          {subItem.icon}
-                                                          <span>{subItem.title}</span>
-                                                    </SidebarMenuSubButton>
-                                                </Link>
-                                            </SidebarMenuSubItem>
-                                        ))}
-                                    </SidebarMenuSub>
-                                </SidebarGroup>
-                            ) : (
-                                <SidebarMenuItem key={item.href}>
-                                    <Link href={item.href}>
-                                        <SidebarMenuButton isActive={isActive(item.href)}>
-                                            {item.icon}
-                                            {item.title}
-                                        </SidebarMenuButton>
-                                    </Link>
-                                </SidebarMenuItem>
-                            )
-                        ))}
-                    </SidebarMenu>
-                </SidebarContent>
-            </Sidebar>
-            <SidebarInset>
-                <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6 py-4">
-                     <SidebarTrigger className="md:hidden"/>
-                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-                        <p className="text-muted-foreground">{description}</p>
-                     </div>
-                </header>
-                <main className="p-4 sm:p-6">{children}</main>
-            </SidebarInset>
+                    
+                    {/* Desktop Menu */}
+                    <Menubar className="hidden md:flex border-none shadow-none rounded-none">
+                       <NavLinks className="flex items-center space-x-1" />
+                    </Menubar>
+
+                    {/* Mobile Menu */}
+                    <div className="flex flex-1 items-center justify-end md:hidden">
+                        <Sheet open={open} onOpenChange={setOpen}>
+                            <SheetTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                    <Menu className="h-6 w-6" />
+                                    <span className="sr-only">Toggle Menu</span>
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent side="left">
+                                <div className="flex items-center gap-2 p-4 border-b">
+                                    <Library className="h-6 w-6 text-primary" />
+                                    <h1 className="text-xl font-semibold">Accounting</h1>
+                                </div>
+                                <NavLinks className="flex flex-col space-y-2 p-4" />
+                            </SheetContent>
+                        </Sheet>
+                    </div>
+                </div>
+            </header>
+            
+            <div className="container mt-6">
+                <div className="mb-6">
+                    <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+                    <p className="text-muted-foreground">{description}</p>
+                </div>
+                <main>{children}</main>
+            </div>
         </div>
     );
 }
