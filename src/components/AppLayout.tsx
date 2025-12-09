@@ -107,7 +107,7 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                     <SidebarMenuSub>
                                         {item.items.map((subItem) => (
                                             <SidebarMenuSubItem key={subItem.href}>
-                                                <Link href={subItem.href} legacyBehavior passHref>
+                                                <Link href={subItem.href}>
                                                     <SidebarMenuSubButton isActive={isActive(subItem.href)}>
                                                         {subItem.icon}
                                                         <span>{subItem.title}</span>
@@ -119,7 +119,7 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                 </SidebarGroup>
                             ) : (
                                 <SidebarMenuItem key={item.href}>
-                                    <Link href={item.href} legacyBehavior passHref>
+                                    <Link href={item.href}>
                                         <SidebarMenuButton isActive={isActive(item.href)}>
                                             {item.icon}
                                             {item.title}
