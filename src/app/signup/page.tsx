@@ -44,7 +44,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="w-full flex items-center justify-center p-4 sm:p-6 lg:p-8">
+    <div className="w-full h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="w-full max-w-4xl animate-zoom-in-fade">
         <Card className="overflow-hidden rounded-lg shadow-2xl">
            <CardHeader className="flex flex-row items-center gap-2 bg-muted/50 p-4 border-b">

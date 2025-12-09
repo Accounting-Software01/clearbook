@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { getCurrentUser, logout } from '@/lib/auth';
 import { Sidebar } from './Sidebar';
+import { ScrollArea } from './ui/scroll-area';
 
 const useUser = () => {
     const [user, setUser] = useState<{ uid: string } | null>(null);
@@ -67,12 +68,12 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
     return (
         <>
             <Sidebar />
-            <div className="flex-1 p-4">
+            <div className="flex-1 p-4 flex flex-col">
                 <div className={cn(
-                    "w-full transition-all duration-500 ease-in-out",
+                    "w-full transition-all duration-500 ease-in-out flex flex-col flex-grow",
                     isClosing ? "animate-zoom-out-fade" : "animate-zoom-in-fade"
                 )}>
-                    <Card className="w-full flex flex-col transition-all duration-500 ease-in-out shadow-2xl bg-card/80 backdrop-blur-xl">
+                    <Card className="w-full flex flex-col flex-grow transition-all duration-500 ease-in-out shadow-2xl bg-card/80 backdrop-blur-xl">
                         <CardHeader className="flex flex-row items-center justify-between p-4 border-b border-white/20">
                             <div className="flex items-center gap-2">
                                <div className="flex items-center gap-1.5">
@@ -90,10 +91,12 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                 Logout
                             </Button>
                         </CardHeader>
-                        <CardContent className="p-6 flex-grow overflow-y-auto">
-                            <p className="text-muted-foreground mb-6">{description}</p>
-                            <main>{children}</main>
-                        </CardContent>
+                        <ScrollArea className="flex-grow">
+                             <CardContent className="p-6">
+                                <p className="text-muted-foreground mb-6">{description}</p>
+                                <main>{children}</main>
+                            </CardContent>
+                        </ScrollArea>
                     </Card>
                 </div>
             </div>

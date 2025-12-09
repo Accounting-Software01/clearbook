@@ -14,6 +14,7 @@ import {
     UserSquare 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ScrollArea } from './ui/scroll-area';
 
 const navItems = [
     { href: '/home', label: 'Home', icon: LayoutDashboard },
@@ -36,23 +37,25 @@ export function Sidebar() {
             <div className="p-6 text-center">
                 <h2 className="text-2xl font-bold text-white">ClearBooks</h2>
             </div>
-            <nav className="flex-grow px-4">
-                <ul className="space-y-2">
-                    {navItems.map((item) => (
-                        <li key={item.href}>
-                            <Link href={item.href} passHref>
-                                <div className={cn(
-                                    "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-gray-300 hover:bg-white/10 hover:text-white",
-                                    pathname === item.href && "bg-primary/80 text-primary-foreground shadow-md"
-                                )}>
-                                    <item.icon className="h-5 w-5" />
-                                    <span className="font-medium">{item.label}</span>
-                                </div>
-                            </Link>
-                        </li>
-                    ))}
-                </ul>
-            </nav>
+            <ScrollArea className="flex-grow px-4">
+                <nav className="py-4">
+                    <ul className="space-y-2">
+                        {navItems.map((item) => (
+                            <li key={item.href}>
+                                <Link href={item.href} passHref>
+                                    <div className={cn(
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-gray-300 hover:bg-white/10 hover:text-white",
+                                        pathname === item.href && "bg-primary/80 text-primary-foreground shadow-md"
+                                    )}>
+                                        <item.icon className="h-5 w-5" />
+                                        <span className="font-medium">{item.label}</span>
+                                    </div>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </nav>
+            </ScrollArea>
             <div className="p-4 border-t border-white/10 text-center text-xs text-gray-400">
                 <p>&copy; 2024 ClearBooks</p>
             </div>
