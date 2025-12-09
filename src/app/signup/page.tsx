@@ -64,11 +64,35 @@ export default function SignupPage() {
                         Create Account
                     </Button>
                     </div>
-                    <div className="mt-4 text-center text-sm">
-                    Already have an account?{' '}
-                    <Link href="/login" className="underline">
-                        Login
-                    </Link>
+                    <div className="mt-4 text-center text-xs text-muted-foreground space-y-2">
+                      <p>
+                        By creating an account, you agree to the{' '}
+                        <Link href="#" className="underline">
+                          terms & conditions
+                        </Link>{' '}
+                        and our{' '}
+                        <Link href="#" className="underline">
+                          privacy policy
+                        </Link>
+                        .
+                      </p>
+                      <p>
+                        This site is protected by reCAPTCHA and the Google{' '}
+                        <Link href="#" className="underline">
+                          Privacy Policy
+                        </Link>{' '}
+                        and{' '}
+                        <Link href="#" className="underline">
+                          Terms of Service
+                        </Link>{' '}
+                        apply.
+                      </p>
+                       <p className="text-sm pt-2">
+                        Already using Accounting Hub?{' '}
+                        <Link href="/login" className="underline font-semibold">
+                            Sign in here
+                        </Link>
+                      </p>
                     </div>
                 </CardContent>
             </div>
