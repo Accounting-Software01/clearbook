@@ -106,12 +106,10 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                     <SidebarMenuSub>
                                         {item.items.map((subItem) => (
                                             <SidebarMenuSubItem key={subItem.href}>
-                                                <Link href={subItem.href}>
-                                                    <SidebarMenuSubButton asChild isActive={isActive(subItem.href)}>
-                                                        <span>
+                                                <Link href={subItem.href} legacyBehavior passHref>
+                                                    <SidebarMenuSubButton as="a" isActive={isActive(subItem.href)}>
                                                           {subItem.icon}
                                                           <span>{subItem.title}</span>
-                                                        </span>
                                                     </SidebarMenuSubButton>
                                                 </Link>
                                             </SidebarMenuSubItem>
@@ -120,12 +118,10 @@ export function AppLayout({ children, title, description }: AppLayoutProps) {
                                 </SidebarGroup>
                             ) : (
                                 <SidebarMenuItem key={item.href}>
-                                    <Link href={item.href}>
-                                        <SidebarMenuButton asChild isActive={isActive(item.href)}>
-                                            <span>
-                                              {item.icon}
-                                              {item.title}
-                                            </span>
+                                    <Link href={item.href} legacyBehavior passHref>
+                                        <SidebarMenuButton as="a" isActive={isActive(item.href)}>
+                                            {item.icon}
+                                            {item.title}
                                         </SidebarMenuButton>
                                     </Link>
                                 </SidebarMenuItem>
