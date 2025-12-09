@@ -1,91 +1,63 @@
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, Library, FilePlus } from "lucide-react";
+import { AppLayout } from '@/components/AppLayout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, FilePlus } from "lucide-react";
 import Link from "next/link";
 
-const reports = [
+const overviewCards = [
     {
-        href: '/payment-voucher/new',
-        title: 'New Payment Voucher',
-        description: 'Record a payment for expenses.',
-        icon: <FilePlus className="w-8 h-8 text-primary" />,
+        title: 'Total Revenue',
+        value: 'KES 1,250,000',
+        change: '+15.2% from last month',
+        icon: <Scale className="w-6 h-6 text-muted-foreground" />,
     },
     {
-        href: '/journal',
-        title: 'Journal Entry',
-        description: 'Record manual journal vouchers.',
-        icon: <BookPlus className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/ledger',
-        title: 'General Ledger',
-        description: 'View detailed account history.',
-        icon: <BookOpen className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/trial-balance',
-        title: 'Trial Balance',
-        description: 'Check account balances and view all accounts.',
-        icon: <Scale className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/profit-loss',
-        title: 'Profit & Loss',
-        description: 'Analyze revenues and expenses over a period.',
-        icon: <FileBarChart2 className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/balance-sheet',
-        title: 'Balance Sheet',
-        description: 'See a snapshot of assets and liabilities.',
-        icon: <Landmark className="w-8 h-8 text-primary" />,
+        title: 'Net Profit',
+        value: 'KES 280,000',
+        change: '+12.1% from last month',
+        icon: <FileBarChart2 className="w-6 h-6 text-muted-foreground" />,
     },
      {
-        href: '/cash-flow',
-        title: 'Cash Flow',
-        description: 'Track the movement of cash.',
-        icon: <ArrowRightLeft className="w-8 h-8 text-primary" />,
+        title: 'Total Assets',
+        value: 'KES 5,600,000',
+        change: '',
+        icon: <Landmark className="w-6 h-6 text-muted-foreground" />,
+    },
+    {
+        title: 'Cash Balance',
+        value: 'KES 850,000',
+        change: '-5.2% from last month',
+        icon: <ArrowRightLeft className="w-6 h-6 text-muted-foreground" />,
     }
-]
+];
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-4 sm:p-8">
-      <div className="w-full max-w-5xl">
-        <div className="text-center mb-12">
-            <div className="inline-block p-4 bg-white rounded-full mb-4 shadow-sm">
-                <Library className="h-12 w-12 text-primary" />
-            </div>
-            <h1 className="text-4xl font-bold tracking-tight text-primary mb-2">
-                Accounting & Financial Hub
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                A central place to manage accounting tasks and generate key financial reports for your business.
-            </p>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {reports.map((report) => (
-                 <Card key={report.href} className="bg-background/80 backdrop-blur-sm hover:shadow-lg transition-shadow duration-300">
-                    <CardHeader className="flex flex-row items-start gap-4">
-                        <div className="flex-shrink-0 bg-primary/10 text-primary p-3 rounded-full">{report.icon}</div>
-                        <div className="flex-grow">
-                            <CardTitle className="text-lg">{report.title}</CardTitle>
-                        </div>
+    <AppLayout title="Dashboard" description="Welcome back! Here's a summary of your business finances.">
+      <div className="space-y-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {overviewCards.map((card) => (
+                <Card key={card.title}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
+                        {card.icon}
                     </CardHeader>
                     <CardContent>
-                        <CardDescription>{report.description}</CardDescription>
+                        <div className="text-2xl font-bold">{card.value}</div>
+                        <p className="text-xs text-muted-foreground">{card.change}</p>
                     </CardContent>
-                    <CardFooter>
-                         <Button asChild className="w-full">
-                            <Link href={report.href}>Go to Page</Link>
-                        </Button>
-                    </CardFooter>
                 </Card>
             ))}
         </div>
+        <div>
+            <h2 className="text-2xl font-bold tracking-tight mb-4">Recent Activity & Reports</h2>
+             <Card>
+                <CardContent className="p-6">
+                    <p className="text-muted-foreground">Quickly access your financial reports and common tasks from the sidebar navigation on the left.</p>
+                </CardContent>
+            </Card>
+        </div>
       </div>
-    </main>
+    </AppLayout>
   );
 }

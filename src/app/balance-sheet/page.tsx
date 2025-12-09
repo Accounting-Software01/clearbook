@@ -19,7 +19,7 @@ import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import type { DateRange } from 'react-day-picker';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { AppHeader } from '@/components/AppHeader';
+import { AppLayout } from '@/components/AppLayout';
 
 
 interface ReportAccount {
@@ -164,130 +164,127 @@ const BalanceSheetPage = () => {
 
 
   return (
-    <div>
-        <AppHeader 
-            title="Balance Sheet"
-            description="Generate a balance sheet to see a snapshot of your company's financial health."
-        />
-        <main className="container mx-auto p-4 md:p-8">
-            <div className="max-w-4xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-card">
-                    <div className="md:col-span-2 space-y-2">
-                        <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
-                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
-                    </div>
-                    <Button onClick={generateReport} disabled={isLoading} className="w-full">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Generate Report
-                    </Button>
+    <AppLayout 
+        title="Balance Sheet"
+        description="Generate a balance sheet to see a snapshot of your company's financial health."
+    >
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg items-end bg-card">
+                <div className="md:col-span-2 space-y-2">
+                    <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
+                    <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
                 </div>
-
-                {isLoading ? (
-                    <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                ) : error ? (
-                    <Card className="flex flex-col justify-center items-center h-60 text-destructive bg-card"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></Card>
-                ) : reportData ? (
-                    <div className="space-y-8">
-                        <Card className="bg-card">
-                            <CardHeader>
-                                <CardTitle>Financial Position</CardTitle>
-                            </CardHeader>
-                            <CardContent className="h-60">
-                                <ChartContainer config={{}} className="w-full h-full">
-                                    <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                        <XAxis type="number" hide />
-                                        <YAxis type="category" dataKey="name" hide />
-                                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                                        <Legend />
-                                        <Bar dataKey="Assets" stackId="a" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
-                                        <Bar dataKey="Liabilities" stackId="b" fill="hsl(var(--chart-2))" />
-                                        <Bar dataKey="Equity" stackId="b" fill="hsl(var(--chart-3))" radius={[0, 4, 4, 0]} />
-                                    </BarChart>
-                                </ChartContainer>
-                            </CardContent>
-                        </Card>
-
-                        <div className="border rounded-lg p-4 bg-card">
-                            <h3 className="text-lg font-bold text-center">Balance Sheet</h3>
-                            <p className="text-center text-muted-foreground mb-6">
-                                As of {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
-                            </p>
-                            
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {/* Assets Section */}
-                                    <TableRow className="font-bold bg-muted/30">
-                                        <TableCell>{reportData.assets.title}</TableCell>
-                                        <TableCell></TableCell>
-                                    </TableRow>
-                                    {reportData.assets.accounts.map(acc => (
-                                        <TableRow key={acc.name}>
-                                            <TableCell className="pl-8">{acc.name}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                    <TableRow className="font-bold text-lg">
-                                        <TableCell className="pl-4">Total Assets</TableCell>
-                                        <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.assets.total)}</TableCell>
-                                    </TableRow>
-                                    
-                                    {/* Spacer Row */}
-                                    <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
-
-                                    {/* Liabilities Section */}
-                                    <TableRow className="font-bold bg-muted/30">
-                                        <TableCell>{reportData.liabilities.title}</TableCell>
-                                        <TableCell></TableCell>
-                                    </TableRow>
-                                    {reportData.liabilities.accounts.map(acc => (
-                                        <TableRow key={acc.name}>
-                                            <TableCell className="pl-8">{acc.name}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                     <TableRow className="font-semibold">
-                                        <TableCell className="pl-4">Total Liabilities</TableCell>
-                                        <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.liabilities.total)}</TableCell>
-                                    </TableRow>
-
-                                    {/* Equity Section */}
-                                    <TableRow className="font-bold bg-muted/30 mt-4">
-                                        <TableCell>{reportData.equity.title}</TableCell>
-                                        <TableCell></TableCell>
-                                    </TableRow>
-                                    {reportData.equity.accounts.map(acc => (
-                                        <TableRow key={acc.name}>
-                                            <TableCell className="pl-8">{acc.name}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                    <TableRow className="font-semibold">
-                                        <TableCell className="pl-4">Total Equity</TableCell>
-                                        <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.equity.total)}</TableCell>
-                                    </TableRow>
-
-                                </TableBody>
-                                 <TableFooter>
-                                    <TableRow className="font-bold text-lg">
-                                        <TableCell>Total Liabilities &amp; Equity</TableCell>
-                                        <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.totalLiabilitiesAndEquity)}</TableCell>
-                                    </TableRow>
-                                </TableFooter>
-                            </Table>
-                        </div>
-                    </div>
-                ) : (
-                     <Card className="flex justify-center items-center h-60 text-muted-foreground bg-card"><p>Generate a report to see the balance sheet.</p></Card>
-                )}
+                <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Generate Report
+                </Button>
             </div>
-        </main>
-    </div>
+
+            {isLoading ? (
+                <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            ) : error ? (
+                <Card className="flex flex-col justify-center items-center h-60 text-destructive bg-card"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></Card>
+            ) : reportData ? (
+                <div className="space-y-8">
+                    <Card className="bg-card">
+                        <CardHeader>
+                            <CardTitle>Financial Position</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-60">
+                            <ChartContainer config={{}} className="w-full h-full">
+                                <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                    <XAxis type="number" hide />
+                                    <YAxis type="category" dataKey="name" hide />
+                                    <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                                    <Legend />
+                                    <Bar dataKey="Assets" stackId="a" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
+                                    <Bar dataKey="Liabilities" stackId="b" fill="hsl(var(--chart-2))" />
+                                    <Bar dataKey="Equity" stackId="b" fill="hsl(var(--chart-3))" radius={[0, 4, 4, 0]} />
+                                </BarChart>
+                            </ChartContainer>
+                        </CardContent>
+                    </Card>
+
+                    <div className="border rounded-lg p-4 bg-card">
+                        <h3 className="text-lg font-bold text-center">Balance Sheet</h3>
+                        <p className="text-center text-muted-foreground mb-6">
+                            As of {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                        </p>
+                        
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {/* Assets Section */}
+                                <TableRow className="font-bold bg-muted/30">
+                                    <TableCell>{reportData.assets.title}</TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                                {reportData.assets.accounts.map(acc => (
+                                    <TableRow key={acc.name}>
+                                        <TableCell className="pl-8">{acc.name}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                <TableRow className="font-bold text-lg">
+                                    <TableCell className="pl-4">Total Assets</TableCell>
+                                    <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.assets.total)}</TableCell>
+                                </TableRow>
+                                
+                                {/* Spacer Row */}
+                                <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+
+                                {/* Liabilities Section */}
+                                <TableRow className="font-bold bg-muted/30">
+                                    <TableCell>{reportData.liabilities.title}</TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                                {reportData.liabilities.accounts.map(acc => (
+                                    <TableRow key={acc.name}>
+                                        <TableCell className="pl-8">{acc.name}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                 <TableRow className="font-semibold">
+                                    <TableCell className="pl-4">Total Liabilities</TableCell>
+                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.liabilities.total)}</TableCell>
+                                </TableRow>
+
+                                {/* Equity Section */}
+                                <TableRow className="font-bold bg-muted/30 mt-4">
+                                    <TableCell>{reportData.equity.title}</TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                                {reportData.equity.accounts.map(acc => (
+                                    <TableRow key={acc.name}>
+                                        <TableCell className="pl-8">{acc.name}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                <TableRow className="font-semibold">
+                                    <TableCell className="pl-4">Total Equity</TableCell>
+                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.equity.total)}</TableCell>
+                                </TableRow>
+
+                            </TableBody>
+                             <TableFooter>
+                                <TableRow className="font-bold text-lg">
+                                    <TableCell>Total Liabilities &amp; Equity</TableCell>
+                                    <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.totalLiabilitiesAndEquity)}</TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        </Table>
+                    </div>
+                </div>
+            ) : (
+                 <Card className="flex justify-center items-center h-60 text-muted-foreground bg-card"><p>Generate a report to see the balance sheet.</p></Card>
+            )}
+        </div>
+    </AppLayout>
   );
 };
 

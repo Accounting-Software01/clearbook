@@ -18,7 +18,7 @@ import { DateRange } from 'react-day-picker';
 import { format, parseISO, isValid } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
-import { AppHeader } from '@/components/AppHeader';
+import { AppLayout } from '@/components/AppLayout';
 
 interface LedgerEntry {
     date: string;
@@ -122,107 +122,103 @@ const GeneralLedgerPage = () => {
   }
 
   return (
-    <div>
-        <AppHeader 
-            title="General Ledger"
-            description="View the detailed transaction history for any account in the system."
-        />
-        <main className="container mx-auto p-4 md:p-8">
-            <div className="max-w-5xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-card">
-                    <div className="md:col-span-2 space-y-2">
-                        <label htmlFor="account-select" className="font-semibold text-sm">Account</label>
-                        <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                            <SelectTrigger id="account-select">
-                                <SelectValue placeholder="Select an account..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {chartOfAccounts.map(account => (
-                                    <SelectItem key={account.code} value={account.code}>
-                                        {account.code} - {account.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                         <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
-                         <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
-                    </div>
-                    <div className="md:col-start-3">
-                        <Button onClick={fetchLedgerEntries} disabled={isLoading} className="w-full">
-                            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            View Ledger
-                        </Button>
-                    </div>
+    <AppLayout 
+        title="General Ledger"
+        description="View the detailed transaction history for any account in the system."
+    >
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg items-end bg-card">
+                <div className="md:col-span-2 space-y-2">
+                    <label htmlFor="account-select" className="font-semibold text-sm">Account</label>
+                    <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                        <SelectTrigger id="account-select">
+                            <SelectValue placeholder="Select an account..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {chartOfAccounts.map(account => (
+                                <SelectItem key={account.code} value={account.code}>
+                                    {account.code} - {account.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
-
-                <Card className="bg-card">
-                    <CardHeader>
-                        <CardTitle>Account: {selectedAccount} - {selectedAccountName}</CardTitle>
-                        <CardDescription>
-                            Transactions from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex justify-center items-center h-40">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            </div>
-                        ) : error ? (
-                            <div className="flex flex-col justify-center items-center h-40 text-destructive">
-                                <AlertCircle className="h-8 w-8 mb-2" />
-                                <p className="font-semibold">Error</p>
-                                <p>{error}</p>
-                            </div>
-                        ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Debit</TableHead>
-                                    <TableHead className="text-right">Credit</TableHead>
-                                    <TableHead className="text-right">Balance</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow>
-                                    <TableCell>{dateRange?.from ? formatDateSafe(dateRange.from.toISOString()) : '-'}</TableCell>
-                                    <TableCell className="font-semibold">Opening Balance</TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell></TableCell>
-                                    <TableCell className="text-right font-mono font-semibold">{formatCurrency(openingBalance)}</TableCell>
-                                </TableRow>
-                                {entriesWithBalance.map((entry, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell>{formatDateSafe(entry.date)}</TableCell>
-                                        <TableCell>{entry.description}</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(entry.debit)}</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(entry.credit)}</TableCell>
-                                        <TableCell className="text-right font-mono font-semibold">{formatCurrency(entry.balance)}</TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                            <TableFooter>
-                                <TableRow>
-                                    <TableCell colSpan={4} className="text-right font-bold">Ending Balance</TableCell>
-                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(endingBalance)}</TableCell>
-                                </TableRow>
-                            </TableFooter>
-                        </Table>
-                        )}
-                         { !isLoading && !error && fetchedEntries.length === 0 && (
-                             <div className="flex justify-center items-center h-40 text-muted-foreground">
-                                <p>No transactions found for the selected criteria.</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
+                <div className="space-y-2">
+                     <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
+                     <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
+                </div>
+                <div className="md:col-start-3">
+                    <Button onClick={fetchLedgerEntries} disabled={isLoading} className="w-full">
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        View Ledger
+                    </Button>
+                </div>
             </div>
-        </main>
-    </div>
+
+            <Card className="bg-card">
+                <CardHeader>
+                    <CardTitle>Account: {selectedAccount} - {selectedAccountName}</CardTitle>
+                    <CardDescription>
+                        Transactions from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="flex justify-center items-center h-40">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        </div>
+                    ) : error ? (
+                        <div className="flex flex-col justify-center items-center h-40 text-destructive">
+                            <AlertCircle className="h-8 w-8 mb-2" />
+                            <p className="font-semibold">Error</p>
+                            <p>{error}</p>
+                        </div>
+                    ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead className="text-right">Debit</TableHead>
+                                <TableHead className="text-right">Credit</TableHead>
+                                <TableHead className="text-right">Balance</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            <TableRow>
+                                <TableCell>{dateRange?.from ? formatDateSafe(dateRange.from.toISOString()) : '-'}</TableCell>
+                                <TableCell className="font-semibold">Opening Balance</TableCell>
+                                <TableCell></TableCell>
+                                <TableCell></TableCell>
+                                <TableCell className="text-right font-mono font-semibold">{formatCurrency(openingBalance)}</TableCell>
+                            </TableRow>
+                            {entriesWithBalance.map((entry, index) => (
+                                <TableRow key={index}>
+                                    <TableCell>{formatDateSafe(entry.date)}</TableCell>
+                                    <TableCell>{entry.description}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(entry.debit)}</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(entry.credit)}</TableCell>
+                                    <TableCell className="text-right font-mono font-semibold">{formatCurrency(entry.balance)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                        <TableFooter>
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-right font-bold">Ending Balance</TableCell>
+                                <TableCell className="text-right font-bold font-mono">{formatCurrency(endingBalance)}</TableCell>
+                            </TableRow>
+                        </TableFooter>
+                    </Table>
+                    )}
+                     { !isLoading && !error && fetchedEntries.length === 0 && (
+                         <div className="flex justify-center items-center h-40 text-muted-foreground">
+                            <p>No transactions found for the selected criteria.</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    </AppLayout>
   );
 };
 

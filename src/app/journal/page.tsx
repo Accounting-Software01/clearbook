@@ -20,7 +20,7 @@ import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2 } from 'lucide-
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
-import { AppHeader } from '@/components/AppHeader';
+import { AppLayout } from '@/components/AppLayout';
 
 interface JournalEntryLine {
     id: number;
@@ -180,132 +180,129 @@ const JournalPage = () => {
     };
 
     return (
-        <div>
-            <AppHeader 
-                title="New Journal Entry"
-                description="Record a new manual journal voucher. Ensure that total debits equal total credits."
-            />
-            <main className="container mx-auto p-4 md:p-8">
-                 <Card className="max-w-4xl mx-auto">
-                    <CardHeader>
-                        <CardTitle>Journal Voucher Details</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid md:grid-cols-3 gap-6 mb-6">
-                            <div className="space-y-2">
-                                <label className="font-semibold text-sm">Entry Date</label>
-                                <DatePicker date={entryDate} onDateChange={setEntryDate} />
-                            </div>
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="font-semibold text-sm">Narration / Description</label>
-                                <Textarea 
-                                    placeholder="e.g., To record office supply expenses for July"
-                                    value={narration}
-                                    onChange={(e) => setNarration(e.target.value)}
-                                />
-                            </div>
+        <AppLayout 
+            title="New Journal Entry"
+            description="Record a new manual journal voucher. Ensure that total debits equal total credits."
+        >
+             <Card>
+                <CardHeader>
+                    <CardTitle>Journal Voucher Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid md:grid-cols-3 gap-6 mb-6">
+                        <div className="space-y-2">
+                            <label className="font-semibold text-sm">Entry Date</label>
+                            <DatePicker date={entryDate} onDateChange={setEntryDate} />
                         </div>
-                        
-                        <div className="overflow-x-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-1/2">Account</TableHead>
-                                        <TableHead className="text-right">Debit</TableHead>
-                                        <TableHead className="text-right">Credit</TableHead>
-                                        <TableHead className="w-[50px]"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {lines.map((line) => (
-                                        <TableRow key={line.id}>
-                                            <TableCell>
-                                                <Select
-                                                    value={line.accountId}
-                                                    onValueChange={(value) => handleLineChange(line.id, 'accountId', value)}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select an account..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {chartOfAccounts.map(account => (
-                                                            <SelectItem key={account.code} value={account.code}>
-                                                                {account.code} - {account.name}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Input
-                                                    type="text"
-                                                    className="text-right font-mono"
-                                                    placeholder="0.00"
-                                                    value={line.debit > 0 ? formatCurrencyForInput(line.debit) : ''}
-                                                    onChange={(e) => handleLineChange(line.id, 'debit', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                />
-                                            </TableCell>
-                                            <TableCell>
-                                                <Input
-                                                    type="text"
-                                                    className="text-right font-mono"
-                                                    placeholder="0.00"
-                                                    value={line.credit > 0 ? formatCurrencyForInput(line.credit) : ''}
-                                                    onChange={(e) => handleLineChange(line.id, 'credit', e.target.value)}
-                                                    onFocus={(e) => e.target.select()}
-                                                />
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" onClick={() => handleRemoveLine(line.id)}>
-                                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                                <TableFooter>
-                                    <TableRow>
+                        <div className="md:col-span-2 space-y-2">
+                            <label className="font-semibold text-sm">Narration / Description</label>
+                            <Textarea 
+                                placeholder="e.g., To record office supply expenses for July"
+                                value={narration}
+                                onChange={(e) => setNarration(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-1/2">Account</TableHead>
+                                    <TableHead className="text-right">Debit</TableHead>
+                                    <TableHead className="text-right">Credit</TableHead>
+                                    <TableHead className="w-[50px]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {lines.map((line) => (
+                                    <TableRow key={line.id}>
                                         <TableCell>
-                                            <Button variant="outline" size="sm" onClick={handleAddLine}>
-                                                <PlusCircle className="mr-2 h-4 w-4" /> Add Line
+                                            <Select
+                                                value={line.accountId}
+                                                onValueChange={(value) => handleLineChange(line.id, 'accountId', value)}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select an account..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {chartOfAccounts.map(account => (
+                                                        <SelectItem key={account.code} value={account.code}>
+                                                            {account.code} - {account.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input
+                                                type="text"
+                                                className="text-right font-mono"
+                                                placeholder="0.00"
+                                                value={line.debit > 0 ? formatCurrencyForInput(line.debit) : ''}
+                                                onChange={(e) => handleLineChange(line.id, 'debit', e.target.value)}
+                                                onFocus={(e) => e.target.select()}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <Input
+                                                type="text"
+                                                className="text-right font-mono"
+                                                placeholder="0.00"
+                                                value={line.credit > 0 ? formatCurrencyForInput(line.credit) : ''}
+                                                onChange={(e) => handleLineChange(line.id, 'credit', e.target.value)}
+                                                onFocus={(e) => e.target.select()}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" onClick={() => handleRemoveLine(line.id)}>
+                                                <Trash2 className="h-4 w-4 text-destructive" />
                                             </Button>
                                         </TableCell>
-                                        <TableCell className="text-right font-bold font-mono text-lg">
-                                            {totalDebits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </TableCell>
-                                        <TableCell className="text-right font-bold font-mono text-lg">
-                                            {totalCredits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </TableCell>
-                                        <TableCell></TableCell>
                                     </TableRow>
-                                </TableFooter>
-                            </Table>
-                        </div>
+                                ))}
+                            </TableBody>
+                            <TableFooter>
+                                <TableRow>
+                                    <TableCell>
+                                        <Button variant="outline" size="sm" onClick={handleAddLine}>
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Add Line
+                                        </Button>
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold font-mono text-lg">
+                                        {totalDebits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold font-mono text-lg">
+                                        {totalCredits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        </Table>
+                    </div>
 
-                        <div className="mt-4 flex justify-end">
-                            {isBalanced ? (
-                                <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded-md border border-green-200">
-                                    <CheckCircle className="h-5 w-5" />
-                                    <span className="font-semibold">Totals are balanced</span>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-2 rounded-md border border-amber-200">
-                                    <AlertTriangle className="h-5 w-5" />
-                                    <span className="font-semibold">Totals do not match</span>
-                                </div>
-                            )}
-                        </div>
-                    </CardContent>
-                    <CardFooter className="justify-end bg-muted/30 py-4 px-6 rounded-b-lg">
-                        <Button size="lg" onClick={handlePostEntry} disabled={!isBalanced || isLoading}>
-                            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Post Journal Entry
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </main>
-        </div>
+                    <div className="mt-4 flex justify-end">
+                        {isBalanced ? (
+                            <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded-md border border-green-200">
+                                <CheckCircle className="h-5 w-5" />
+                                <span className="font-semibold">Totals are balanced</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-2 rounded-md border border-amber-200">
+                                <AlertTriangle className="h-5 w-5" />
+                                <span className="font-semibold">Totals do not match</span>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+                <CardFooter className="justify-end bg-muted/30 py-4 px-6 rounded-b-lg">
+                    <Button size="lg" onClick={handlePostEntry} disabled={!isBalanced || isLoading}>
+                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Post Journal Entry
+                    </Button>
+                </CardFooter>
+            </Card>
+        </AppLayout>
     );
 };
 

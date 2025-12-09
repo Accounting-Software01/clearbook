@@ -19,7 +19,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { AppHeader } from '@/components/AppHeader';
+import { AppLayout } from '@/components/AppLayout';
 
 interface ReportAccount {
     name: string;
@@ -102,11 +102,9 @@ const ProfitLossPage = () => {
                     const balance = item.balance; // This is (credit - debit) from the backend
 
                     if (account.type === 'Revenue') {
-                        // Revenue has a credit balance, so backend value is positive.
                         revenue.accounts.push({ name: account.name, amount: balance });
                         revenue.total += balance;
                     } else if (account.type === 'Expense') {
-                        // Expenses have debit balances, so backend value is negative. Flip sign for reporting.
                         const amount = -balance;
                         expenses.accounts.push({ name: account.name, amount: amount });
                         expenses.total += amount;
@@ -140,115 +138,112 @@ const ProfitLossPage = () => {
     ] : [];
 
   return (
-    <div>
-        <AppHeader 
-            title="Profit & Loss Statement"
-            description="Generate an income statement to see your business's financial performance."
-        />
-        <main className="container mx-auto p-4 md:p-8">
-            <div className="max-w-4xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-card">
-                    <div className="md:col-span-2 space-y-2">
-                        <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
-                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
-                    </div>
-                    <Button onClick={generateReport} disabled={isLoading} className="w-full">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Generate Report
-                    </Button>
+    <AppLayout 
+        title="Profit & Loss Statement"
+        description="Generate an income statement to see your business's financial performance."
+    >
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg items-end bg-card">
+                <div className="md:col-span-2 space-y-2">
+                    <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
+                    <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
                 </div>
-
-                {isLoading ? (
-                    <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                ) : error ? (
-                    <Card className="flex flex-col justify-center items-center h-60 text-destructive bg-card"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></Card>
-                ) : reportData ? (
-                    <div className="space-y-8">
-                        <Card className="bg-card">
-                             <CardHeader>
-                                <CardTitle>Performance Overview</CardTitle>
-                             </CardHeader>
-                             <CardContent className="h-60">
-                                <ChartContainer config={{}} className="w-full h-full">
-                                    <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
-                                        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
-                                        <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                                        <Legend />
-                                        <Bar dataKey="Revenue" fill="hsl(var(--chart-2))" radius={4} />
-                                        <Bar dataKey="Expenses" fill="hsl(var(--chart-5))" radius={4} />
-                                    </BarChart>
-                                </ChartContainer>
-                             </CardContent>
-                        </Card>
-
-                        <div className="border rounded-lg p-4 bg-card">
-                            <h3 className="text-lg font-bold text-center">Profit &amp; Loss Statement</h3>
-                            <p className="text-center text-muted-foreground mb-6">
-                                For the period from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
-                            </p>
-                            
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead className="text-right">Amount</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {/* Revenue Section */}
-                                    <TableRow className="font-semibold bg-muted/30">
-                                        <TableCell>{reportData.revenue.title}</TableCell>
-                                        <TableCell></TableCell>
-                                    </TableRow>
-                                    {reportData.revenue.accounts.map(acc => (
-                                        <TableRow key={acc.name}>
-                                            <TableCell className="pl-8">{acc.name}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                    <TableRow>
-                                        <TableCell className="pl-4 font-semibold">Total Revenue</TableCell>
-                                        <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.revenue.total)}</TableCell>
-                                    </TableRow>
-
-                                     {/* Gross Profit */}
-                                    <TableRow className="font-bold text-lg bg-secondary/50">
-                                        <TableCell>Gross Profit</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(reportData.grossProfit)}</TableCell>
-                                    </TableRow>
-
-                                    {/* Expenses Section */}
-                                    <TableRow className="font-semibold bg-muted/30">
-                                        <TableCell>{reportData.expenses.title}</TableCell>
-                                        <TableCell></TableCell>
-                                    </TableRow>
-                                    {reportData.expenses.accounts.map(acc => (
-                                        <TableRow key={acc.name}>
-                                            <TableCell className="pl-8">{acc.name}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                    <TableRow>
-                                        <TableCell className="pl-4 font-semibold">Total Operating Expenses</TableCell>
-                                        <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.expenses.total)}</TableCell>
-                                    </TableRow>
-                                </TableBody>
-                                <TableFooter>
-                                    <TableRow className="font-bold text-xl bg-primary/10">
-                                        <TableCell>Net Profit</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(reportData.netProfit)}</TableCell>
-                                    </TableRow>
-                                </TableFooter>
-                            </Table>
-                        </div>
-                    </div>
-                ) : (
-                    <Card className="flex justify-center items-center h-60 text-muted-foreground bg-card"><p>Generate a report to see the Profit &amp; Loss statement.</p></Card>
-                )}
+                <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Generate Report
+                </Button>
             </div>
-        </main>
-    </div>
+
+            {isLoading ? (
+                <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+            ) : error ? (
+                <Card className="flex flex-col justify-center items-center h-60 text-destructive bg-card"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></Card>
+            ) : reportData ? (
+                <div className="space-y-8">
+                    <Card className="bg-card">
+                         <CardHeader>
+                            <CardTitle>Performance Overview</CardTitle>
+                         </CardHeader>
+                         <CardContent className="h-60">
+                            <ChartContainer config={{}} className="w-full h-full">
+                                <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
+                                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
+                                    <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                                    <Legend />
+                                    <Bar dataKey="Revenue" fill="hsl(var(--chart-2))" radius={4} />
+                                    <Bar dataKey="Expenses" fill="hsl(var(--chart-5))" radius={4} />
+                                </BarChart>
+                            </ChartContainer>
+                         </CardContent>
+                    </Card>
+
+                    <div className="border rounded-lg p-4 bg-card">
+                        <h3 className="text-lg font-bold text-center">Profit &amp; Loss Statement</h3>
+                        <p className="text-center text-muted-foreground mb-6">
+                            For the period from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                        </p>
+                        
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {/* Revenue Section */}
+                                <TableRow className="font-semibold bg-muted/30">
+                                    <TableCell>{reportData.revenue.title}</TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                                {reportData.revenue.accounts.map(acc => (
+                                    <TableRow key={acc.name}>
+                                        <TableCell className="pl-8">{acc.name}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                <TableRow>
+                                    <TableCell className="pl-4 font-semibold">Total Revenue</TableCell>
+                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.revenue.total)}</TableCell>
+                                </TableRow>
+
+                                 {/* Gross Profit */}
+                                <TableRow className="font-bold text-lg bg-secondary/50">
+                                    <TableCell>Gross Profit</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.grossProfit)}</TableCell>
+                                </TableRow>
+
+                                {/* Expenses Section */}
+                                <TableRow className="font-semibold bg-muted/30">
+                                    <TableCell>{reportData.expenses.title}</TableCell>
+                                    <TableCell></TableCell>
+                                </TableRow>
+                                {reportData.expenses.accounts.map(acc => (
+                                    <TableRow key={acc.name}>
+                                        <TableCell className="pl-8">{acc.name}</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                <TableRow>
+                                    <TableCell className="pl-4 font-semibold">Total Operating Expenses</TableCell>
+                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.expenses.total)}</TableCell>
+                                </TableRow>
+                            </TableBody>
+                            <TableFooter>
+                                <TableRow className="font-bold text-xl bg-primary/10">
+                                    <TableCell>Net Profit</TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(reportData.netProfit)}</TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        </Table>
+                    </div>
+                </div>
+            ) : (
+                <Card className="flex justify-center items-center h-60 text-muted-foreground bg-card"><p>Generate a report to see the Profit &amp; Loss statement.</p></Card>
+            )}
+        </div>
+    </AppLayout>
   );
 };
 
