@@ -712,7 +712,7 @@ const SidebarMenuSubButton = React.forwardRef<
     size?: "sm" | "md"
     isActive?: boolean
   }
->(({ as: Comp = "a", size = "md", isActive, className, ...props }, ref) => {
+>(({ as: Comp = "div", size = "md", isActive, className, ...props }, ref) => {
 
   return (
     <Comp
