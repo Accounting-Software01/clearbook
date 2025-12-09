@@ -1,27 +1,15 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, Library, FilePlus, ShoppingCart } from "lucide-react";
+import { BookOpen, BookPlus, Scale, FileBarChart2, Landmark, ArrowRightLeft, Library, FilePlus, ShoppingCart, TestTube, FileText } from "lucide-react";
 import Link from "next/link";
 
 const reports = [
     {
-        href: '/invoice/new',
-        title: 'Create Invoice',
-        description: 'Create a new sales invoice and post journal.',
+        href: '/payment-voucher/new',
+        title: 'New Payment Voucher',
+        description: 'Record a payment for expenses.',
         icon: <FilePlus className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/bill/new',
-        title: 'Record Vendor Bill',
-        description: 'Enter a bill received from a supplier.',
-        icon: <ShoppingCart className="w-8 h-8 text-primary" />,
-    },
-    {
-        href: '/invoice/1',
-        title: 'View Invoice',
-        description: 'View a sample sales invoice.',
-        icon: <FileText className="w-8 h-8 text-primary" />,
     },
     {
         href: '/journal',
@@ -101,5 +89,3 @@ export default function Home() {
     </main>
   );
 }
-
-    

@@ -20,7 +20,7 @@ import { format } from 'date-fns';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import { useRouter } from 'next/navigation';
 
-interface BillLine {
+interface VoucherLine {
     id: number;
     accountId: string;
     amount: number;
@@ -40,17 +40,20 @@ const formatCurrencyForInput = (value: number | string): string => {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const NewBillPage = () => {
+const NewPaymentVoucherPage = () => {
     const { toast } = useToast();
     const router = useRouter();
-    const [billDate, setBillDate] = useState<Date | undefined>(new Date());
-    const [vendorName, setVendorName] = useState('');
-    const [lines, setLines] = useState<BillLine[]>([
+    const [voucherDate, setVoucherDate] = useState<Date | undefined>(new Date());
+    const [payeeName, setPayeeName] = useState('');
+    const [paymentAccountId, setPaymentAccountId] = useState('');
+    const [lines, setLines] = useState<VoucherLine[]>([
         { id: 1, accountId: '', amount: 0 },
     ]);
     const [isLoading, setIsLoading] = useState(false);
 
     const expenseAssetAccounts = useMemo(() => chartOfAccounts.filter(acc => acc.type === 'Expense' || acc.type === 'Asset'), []);
+    const cashBankAccounts = useMemo(() => chartOfAccounts.filter(acc => acc.type === 'Asset' && acc.code.startsWith('1011')), []);
+
 
     const handleAddLine = () => {
         setLines([...lines, { id: Date.now(), accountId: '', amount: 0 }]);
@@ -67,7 +70,7 @@ const NewBillPage = () => {
         }
     };
 
-    const handleLineChange = (id: number, field: keyof BillLine, value: string | number) => {
+    const handleLineChange = (id: number, field: keyof VoucherLine, value: string | number) => {
         let newLines = lines.map(line => {
             if (line.id === id) {
                 const updatedLine = { ...line, [field]: value };
@@ -86,32 +89,34 @@ const NewBillPage = () => {
     }, [lines]);
 
     const resetForm = () => {
-        setBillDate(new Date());
-        setVendorName('');
+        setVoucherDate(new Date());
+        setPayeeName('');
+        setPaymentAccountId('');
         setLines([{ id: 1, accountId: '', amount: 0 }]);
     };
 
-    const handlePostBill = async () => {
-        if (!billDate || !vendorName.trim()) {
-            toast({ variant: 'destructive', title: 'Missing Information', description: 'Please provide a bill date and vendor name.' });
+    const handlePostVoucher = async () => {
+        if (!voucherDate || !payeeName.trim() || !paymentAccountId) {
+            toast({ variant: 'destructive', title: 'Missing Information', description: 'Please provide a date, payee name, and payment account.' });
             return;
         }
         if (lines.some(line => !line.accountId || line.amount <= 0)) {
-            toast({ variant: 'destructive', title: 'Incomplete Items', description: 'Please ensure all bill lines have an account and a valid amount.' });
+            toast({ variant: 'destructive', title: 'Incomplete Items', description: 'Please ensure all lines have an account and a valid amount.' });
             return;
         }
         
         setIsLoading(true);
         
         const payload = {
-            billDate: format(billDate, 'yyyy-MM-dd'),
-            vendorName,
+            voucherDate: format(voucherDate, 'yyyy-MM-dd'),
+            payeeName,
+            paymentAccountId,
             totalAmount,
             lines: lines.map(l => ({ accountId: l.accountId, amount: l.amount }))
         };
 
         try {
-            const response = await fetch('https://hariindustries.net/busa-api/database/new-bill.php', {
+            const response = await fetch('https://hariindustries.net/busa-api/database/payment-voucher.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -124,15 +129,12 @@ const NewBillPage = () => {
             }
 
             toast({
-                title: 'Vendor Bill Posted!',
-                description: `Journal Voucher #${result.journalVoucherId} has been created for the bill from ${vendorName}.`,
+                title: 'Payment Voucher Posted!',
+                description: `Journal Voucher #${result.journalVoucherId} has been created for the payment to ${payeeName}.`,
             });
             resetForm();
-            // Optional: redirect to a bill view page or ledger page
-            // router.push(`/ledger`);
-
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Failed to post bill', description: error.message });
+            toast({ variant: 'destructive', title: 'Failed to post voucher', description: error.message });
         } finally {
             setIsLoading(false);
         }
@@ -146,25 +148,40 @@ const NewBillPage = () => {
         <div className="container mx-auto p-4 md:p-8">
             <Card className="max-w-4xl mx-auto">
                 <CardHeader>
-                    <CardTitle>Record New Vendor Bill</CardTitle>
+                    <CardTitle>New Payment Voucher</CardTitle>
                     <CardDescription>
-                        Enter a bill received from a supplier. This will debit the selected expense/asset accounts and credit Accounts Payable.
+                        Record a direct payment for expenses or assets. This will debit the selected expense/asset accounts and credit the selected cash/bank account.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="grid md:grid-cols-2 gap-6">
+                    <div className="grid md:grid-cols-3 gap-6">
                         <div className="space-y-2">
-                             <label className="font-semibold text-sm" htmlFor="vendorName">Vendor Name</label>
+                             <label className="font-semibold text-sm" htmlFor="payeeName">Payee Name</label>
                              <Input 
-                                id="vendorName"
-                                placeholder="e.g., Office Supplies Co."
-                                value={vendorName}
-                                onChange={(e) => setVendorName(e.target.value)}
+                                id="payeeName"
+                                placeholder="e.g., Electricity Company"
+                                value={payeeName}
+                                onChange={(e) => setPayeeName(e.target.value)}
                              />
                         </div>
                         <div className="space-y-2">
-                             <label className="font-semibold text-sm">Bill Date</label>
-                             <DatePicker date={billDate} onDateChange={setBillDate} />
+                             <label className="font-semibold text-sm">Voucher Date</label>
+                             <DatePicker date={voucherDate} onDateChange={setVoucherDate} />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="font-semibold text-sm">Payment From (Credit)</label>
+                            <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Cash/Bank Account..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {cashBankAccounts.map(account => (
+                                        <SelectItem key={account.code} value={account.code}>
+                                            {account.code} - {account.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                     
@@ -172,7 +189,7 @@ const NewBillPage = () => {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-2/3">Expense / Asset Account</TableHead>
+                                    <TableHead className="w-2/3">Expense / Asset Account (Debit)</TableHead>
                                     <TableHead className="w-1/3 text-right">Amount</TableHead>
                                     <TableHead className="w-[50px]"></TableHead>
                                 </TableRow>
@@ -228,9 +245,9 @@ const NewBillPage = () => {
                     </div>
                 </CardContent>
                 <CardFooter className="justify-end">
-                    <Button size="lg" onClick={handlePostBill} disabled={isLoading || totalAmount <= 0}>
+                    <Button size="lg" onClick={handlePostVoucher} disabled={isLoading || totalAmount <= 0}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Post Bill
+                        Post Payment
                     </Button>
                 </CardFooter>
             </Card>
@@ -238,6 +255,4 @@ const NewBillPage = () => {
     );
 };
 
-export default NewBillPage;
-
-    
+export default NewPaymentVoucherPage;
