@@ -21,7 +21,7 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased bg-cover bg-center bg-fixed" style={{ backgroundImage: "url('/background.jpg')" }}>
         <div className="absolute inset-0 bg-black/30 z-0"/>
-        <div className="relative z-10 flex min-h-screen">
+        <div className="relative z-10 flex min-h-screen p-4">
           {children}
         </div>
         <Toaster />
