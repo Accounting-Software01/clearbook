@@ -55,14 +55,15 @@ const navItems = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-8">
-      <header className="flex items-center gap-2 mb-8">
-        <Library className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-semibold">Accounting Hub</h1>
-      </header>
       <main className="container mx-auto px-0">
          <div className="mb-12 text-center">
-            <h2 className="text-4xl font-bold tracking-tight">Welcome Back</h2>
-            <p className="text-muted-foreground mt-2">Select a task below to get started with your accounting workflows.</p>
+            <div className="flex justify-center mb-4">
+                <Library className="h-12 w-12 text-primary" />
+            </div>
+            <h2 className="text-4xl font-bold tracking-tight">Accounting Hub</h2>
+            <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
+                A comprehensive system to record, analyze, and report on your financial transactions, ensuring accuracy and providing insights for business decisions.
+            </p>
         </div>
        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {navItems.map((item) => (
