@@ -35,7 +35,7 @@ export function Sidebar() {
 
     return (
         <aside className="w-64 flex-shrink-0 rounded-2xl bg-black/10 dark:bg-white/5 backdrop-blur-lg border border-white/10 shadow-lg flex flex-col animate-zoom-in-fade">
-            <div className="p-6 flex items-center justify-center gap-2">
+            <div className="p-6 flex items-center justify-center gap-2 border-b border-white/10">
                 <Library className="h-8 w-8 text-white" />
                 <h2 className="text-2xl font-bold text-white">ClearBooks</h2>
             </div>
