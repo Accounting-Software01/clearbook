@@ -2,9 +2,11 @@
 'use client';
 import Link from 'next/link';
 import { Library, ArrowLeft } from 'lucide-react';
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
     children: React.ReactNode;
@@ -13,30 +15,38 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children, title, description }: AppLayoutProps) {
+    const router = useRouter();
+    const [isMaximized, setIsMaximized] = useState(false);
+
+    const handleClose = () => {
+        router.push('/');
+    };
+
+    const handleMaximize = () => {
+        setIsMaximized(!isMaximized);
+    };
+
     return (
-        <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
-            <div className="container mx-auto">
-                <Card className="overflow-hidden">
+        <div className={cn(
+            "min-h-screen bg-background p-4 sm:p-6 lg:p-8 flex items-center justify-center transition-all duration-300",
+            isMaximized ? "p-0" : ""
+        )}>
+            <div className={cn("w-full transition-all duration-500 ease-in-out", isMaximized ? "h-full" : "max-w-7xl")}>
+                <Card className={cn("overflow-hidden w-full h-full flex flex-col transition-all duration-500 ease-in-out", isMaximized ? "rounded-none" : "")}>
                     <CardHeader className="flex flex-row items-center justify-between bg-muted/50 p-4 border-b">
                         <div className="flex items-center gap-2">
                            <div className="flex items-center gap-1.5">
-                                <span className="h-3 w-3 rounded-full bg-red-500"></span>
-                                <span className="h-3 w-3 rounded-full bg-yellow-500"></span>
-                                <span className="h-3 w-3 rounded-full bg-green-500"></span>
+                                <button onClick={handleClose} className="h-3 w-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors"></button>
+                                <button onClick={handleClose} className="h-3 w-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors"></button>
+                                <button onClick={handleMaximize} className="h-3 w-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors"></button>
                            </div>
                             <div className="flex items-center gap-2 ml-4">
                                 <Library className="h-5 w-5 text-primary" />
                                 <h1 className="text-base font-semibold">{title}</h1>
                             </div>
                         </div>
-                        <Link href="/" passHref>
-                             <Button variant="ghost" size="sm">
-                                <ArrowLeft className="mr-2 h-4 w-4" />
-                                Back to Dashboard
-                            </Button>
-                        </Link>
                     </CardHeader>
-                    <CardContent className="p-6">
+                    <CardContent className="p-6 flex-grow overflow-y-auto">
                         <p className="text-muted-foreground mb-6">{description}</p>
                         <main>{children}</main>
                     </CardContent>
