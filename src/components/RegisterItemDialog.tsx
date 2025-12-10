@@ -32,6 +32,10 @@ interface ItemDetails {
     unitOfMeasure: string;
 }
 
+const FINISHED_GOODS_ACCOUNT = '101340';
+const RAW_MATERIALS_ACCOUNT = '101300';
+const ACCOUNTS_PAYABLE_CONTROL = '201010';
+
 export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: RegisterItemDialogProps) {
     const { toast } = useToast();
     const [details, setDetails] = useState<ItemDetails>({
@@ -74,6 +78,8 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
             return;
         }
 
+        const inventoryAccountCode = mode === 'finished' ? FINISHED_GOODS_ACCOUNT : RAW_MATERIALS_ACCOUNT;
+
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
@@ -84,6 +90,8 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
                     sellingPrice: parseFloat(sellingPrice) || 0,
                     sku,
                     unitOfMeasure,
+                    inventoryAccountCode: inventoryAccountCode, // Pass the correct account code
+                    payableAccountCode: ACCOUNTS_PAYABLE_CONTROL // And the payables code
                 }),
             });
 
