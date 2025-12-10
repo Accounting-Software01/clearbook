@@ -57,7 +57,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div
               className="relative p-8 bg-cover bg-center hidden md:flex flex-col justify-center items-center text-center text-white"
-              style={{ backgroundImage: "url('/login-bg.jpg')" }}
+              style={{ backgroundImage: "url('/login-bg.png')" }}
             >
               <div className="absolute inset-0 bg-black/50" />
               <div className="relative z-10">
@@ -101,6 +101,7 @@ export default function LoginPage() {
                   </div>
                 </form>
                 <div className="mt-4 text-center text-sm">
+                This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply.
                   Don&apos;t have an account?{' '}
                   <Link href="/signup" className="underline">
                     Sign up

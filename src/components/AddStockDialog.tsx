@@ -24,6 +24,10 @@ interface AddStockDialogProps {
   onSuccess: () => void;
 }
 
+const FINISHED_GOODS_ACCOUNT = '101340'; // Inventory - Finished Goods
+const RAW_MATERIALS_ACCOUNT = '101300'; // Inventory - Raw Materials
+const ACCOUNTS_PAYABLE_CONTROL = '201010'; // Accounts Payable Control (for the credit)
+
 export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStockDialogProps) {
     const { toast } = useToast();
     const [itemName, setItemName] = useState('');
@@ -61,11 +65,15 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
             setIsLoading(false);
             return;
         }
+
+        const inventoryAccountCode = mode === 'finished' ? FINISHED_GOODS_ACCOUNT : RAW_MATERIALS_ACCOUNT;
         
         const payload = {
             itemName: itemName,
             quantity: parsedQuantity,
-            unitCost: parsedUnitCost
+            unitCost: parsedUnitCost,
+            inventoryAccountCode: inventoryAccountCode,
+            payableAccountCode: ACCOUNTS_PAYABLE_CONTROL
         };
 
         try {
