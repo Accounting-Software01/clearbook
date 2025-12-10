@@ -34,7 +34,10 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
 
     const title = mode === 'finished' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
     const description = 'Record a purchase of an existing item. This will update inventory levels and post a journal entry.';
-    const endpoint = 'https://hariindustries.net/busa-api/database/register-product.php';
+    
+    const endpoint = mode === 'finished' 
+        ? 'https://hariindustries.net/busa-api/database/register-product.php'
+        : 'https://hariindustries.net/busa-api/database/register-raw-material.php';
 
     const resetForm = () => {
         setItemName('');
@@ -58,12 +61,18 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
             setIsLoading(false);
             return;
         }
+        
+        const payload = {
+            itemName: itemName,
+            quantity: parsedQuantity,
+            unitCost: parsedUnitCost
+        };
 
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemName: itemName, quantity: parsedQuantity, unitCost: parsedUnitCost }),
+                body: JSON.stringify(payload),
             });
 
             const result = await response.json();

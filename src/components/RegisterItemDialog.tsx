@@ -46,7 +46,9 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
     const title = mode === 'finished' ? 'Register New Finished Product' : 'Register New Raw Material';
     const description = `Add a new item to your master list. This does not record stock, only the item's details.`;
     
-    const endpoint = 'https://hariindustries.net/busa-api/database/register-product.php';
+    const endpoint = mode === 'finished' 
+        ? 'https://hariindustries.net/busa-api/database/register-product.php'
+        : 'https://hariindustries.net/busa-api/database/register-raw-material.php';
 
     const handleInputChange = (field: keyof ItemDetails, value: string) => {
         setDetails(prev => ({ ...prev, [field]: value }));
