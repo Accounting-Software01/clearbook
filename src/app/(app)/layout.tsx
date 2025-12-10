@@ -109,7 +109,7 @@ export default function AppLayout({
                    <div
                         className={cn(
                             "flex-grow overflow-hidden transition-all duration-500 ease-in-out",
-                            isCardCollapsed ? 'max-h-0 opacity-0' : 'max-h-full opacity-100'
+                            isCardCollapsed ? 'max-h-0 opacity-0' : 'max-h-[100vh] opacity-100'
                         )}
                     >
                         <ScrollArea className="h-full">
