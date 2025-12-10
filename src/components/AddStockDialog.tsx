@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState } from 'react';
 import {
@@ -13,18 +12,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, UserPlus } from 'lucide-react';
+import { Loader2, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { ItemSelectionDialog } from './ItemSelectionDialog';
+import { ItemMasterListDialog } from './ItemMasterListDialog';
 
-interface InventoryItemDialogProps {
+interface AddStockDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: 'finished' | 'raw';
   onSuccess: () => void;
 }
 
-export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: InventoryItemDialogProps) {
+export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStockDialogProps) {
     const { toast } = useToast();
     const [name, setName] = useState('');
     const [quantity, setQuantity] = useState('');
@@ -33,9 +32,7 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
     const [isItemSelectionOpen, setIsItemSelectionOpen] = useState(false);
 
     const title = mode === 'finished' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
-    const description = mode === 'finished' 
-        ? 'Record a purchase of finished goods. This will update inventory levels and post a journal entry.'
-        : 'Record a purchase of raw materials. This will update inventory levels and post a journal entry.';
+    const description = 'Record a purchase of an existing item. This will update inventory levels and post a journal entry.';
     const endpoint = mode === 'finished' 
         ? 'https://hariindustries.net/busa-api/database/add-finished-good.php'
         : 'https://hariindustries.net/busa-api/database/add-raw-material.php';
@@ -57,7 +54,7 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
             toast({
                 variant: 'destructive',
                 title: 'Invalid Input',
-                description: 'Please fill out all fields with valid numbers.',
+                description: 'Please select an item and fill out all fields with valid numbers.',
             });
             setIsLoading(false);
             return;
@@ -73,12 +70,12 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to add item.');
+                throw new Error(result.error || 'Failed to add item stock.');
             }
 
             toast({
                 title: 'Success!',
-                description: `${name} has been added to inventory and the journal has been posted.`,
+                description: `Stock for ${name} has been updated and the journal has been posted.`,
             });
             
             resetForm();
@@ -98,7 +95,7 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
 
     return (
         <>
-            <ItemSelectionDialog
+            <ItemMasterListDialog
                 open={isItemSelectionOpen}
                 onOpenChange={setIsItemSelectionOpen}
                 type={mode === 'finished' ? 'product' : 'material'}
@@ -116,11 +113,11 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="name" className="text-right">Name</Label>
+                                <Label htmlFor="name" className="text-right">Item Name</Label>
                                 <div className="col-span-3 flex gap-2">
-                                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Type or select a name" />
-                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsItemSelectionOpen(true)}>
-                                        <UserPlus className="h-4 w-4" />
+                                     <Input id="name" value={name} readOnly placeholder="Type a new name or select an existing item" />
+                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsItemSelectionOpen(true)} aria-label="Select item from list">
+                                        <List className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
@@ -139,7 +136,7 @@ export function InventoryItemDialog({ open, onOpenChange, mode, onSuccess }: Inv
                             </DialogClose>
                             <Button type="submit" disabled={isLoading}>
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Add Item
+                                Add Stock
                             </Button>
                         </DialogFooter>
                     </form>

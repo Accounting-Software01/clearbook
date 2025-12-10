@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -17,14 +16,14 @@ interface Item {
     name: string;
 }
 
-interface ItemSelectionDialogProps {
+interface ItemMasterListDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectItem: (itemName: string) => void;
   type: 'product' | 'material';
 }
 
-export function ItemSelectionDialog({ open, onOpenChange, onSelectItem, type }: ItemSelectionDialogProps) {
+export function ItemMasterListDialog({ open, onOpenChange, onSelectItem, type }: ItemMasterListDialogProps) {
     const [items, setItems] = useState<Item[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -35,7 +34,7 @@ export function ItemSelectionDialog({ open, onOpenChange, onSelectItem, type }: 
         : 'https://hariindustries.net/busa-api/database/get-material-list.php';
     
     const title = type === 'product' ? 'Select a Product' : 'Select a Raw Material';
-    const description = `Choose an item from your master list.`;
+    const description = `Choose an existing item from your master list.`;
 
     useEffect(() => {
         if (open) {

@@ -12,9 +12,9 @@ import {
   TableFooter
 } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, AlertCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { InventoryItemDialog } from '@/components/InventoryItemDialog';
+import { PlusCircle, PackagePlus, Loader2, AlertCircle } from 'lucide-react';
+import { AddStockDialog } from '@/components/AddStockDialog';
+import { RegisterItemDialog } from '@/components/RegisterItemDialog';
 
 interface InventoryItem {
   code: string;
@@ -33,13 +33,15 @@ const formatCurrency = (amount: number) => {
 const InventoryTable = ({ 
     items, 
     title, 
-    onAddItem, 
+    onAddStock,
+    onRegisterItem, 
     isLoading,
     error 
 }: { 
     items: InventoryItem[], 
     title: string, 
-    onAddItem: () => void,
+    onAddStock: () => void,
+    onRegisterItem: () => void,
     isLoading: boolean,
     error: string | null
 }) => {
@@ -50,10 +52,16 @@ const InventoryTable = ({
             <CardHeader>
                 <div className="flex justify-between items-center">
                     <CardTitle>{title}</CardTitle>
-                     <Button size="sm" variant="outline" onClick={onAddItem}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Add New Item
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={onRegisterItem}>
+                            <PackagePlus className="mr-2 h-4 w-4" />
+                            Register New Item
+                        </Button>
+                         <Button size="sm" onClick={onAddStock}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Stock
+                        </Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -108,12 +116,12 @@ const InventoryTable = ({
 
 
 const InventoryPage = () => {
-    const { toast } = useToast();
     const [finishedGoods, setFinishedGoods] = useState<InventoryItem[]>([]);
     const [rawMaterials, setRawMaterials] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState({ goods: true, materials: true });
-    const [error, setError] = useState({ goods: null, materials: null });
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [error, setError] = useState<{ goods: string | null, materials: string | null }>({ goods: null, materials: null });
+    const [isAddStockDialogOpen, setIsAddStockDialogOpen] = useState(false);
+    const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
     const [dialogMode, setDialogMode] = useState<'finished' | 'raw'>('finished');
 
     const fetchFinishedGoods = useCallback(async () => {
@@ -149,9 +157,14 @@ const InventoryPage = () => {
         fetchRawMaterials();
     }, [fetchFinishedGoods, fetchRawMaterials]);
 
-    const handleOpenDialog = (mode: 'finished' | 'raw') => {
+    const handleOpenAddStockDialog = (mode: 'finished' | 'raw') => {
         setDialogMode(mode);
-        setIsDialogOpen(true);
+        setIsAddStockDialogOpen(true);
+    };
+
+    const handleOpenRegisterItemDialog = (mode: 'finished' | 'raw') => {
+        setDialogMode(mode);
+        setIsRegisterItemDialogOpen(true);
     };
 
     const handleItemAdded = () => {
@@ -164,11 +177,19 @@ const InventoryPage = () => {
 
   return (
     <>
-      <InventoryItemDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
+      <AddStockDialog
+        open={isAddStockDialogOpen}
+        onOpenChange={setIsAddStockDialogOpen}
         mode={dialogMode}
         onSuccess={handleItemAdded}
+      />
+      <RegisterItemDialog
+        open={isRegisterItemDialogOpen}
+        onOpenChange={setIsRegisterItemDialogOpen}
+        mode={dialogMode}
+        onSuccess={() => {
+            // Optional: could also refresh master lists if needed
+        }}
       />
       <p className="text-muted-foreground mb-6">Track stock levels for finished goods and raw materials. Adding items here automatically updates your accounting records.</p>
       <Tabs defaultValue="finished-goods">
@@ -180,7 +201,8 @@ const InventoryPage = () => {
             <InventoryTable 
                 items={finishedGoods} 
                 title="Finished Goods Inventory" 
-                onAddItem={() => handleOpenDialog('finished')} 
+                onAddStock={() => handleOpenAddStockDialog('finished')} 
+                onRegisterItem={() => handleOpenRegisterItemDialog('finished')}
                 isLoading={loading.goods}
                 error={error.goods}
             />
@@ -189,7 +211,8 @@ const InventoryPage = () => {
             <InventoryTable 
                 items={rawMaterials} 
                 title="Raw Materials Inventory" 
-                onAddItem={() => handleOpenDialog('raw')}
+                onAddStock={() => handleOpenAddStockDialog('raw')}
+                onRegisterItem={() => handleOpenRegisterItemDialog('raw')}
                 isLoading={loading.materials}
                 error={error.materials}
             />
