@@ -77,8 +77,8 @@ export default function AppLayout({
     return (
         <div className="relative z-10 flex h-[90vh] w-full max-w-7xl mx-auto gap-4">
             <Sidebar />
-            <main className="flex-1 flex flex-col h-full overflow-hidden">
-                <Card className="w-full flex flex-col flex-grow shadow-2xl bg-card/80 backdrop-blur-xl">
+            <main className="flex-1 h-full overflow-hidden">
+                <Card className="w-full h-full flex flex-col shadow-2xl bg-card/80 backdrop-blur-xl">
                     <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
                         <div className="flex items-center gap-2">
                            <div className="flex items-center gap-1.5">
