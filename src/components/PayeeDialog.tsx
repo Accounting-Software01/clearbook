@@ -10,13 +10,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, AlertCircle } from "lucide-react";
-import { chartOfAccounts } from '@/lib/chart-of-accounts';
+import type { Payee } from '@/types/payee';
 
-export interface Payee {
-    id: string;
-    name: string;
-    type: 'Customer' | 'Supplier' | 'Other';
-}
 
 interface PayeeDialogProps {
   open: boolean;
@@ -36,23 +31,12 @@ export function PayeeDialog({ open, onOpenChange, onSelectPayee }: PayeeDialogPr
                 setIsLoading(true);
                 setError(null);
                 try {
-                    // This is a simulation. In a real app, you would fetch from your backend API.
-                    // For now, we filter the static chartOfAccounts.
-                    const customerAccounts = chartOfAccounts
-                        .filter(acc => acc.type === 'Asset' && acc.name.toLowerCase().includes('customer'))
-                        .map(acc => ({ id: acc.code, name: acc.name, type: 'Customer' as const }));
-
-                    const supplierAccounts = chartOfAccounts
-                        .filter(acc => acc.type === 'Liability' && acc.name.toLowerCase().includes('supplier'))
-                         .map(acc => ({ id: acc.code, name: acc.name, type: 'Supplier' as const }));
-                    
-                    // In a real app:
-                    // const response = await fetch('https://hariindustries.net/busa-api/database/get-payees.php');
-                    // const data = await response.json();
-                    // setPayees(data);
-
-                    setPayees([...customerAccounts, ...supplierAccounts]);
-
+                    const response = await fetch('https://hariindustries.net/busa-api/database/get-payees.php');
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch payees from the server.');
+                    }
+                    const data: Payee[] = await response.json();
+                    setPayees(data);
                 } catch (e: any) {
                     setError('Failed to fetch payees.');
                     console.error(e);
@@ -120,5 +104,3 @@ export function PayeeDialog({ open, onOpenChange, onSelectPayee }: PayeeDialogPr
     </Dialog>
   );
 }
-
-    
