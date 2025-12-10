@@ -98,11 +98,13 @@ export default function AppLayout({
                             </Button>
                          </div>
                     </CardHeader>
-                    <ScrollArea className="flex-grow">
-                         <CardContent className="p-6">
-                            {children}
-                        </CardContent>
-                    </ScrollArea>
+                    <div className="flex-grow overflow-hidden">
+                        <ScrollArea className="h-full">
+                             <CardContent className="p-6">
+                                {children}
+                            </CardContent>
+                        </ScrollArea>
+                    </div>
                 </Card>
             </main>
         </div>
