@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { LogOut } from 'lucide-react';
+import { LogOut, Boxes } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ const navItems = [
     { href: '/profit-loss', label: 'Profit & Loss' },
     { href: '/balance-sheet', label: 'Balance Sheet' },
     { href: '/cash-flow', label: 'Cash Flow' },
+    { href: '/inventory', label: 'Inventory', icon: Boxes },
     { href: '/customers', label: 'Customers' },
     { href: '/suppliers', label: 'Suppliers' },
 ];
