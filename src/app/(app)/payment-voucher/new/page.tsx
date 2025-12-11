@@ -260,5 +260,3 @@ const NewPaymentVoucherPage = () => {
 };
 
 export default NewPaymentVoucherPage;
-
-    
