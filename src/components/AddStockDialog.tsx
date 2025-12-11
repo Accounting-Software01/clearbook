@@ -33,7 +33,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
     const [isItemSelectionOpen, setIsItemSelectionOpen] = useState(false);
 
     const title = mode === 'finished' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
-    const description = 'Record a purchase of an existing item. This will update inventory levels and post a journal entry.';
+    const description = 'Record a purchase of an existing item. This will update inventory levels.';
     
     const endpoint = mode === 'finished' 
         ? 'https://hariindustries.net/busa-api/database/register-product.php'
@@ -83,7 +83,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
 
             toast({
                 title: 'Success!',
-                description: `Stock for ${itemName} has been updated and the journal has been posted.`,
+                description: `Stock for ${itemName} has been updated.`,
             });
             
             resetForm();
