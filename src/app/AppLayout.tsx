@@ -17,8 +17,11 @@ const useUser = () => {
 
     useEffect(() => {
         const checkUser = async () => {
-            const currentUser = await getCurrentUser();
-            setUser(currentUser);
+            // This now checks sessionStorage, which is only available client-side.
+            if (typeof window !== 'undefined') {
+                const currentUser = await getCurrentUser();
+                setUser(currentUser);
+            }
             setIsLoading(false);
         };
         checkUser();
@@ -56,18 +59,20 @@ export default function AppLayout({
     useEffect(() => {
         if (!isLoading) {
             if (!user && !isAuthPage) {
-                router.push('/login');
+                router.replace('/login');
             } else if (user && isAuthPage) {
-                router.push('/dashboard');
+                router.replace('/dashboard');
             }
         }
-    }, [isLoading, user, isAuthPage, router]);
+    }, [isLoading, user, isAuthPage, router, pathname]);
 
     const handleLogout = async () => {
         await logout();
         router.push('/login');
     };
-
+    
+    // While loading, or if we are not authenticated on a non-auth page, show a loader.
+    // Exception for the root page which has its own loader.
     if ((isLoading || (!user && !isAuthPage)) && pathname !== '/') {
         return (
             <div className="flex items-center justify-center min-h-screen w-full">
@@ -76,16 +81,22 @@ export default function AppLayout({
         );
     }
     
+    // If it's an authentication page (login/signup), just render the children without the main layout
     if (isAuthPage) {
         return <>{children}</>;
     }
     
-    const currentNavItem = navItems.find(item => pathname === item.href);
+    // Handle the root page case specifically, as it might render before redirect.
+    if (pathname === '/') {
+       return <>{children}</>;
+    }
+    
+    const currentNavItem = navItems.find(item => pathname.startsWith(item.href));
     const title = currentNavItem?.label || 'ClearBooks';
 
 
     return (
-        <div className="relative z-10 flex h-[90vh] w-full max-w-7xl mx-auto gap-4">
+        <div className="relative z-10 flex h-[90vh] w-full max-w-7xl mx-auto gap-4 p-4">
             <Sidebar />
             <main className="flex-1 h-full overflow-hidden">
                 <Card className="w-full h-full flex flex-col shadow-2xl bg-card/80 backdrop-blur-xl transition-all duration-300">

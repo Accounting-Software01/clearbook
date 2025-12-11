@@ -12,7 +12,6 @@ const useUser = () => {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Simulate checking for a user session.
         const checkUser = async () => {
             const currentUser = await getCurrentUser();
             setUser(currentUser);
