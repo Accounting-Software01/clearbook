@@ -24,6 +24,10 @@ interface AddStockDialogProps {
   onSuccess: () => void;
 }
 
+const FINISHED_GOODS_ACCOUNT = '101340';
+const RAW_MATERIALS_ACCOUNT = '101300';
+
+
 export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStockDialogProps) {
     const { toast } = useToast();
     const [itemName, setItemName] = useState('');
@@ -33,7 +37,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
     const [isItemSelectionOpen, setIsItemSelectionOpen] = useState(false);
 
     const title = mode === 'finished' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
-    const description = 'Record a purchase of an existing item. This will update inventory levels.';
+    const description = 'Record a purchase of an existing item. This will update inventory levels and post a journal entry.';
     
     const endpoint = mode === 'finished' 
         ? 'https://hariindustries.net/busa-api/database/register-product.php'
@@ -66,6 +70,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
             itemName: itemName,
             quantity: parsedQuantity,
             unitCost: parsedUnitCost,
+            inventoryAccountCode: mode === 'finished' ? FINISHED_GOODS_ACCOUNT : RAW_MATERIALS_ACCOUNT,
         };
 
         try {
@@ -83,7 +88,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
 
             toast({
                 title: 'Success!',
-                description: `Stock for ${itemName} has been updated.`,
+                description: `${itemName} stock updated. Journal voucher #${result.journalVoucherId} created.`,
             });
             
             resetForm();
@@ -123,7 +128,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="name" className="text-right">Item Name</Label>
                                 <div className="col-span-3 flex gap-2">
-                                     <Input id="name" value={itemName} readOnly placeholder="Select an existing item" />
+                                     <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Type or select an item" />
                                     <Button type="button" variant="outline" size="icon" onClick={() => setIsItemSelectionOpen(true)} aria-label="Select item from list">
                                         <List className="h-4 w-4" />
                                     </Button>
