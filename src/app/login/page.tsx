@@ -26,13 +26,20 @@ export default function LoginPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
+  
+    const form = event.currentTarget;
+    const email = (form.email as any).value;
+    const password = (form.password as any).value;
+  
     try {
-      await login('test@example.com', 'password');
+      await login(email, password);
+  
       toast({
         title: 'Login Successful',
         description: 'Welcome back!',
       });
-      router.push('/dashboard');
+  
+      window.location.href = '/dashboard';
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -43,6 +50,7 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   };
+  
 
   return (
     <div className="w-full h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
@@ -86,14 +94,13 @@ export default function LoginPage() {
                         type="email"
                         placeholder="name@example.com"
                         required
-                        defaultValue="test@example.com"
                       />
                     </div>
                     <div className="grid gap-2">
                       <div className="flex items-center">
                         <Label htmlFor="password">Password</Label>
                       </div>
-                      <Input id="password" type="password" required defaultValue="password" />
+                      <Input id="password" type="password" required />
                     </div>
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

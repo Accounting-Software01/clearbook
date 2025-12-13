@@ -90,3 +90,26 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes rotate-dot {
+  from {
+    transform: rotate(0deg) translateX(50px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(50px) rotate(-360deg);
+  }
+}
+
+.animate-rotate-dot::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #10b981; /* green-500 */
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  margin-top: -4px;
+  margin-left: -4px;
+  animation: rotate-dot 4s linear infinite;
+}

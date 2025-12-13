@@ -1,4 +1,3 @@
-
 'use client';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect } from 'react';
@@ -10,9 +9,20 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
+import { NotificationCenter } from '@/components/NotificationCenter'; // Added import
+
+interface User {
+  uid: string;
+  email: string;
+  full_name: string;
+  role: string;
+  user_type: string;
+  company_type: string;
+  company_id: string;
+}
 
 const useUser = () => {
-    const [user, setUser] = useState<{ uid: string } | null>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -116,6 +126,7 @@ export default function AppLayout({
                             </div>
                         </div>
                          <div className="flex items-center gap-2">
+                             {user && <NotificationCenter userRole={user.role} userCompanyId={user.company_id} />}
                              <ThemeToggle />
                              <Button variant="ghost" size="sm" onClick={handleLogout}>
                                 <LogOut className="mr-2 h-4 w-4" />

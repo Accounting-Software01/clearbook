@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,61 +16,115 @@ import { Label } from '@/components/ui/label';
 import { Loader2, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ItemMasterListDialog } from './ItemMasterListDialog';
+import { getCurrentUser } from '@/lib/auth';
 
 interface AddStockDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  mode: 'finished' | 'raw';
+  mode: 'product' | 'raw_material';
   onSuccess: () => void;
 }
 
-const FINISHED_GOODS_ACCOUNT = '101340';
-const RAW_MATERIALS_ACCOUNT = '101300';
+const ACCOUNT_CODES = {
+    FINISHED_GOODS_INVENTORY: '101340',
+    RAW_MATERIALS_INVENTORY: '101300',
+    ACCOUNTS_PAYABLE: '201000',
+};
 
+interface User {
+    uid: string;
+    company_id: string;
+    role: string;
+}
+
+interface SelectedItem {
+    id: number;
+    name: string;
+}
 
 export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStockDialogProps) {
     const { toast } = useToast();
-    const [itemName, setItemName] = useState('');
-    const [quantity, setQuantity] = useState('');
+    const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
+    const [stockToAdd, setStockToAdd] = useState('');
     const [unitCost, setUnitCost] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isItemSelectionOpen, setIsItemSelectionOpen] = useState(false);
+    const [user, setUser] = useState<User | null>(null);
 
-    const title = mode === 'finished' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
-    const description = 'Record a purchase of an existing item. This will update inventory levels and post a journal entry.';
+    useEffect(() => {
+        const fetchUser = async () => {
+            if (open) {
+                const currentUser = await getCurrentUser();
+                setUser(currentUser);
+            }
+        };
+        fetchUser();
+    }, [open]);
+
+    const title = mode === 'product' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
+    const description = 'Record a purchase of an existing item. This will update inventory and post a journal entry.';
     
-    const endpoint = mode === 'finished' 
-        ? 'https://hariindustries.net/busa-api/database/register-product.php'
-        : 'https://hariindustries.net/busa-api/database/register-raw-material.php';
+    const endpoint = 'https://hariindustries.net/busa-api/database/add_stock.php';
 
     const resetForm = () => {
-        setItemName('');
-        setQuantity('');
+        setSelectedItem(null);
+        setStockToAdd('');
         setUnitCost('');
-    }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
 
-        const parsedQuantity = parseInt(quantity, 10);
-        const parsedUnitCost = parseFloat(unitCost);
-
-        if (!itemName || isNaN(parsedQuantity) || isNaN(parsedUnitCost) || parsedQuantity <= 0 || parsedUnitCost <= 0) {
+        if (!user || !user.company_id || user.company_id === 'none') {
             toast({
                 variant: 'destructive',
-                title: 'Invalid Input',
-                description: 'Please select an item and fill out all fields with valid numbers.',
+                title: 'Authentication Error',
+                description: 'Valid company information is missing. Please log out and log in again.',
             });
-            setIsLoading(false);
             return;
         }
 
+        const isStoreManager = user?.role === 'store_manager';
+        let parsedUnitCost = parseFloat(unitCost);
+        if (isStoreManager) {
+            parsedUnitCost = 0;
+        }
+
+        const parsedStock = parseInt(stockToAdd, 10);
+
+        if (!selectedItem || isNaN(parsedStock) || parsedStock <= 0) {
+             toast({
+                variant: 'destructive',
+                title: 'Invalid Input',
+                description: 'Please select an item and enter a valid stock quantity.'
+            });
+            return;
+        }
+
+        if (!isStoreManager && (!unitCost || isNaN(parsedUnitCost) || parsedUnitCost < 0)) {
+            toast({
+                variant: 'destructive',
+                title: 'Invalid Input',
+                description: 'Please enter a valid unit cost.'
+            });
+            return;
+        }
+
+        setIsLoading(true);
+
+        const debitAccountId = mode === 'product' 
+            ? ACCOUNT_CODES.FINISHED_GOODS_INVENTORY 
+            : ACCOUNT_CODES.RAW_MATERIALS_INVENTORY;
+
         const payload = {
-            itemName: itemName,
-            quantity: parsedQuantity,
+            itemId: selectedItem.id,
+            stock: parsedStock,
             unitCost: parsedUnitCost,
-            inventoryAccountCode: mode === 'finished' ? FINISHED_GOODS_ACCOUNT : RAW_MATERIALS_ACCOUNT,
+            itemType: mode,
+            companyId: user.company_id,
+            userId: user.uid,
+            debitAccountId: debitAccountId,
+            creditAccountId: ACCOUNT_CODES.ACCOUNTS_PAYABLE,
         };
 
         try {
@@ -83,17 +137,19 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to add item stock.');
+                throw new Error(result.error || 'An unknown error occurred on the server.');
             }
 
             toast({
                 title: 'Success!',
-                description: `${itemName} stock updated. Journal voucher #${result.journalVoucherId} created.`,
+                description: result.voucherNumber 
+                    ? `Stock updated. Voucher ${result.voucherNumber} created.`
+                    : `Stock for ${selectedItem.name} has been updated.`,
             });
             
             resetForm();
-            onSuccess(); // Callback to refresh the table
-            onOpenChange(false); // Close the dialog
+            onSuccess();
+            onOpenChange(false);
 
         } catch (error: any) {
             toast({
@@ -111,13 +167,16 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
             <ItemMasterListDialog
                 open={isItemSelectionOpen}
                 onOpenChange={setIsItemSelectionOpen}
-                type={mode === 'finished' ? 'product' : 'material'}
-                onSelectItem={(selectedItemName) => {
-                    setItemName(selectedItemName);
+                type={mode}
+                onSelectItem={(item: SelectedItem) => {
+                    setSelectedItem(item);
                     setIsItemSelectionOpen(false);
                 }}
             />
-            <Dialog open={open} onOpenChange={onOpenChange}>
+            <Dialog open={open} onOpenChange={(isOpen) => {
+                if (!isOpen) resetForm();
+                onOpenChange(isOpen);
+            }}>
                 <DialogContent className="sm:max-w-[425px]">
                     <form onSubmit={handleSubmit}>
                         <DialogHeader>
@@ -128,26 +187,28 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="name" className="text-right">Item Name</Label>
                                 <div className="col-span-3 flex gap-2">
-                                     <Input id="name" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Type or select an item" />
-                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsItemSelectionOpen(true)} aria-label="Select item from list">
+                                     <Input id="name" value={selectedItem?.name || ''} readOnly placeholder="Select an item" />
+                                    <Button type="button" variant="outline" size="icon" onClick={() => setIsItemSelectionOpen(true)} aria-label="Select item">
                                         <List className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="quantity" className="text-right">Quantity</Label>
-                                <Input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="col-span-3" placeholder="e.g., 1500" />
+                                <Label htmlFor="stockToAdd" className="text-right">Stock to Add</Label>
+                                <Input id="stockToAdd" type="number" value={stockToAdd} onChange={(e) => setStockToAdd(e.target.value)} className="col-span-3" placeholder="e.g., 1500" />
                             </div>
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="unitCost" className="text-right">Unit Cost</Label>
-                                <Input id="unitCost" type="number" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} className="col-span-3" placeholder="e.g., 50.00" />
-                            </div>
+                            {user?.role !== 'store_manager' && (
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="unitCost" className="text-right">Unit Cost</Label>
+                                    <Input id="unitCost" type="number" step="0.01" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} className="col-span-3" placeholder="e.g., 50.00" />
+                                </div>
+                            )}
                         </div>
                         <DialogFooter>
                              <DialogClose asChild>
                                 <Button type="button" variant="secondary">Cancel</Button>
                             </DialogClose>
-                            <Button type="submit" disabled={isLoading}>
+                            <Button type="submit" disabled={isLoading || !selectedItem}>
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Add Stock
                             </Button>
@@ -158,5 +219,3 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
         </>
     );
 }
-
-    

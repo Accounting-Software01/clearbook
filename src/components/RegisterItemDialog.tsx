@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 interface RegisterItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  mode: 'finished' | 'raw';
+  mode: 'product' | 'raw_material'; // Corrected to match the rest of the app
   onSuccess: () => void;
 }
 
@@ -30,6 +30,12 @@ interface ItemDetails {
     sellingPrice: string;
     sku: string;
     unitOfMeasure: string;
+}
+
+// Define the user interface based on session data
+interface User {
+    uid: string;
+    company_id: string;
 }
 
 export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: RegisterItemDialogProps) {
@@ -42,11 +48,24 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
         unitOfMeasure: '',
     });
     const [isLoading, setIsLoading] = useState(false);
+    const [user, setUser] = useState<User | null>(null);
 
-    const title = mode === 'finished' ? 'Register New Finished Product' : 'Register New Raw Material';
+    useEffect(() => {
+        const sessionData = sessionStorage.getItem("user");
+        if (sessionData) {
+            try {
+                setUser(JSON.parse(sessionData));
+            } catch (e) {
+                console.error("Failed to parse user session data", e);
+            }
+        }
+    }, [open]);
+
+    const title = mode === 'product' ? 'Register New Finished Product' : 'Register New Raw Material';
     const description = `Add a new item to your master list. This does not record stock, only the item's details.`;
     
-    const endpoint = mode === 'finished' 
+    // Endpoint logic is now more aligned with the rest of the application structure
+    const endpoint = mode === 'product' 
         ? 'https://hariindustries.net/busa-api/database/register-product.php'
         : 'https://hariindustries.net/busa-api/database/register-raw-material.php';
 
@@ -60,6 +79,12 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!user) {
+            toast({ variant: 'destructive', title: 'Authentication Error', description: 'User data not found. Please log in again.' });
+            return;
+        }
+
         setIsLoading(true);
 
         const { name, description, sellingPrice, sku, unitOfMeasure } = details;
@@ -68,23 +93,27 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
             toast({
                 variant: 'destructive',
                 title: 'Missing Information',
-                description: 'Please fill out all required fields to register the new item.',
+                description: 'Please fill out all required fields.',
             });
             setIsLoading(false);
             return;
         }
 
+        const payload = {
+            name,
+            description,
+            sellingPrice: parseFloat(sellingPrice) || 0,
+            sku,
+            unitOfMeasure,
+            companyId: user.company_id, // Add company ID
+            userId: user.uid,            // Add user ID
+        };
+
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name,
-                    description,
-                    sellingPrice: parseFloat(sellingPrice) || 0,
-                    sku,
-                    unitOfMeasure,
-                }),
+                body: JSON.stringify(payload),
             });
 
             const result = await response.json();
@@ -95,12 +124,12 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
 
             toast({
                 title: 'Success!',
-                description: `${details.name} has been successfully registered. You can now add stock for this item.`,
+                description: `${details.name} has been registered. You can now add stock for it.`,
             });
             
             resetForm();
-            onSuccess(); // Callback for any parent component refresh logic
-            onOpenChange(false); // Close the dialog
+            onSuccess();
+            onOpenChange(false);
 
         } catch (error: any) {
             toast({
@@ -122,7 +151,7 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
                         <DialogDescription>{description}</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto px-1">
-                        <div className="grid grid-cols-4 items-center gap-4">
+                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="name" className="text-right">Name</Label>
                             <Input id="name" value={details.name} onChange={(e) => handleInputChange('name', e.target.value)} className="col-span-3" />
                         </div>
@@ -157,5 +186,3 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
         </Dialog>
     );
 }
-
-    

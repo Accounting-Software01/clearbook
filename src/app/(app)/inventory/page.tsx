@@ -13,15 +13,24 @@ import {
   TableFooter
 } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, PackagePlus, Loader2, AlertCircle } from 'lucide-react';
+import { PlusCircle, PackagePlus, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { AddStockDialog } from '@/components/AddStockDialog';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
+import { ItemActivityDialog } from '@/components/ItemActivityDialog';
+import { getCurrentUser } from '@/lib/auth';
 
 interface InventoryItem {
+  id: number;
   code: string;
   name: string;
-  quantity: number;
+  quantity: number; 
   unitCost: number;
+}
+
+interface User {
+    uid: string;
+    company_id: string;
+    role: string;
 }
 
 const formatCurrency = (amount: number) => {
@@ -34,18 +43,26 @@ const formatCurrency = (amount: number) => {
 const InventoryTable = ({ 
     items, 
     title, 
+    user,
     onAddStock,
     onRegisterItem, 
+    onRefresh,
+    onSelectItem,
     isLoading,
     error 
 }: { 
     items: InventoryItem[], 
     title: string, 
+    user: User | null,
     onAddStock: () => void,
     onRegisterItem: () => void,
+    onRefresh: () => void,
+    onSelectItem: (itemId: number, itemName: string) => void,
     isLoading: boolean,
     error: string | null
 }) => {
+    const isStoreManager = user?.role === 'store_manager';
+
     const totalValue = items.reduce((acc, item) => acc + (item.quantity * item.unitCost), 0);
 
     return (
@@ -53,7 +70,10 @@ const InventoryTable = ({
             <CardHeader>
                 <div className="flex justify-between items-center">
                     <CardTitle>{title}</CardTitle>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={onRefresh} aria-label="Refresh table">
+                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        </Button>
                         <Button size="sm" variant="outline" onClick={onRegisterItem}>
                             <PackagePlus className="mr-2 h-4 w-4" />
                             Register New Item
@@ -81,28 +101,35 @@ const InventoryTable = ({
                             <TableRow>
                                 <TableHead>Item Code</TableHead>
                                 <TableHead>Item Name</TableHead>
-                                <TableHead className="text-right">Quantity on Hand</TableHead>
-                                <TableHead className="text-right">Unit Cost</TableHead>
-                                <TableHead className="text-right">Total Value</TableHead>
+                                <TableHead className="text-right">Stock on Hand</TableHead>
+                                {!isStoreManager && <TableHead className="text-right">Unit Cost</TableHead>}
+                                {!isStoreManager && <TableHead className="text-right">Total Value</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {items.map((item) => (
                                 <TableRow key={item.code}>
                                     <TableCell className="font-mono">{item.code}</TableCell>
-                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                    <TableCell 
+                                        className="font-medium cursor-pointer hover:underline"
+                                        onClick={() => onSelectItem(item.id, item.name)}
+                                    >
+                                        {item.name}
+                                    </TableCell>
                                     <TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(item.unitCost)}</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(item.quantity * item.unitCost)}</TableCell>
+                                    {!isStoreManager && <TableCell className="text-right font-mono">{formatCurrency(item.unitCost)}</TableCell>}
+                                    {!isStoreManager && <TableCell className="text-right font-mono">{formatCurrency(item.quantity * item.unitCost)}</TableCell>}
                                 </TableRow>
                             ))}
                         </TableBody>
-                        <TableFooter>
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-right font-bold text-lg">Total Inventory Value</TableCell>
-                                <TableCell className="text-right font-bold font-mono text-lg">{formatCurrency(totalValue)}</TableCell>
-                            </TableRow>
-                        </TableFooter>
+                        {!isStoreManager && (
+                            <TableFooter>
+                                <TableRow>
+                                    <TableCell colSpan={4} className="text-right font-bold text-lg">Total Inventory Value</TableCell>
+                                    <TableCell className="text-right font-bold font-mono text-lg">{formatCurrency(totalValue)}</TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        )}
                     </Table>
                 )}
                  { !isLoading && !error && items.length === 0 && (
@@ -123,58 +150,84 @@ const InventoryPage = () => {
     const [error, setError] = useState<{ goods: string | null, materials: string | null }>({ goods: null, materials: null });
     const [isAddStockDialogOpen, setIsAddStockDialogOpen] = useState(false);
     const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
-    const [dialogMode, setDialogMode] = useState<'finished' | 'raw'>('finished');
+    const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+    const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+    const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
+    const [dialogMode, setDialogMode] = useState<'product' | 'raw_material'>('product');
+    const [activeTab, setActiveTab] = useState<'goods' | 'materials'>('goods');
+    const [user, setUser] = useState<User | null>(null);
 
-    const fetchFinishedGoods = useCallback(async () => {
-        setLoading(prev => ({ ...prev, goods: true }));
-        try {
-            const response = await fetch('https://hariindustries.net/busa-api/database/get-finished-goods.php');
-            if (!response.ok) throw new Error('Failed to fetch finished goods.');
-            const data = await response.json();
-            setFinishedGoods(data);
-        } catch (e: any) {
-            setError(prev => ({ ...prev, goods: e.message }));
-        } finally {
-            setLoading(prev => ({ ...prev, goods: false }));
-        }
+    useEffect(() => {
+        const fetchUser = async () => {
+            const currentUser = await getCurrentUser();
+            setUser(currentUser);
+        };
+        fetchUser();
     }, []);
 
-    const fetchRawMaterials = useCallback(async () => {
-        setLoading(prev => ({ ...prev, materials: true }));
-         try {
-            const response = await fetch('https://hariindustries.net/busa-api/database/get-raw-materials.php');
-            if (!response.ok) throw new Error('Failed to fetch raw materials.');
+    const fetchInventory = useCallback(async (type: 'goods' | 'materials', companyId: string) => {
+        const endpoint = type === 'goods' 
+            ? 'https://hariindustries.net/busa-api/database/get-finished-good.php' 
+            : 'https://hariindustries.net/busa-api/database/get-raw-material.php';
+        
+        setLoading(prev => ({ ...prev, [type]: true }));
+        setError(prev => ({ ...prev, [type]: null }));
+
+        try {
+            const response = await fetch(`${endpoint}?companyId=${companyId}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch ${type}: ${errorText}`);
+            }
             const data = await response.json();
-            setRawMaterials(data);
+
+            if (type === 'goods') {
+                setFinishedGoods(data);
+            } else {
+                setRawMaterials(data);
+            }
         } catch (e: any) {
-            setError(prev => ({ ...prev, materials: e.message }));
+            setError(prev => ({ ...prev, [type]: e.message }));
         } finally {
-            setLoading(prev => ({ ...prev, materials: false }));
+            setLoading(prev => ({ ...prev, [type]: false }));
         }
     }, []);
 
     useEffect(() => {
-        fetchFinishedGoods();
-        fetchRawMaterials();
-    }, [fetchFinishedGoods, fetchRawMaterials]);
+        if (user && user.company_id) {
+            fetchInventory('goods', user.company_id);
+            fetchInventory('materials', user.company_id);
+        }
+    }, [user, fetchInventory]);
 
-    const handleOpenAddStockDialog = (mode: 'finished' | 'raw') => {
+    const handleOpenAddStockDialog = (mode: 'product' | 'raw_material') => {
         setDialogMode(mode);
         setIsAddStockDialogOpen(true);
     };
 
-    const handleOpenRegisterItemDialog = (mode: 'finished' | 'raw') => {
+    const handleOpenRegisterItemDialog = (mode: 'product' | 'raw_material') => {
         setDialogMode(mode);
         setIsRegisterItemDialogOpen(true);
     };
 
-    const handleItemAdded = () => {
-        if (dialogMode === 'finished') {
-            fetchFinishedGoods();
-        } else {
-            fetchRawMaterials();
+    const handleOpenItemActivityDialog = (itemId: number, itemName: string) => {
+        setSelectedItemId(itemId);
+        setSelectedItemName(itemName);
+        setIsActivityLogOpen(true);
+    };
+
+    const handleSuccess = () => {
+        if (user && user.company_id) {
+            const type = dialogMode === 'product' ? 'goods' : 'materials';
+            fetchInventory(type, user.company_id);
         }
     }
+
+    const handleRefresh = () => {
+        if (user && user.company_id) {
+            fetchInventory(activeTab, user.company_id);
+        }
+    };
 
   return (
     <>
@@ -182,18 +235,25 @@ const InventoryPage = () => {
         open={isAddStockDialogOpen}
         onOpenChange={setIsAddStockDialogOpen}
         mode={dialogMode}
-        onSuccess={handleItemAdded}
+        onSuccess={handleSuccess}
       />
       <RegisterItemDialog
         open={isRegisterItemDialogOpen}
         onOpenChange={setIsRegisterItemDialogOpen}
         mode={dialogMode}
-        onSuccess={() => {
-            // Optional: could also refresh master lists if needed
-        }}
+        onSuccess={handleSuccess}
       />
+        <ItemActivityDialog 
+            open={isActivityLogOpen}
+            onOpenChange={setIsActivityLogOpen}
+            itemId={selectedItemId}
+            itemName={selectedItemName}
+        />
       <p className="text-muted-foreground mb-6">Track stock levels for finished goods and raw materials. Adding items here automatically updates your accounting records.</p>
-      <Tabs defaultValue="finished-goods">
+      <Tabs 
+        defaultValue="finished-goods" 
+        onValueChange={(value) => setActiveTab(value === 'finished-goods' ? 'goods' : 'materials')}
+       >
         <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="finished-goods">Finished Goods</TabsTrigger>
             <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
@@ -202,8 +262,11 @@ const InventoryPage = () => {
             <InventoryTable 
                 items={finishedGoods} 
                 title="Finished Goods Inventory" 
-                onAddStock={() => handleOpenAddStockDialog('finished')} 
-                onRegisterItem={() => handleOpenRegisterItemDialog('finished')}
+                user={user}
+                onAddStock={() => handleOpenAddStockDialog('product')} 
+                onRegisterItem={() => handleOpenRegisterItemDialog('product')}
+                onRefresh={handleRefresh}
+                onSelectItem={handleOpenItemActivityDialog}
                 isLoading={loading.goods}
                 error={error.goods}
             />
@@ -212,8 +275,11 @@ const InventoryPage = () => {
             <InventoryTable 
                 items={rawMaterials} 
                 title="Raw Materials Inventory" 
-                onAddStock={() => handleOpenAddStockDialog('raw')}
-                onRegisterItem={() => handleOpenRegisterItemDialog('raw')}
+                user={user}
+                onAddStock={() => handleOpenAddStockDialog('raw_material')} 
+                onRegisterItem={() => handleOpenRegisterItemDialog('raw_material')}
+                onRefresh={handleRefresh}
+                onSelectItem={handleOpenItemActivityDialog}
                 isLoading={loading.materials}
                 error={error.materials}
             />
