@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db'; // Assuming you have a db connection utility
+
 
 // GET all sales orders for a company
 export async function GET(req: NextRequest) {
