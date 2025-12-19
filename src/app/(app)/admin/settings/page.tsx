@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-import { useUser } from '@/hooks/useUser'
+import { useAuth } from '@/hooks/useAuth'
 import CompanySettings from '@/components/CompanySettings'
 import UsersAndAccessControl from '@/components/UsersAndAccessControl'
 import ApprovalsAndControls from '@/components/ApprovalsAndControls'
@@ -39,7 +39,7 @@ const settingsNav = [
 ]
 
 const SettingsPage = () => {
-  const { user } = useUser()
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'company'
 
