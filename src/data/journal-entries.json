@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "entryDate": "2024-07-28",
+    "narration": "Office supplies for the month",
+    "totalDebits": 150.00,
+    "status": "pending_approval"
+  },
+  {
+    "id": 2,
+    "entryDate": "2024-07-29",
+    "narration": "Client payment for invoice #123",
+    "totalDebits": 2500.00,
+    "status": "pending_approval"
+  }
+]

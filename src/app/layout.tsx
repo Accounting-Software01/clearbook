@@ -5,7 +5,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import { ThemeProvider } from '@/components/theme-provider';
 import AppLayout from './AppLayout';
-
+import { UserProvider } from '@/contexts/UserContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
 
 export const metadata: Metadata = {
   title: 'ClearBooks',
@@ -25,17 +26,21 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className={cn("font-body antialiased bg-cover bg-center bg-fixed")}>
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem
-            disableTransitionOnChange
-        >
-          <AppLayout>
-            {children}
-          </AppLayout>
-          <Toaster />
-        </ThemeProvider>
+        <UserProvider>
+          <LanguageProvider>
+            <ThemeProvider
+                attribute="class"
+                defaultTheme="dark"
+                enableSystem
+                disableTransitionOnChange
+            >
+              <AppLayout>
+                {children}
+              </AppLayout>
+              <Toaster />
+            </ThemeProvider>
+          </LanguageProvider>
+        </UserProvider>
       </body>
     </html>
   );

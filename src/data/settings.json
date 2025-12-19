@@ -1,0 +1,7 @@
+{
+  "manualJournalsEnabled": true,
+  "requireApproval": true,
+  "allowBackdating": true,
+  "backdatingLimitDays": 7,
+  "restrictedAccounts": ""
+}

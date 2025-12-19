@@ -2,43 +2,15 @@
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect } from 'react';
 import { Loader2, LogOut, X, Minus, Boxes } from 'lucide-react';
-import { getCurrentUser, logout } from '@/lib/auth';
 import { Sidebar } from '@/components/Sidebar';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
-import { NotificationCenter } from '@/components/NotificationCenter'; // Added import
-
-interface User {
-  uid: string;
-  email: string;
-  full_name: string;
-  role: string;
-  user_type: string;
-  company_type: string;
-  company_id: string;
-}
-
-const useUser = () => {
-    const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        const checkUser = async () => {
-            // This now checks sessionStorage, which is only available client-side.
-            if (typeof window !== 'undefined') {
-                const currentUser = await getCurrentUser();
-                setUser(currentUser);
-            }
-            setIsLoading(false);
-        };
-        checkUser();
-    }, []);
-
-    return { user, isLoading };
-};
+import { NotificationCenter } from '@/components/NotificationCenter';
+import { useUser } from '@/contexts/UserContext';
+import SessionExpired from '@/components/SessionExpired';
 
 const navItems = [
     { href: '/dashboard', label: 'Dashboard' },
@@ -61,49 +33,37 @@ export default function AppLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, isLoading } = useUser();
+    const { user, isLoading, sessionExpired, logout } = useUser();
     const [isCardCollapsed, setIsCardCollapsed] = useState(false);
 
     const isAuthPage = pathname === '/login' || pathname === '/signup';
 
     useEffect(() => {
-        if (!isLoading) {
-            if (!user && !isAuthPage) {
-                router.replace('/login');
-            } else if (user && isAuthPage) {
-                router.replace('/dashboard');
-            }
+        if (!isLoading && !user && !isAuthPage && !sessionExpired) {
+            router.replace('/login');
+        } else if (user && isAuthPage) {
+            router.replace('/dashboard');
         }
-    }, [isLoading, user, isAuthPage, router, pathname]);
+    }, [isLoading, user, isAuthPage, router, sessionExpired, pathname]);
 
-    const handleLogout = async () => {
-        await logout();
-        router.push('/login');
-    };
-    
-    // While loading, or if we are not authenticated on a non-auth page, show a loader.
-    // Exception for the root page which has its own loader.
-    if ((isLoading || (!user && !isAuthPage)) && pathname !== '/') {
+    if (sessionExpired) {
+        return <SessionExpired />;
+    }
+
+    if (isLoading || (!user && !isAuthPage)) {
         return (
             <div className="flex items-center justify-center min-h-screen w-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
     }
-    
-    // If it's an authentication page (login/signup), just render the children without the main layout
+
     if (isAuthPage) {
         return <>{children}</>;
     }
     
-    // Handle the root page case specifically, as it might render before redirect.
-    if (pathname === '/') {
-       return <>{children}</>;
-    }
-    
     const currentNavItem = navItems.find(item => pathname.startsWith(item.href));
     const title = currentNavItem?.label || 'ClearBooks';
-
 
     return (
         <div className="relative z-10 flex h-[90vh] w-full max-w-7xl mx-auto gap-4 p-4">
@@ -128,7 +88,7 @@ export default function AppLayout({
                          <div className="flex items-center gap-2">
                              {user && <NotificationCenter userRole={user.role} userCompanyId={user.company_id} />}
                              <ThemeToggle />
-                             <Button variant="ghost" size="sm" onClick={handleLogout}>
+                             <Button variant="ghost" size="sm" onClick={logout}>
                                 <LogOut className="mr-2 h-4 w-4" />
                                 Logout
                             </Button>

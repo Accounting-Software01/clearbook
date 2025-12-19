@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -14,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
-
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Supplier {
   id: string;
@@ -22,6 +21,7 @@ interface Supplier {
 }
 
 const SuppliersPage = () => {
+    const { language } = useLanguage();
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -31,30 +31,30 @@ const SuppliersPage = () => {
         try {
             // This is a simulation. In a real app, you would fetch from your backend API.
             const supplierAccounts = chartOfAccounts
-                .filter(acc => acc.type === 'Liability' && acc.name.toLowerCase().includes('supplier'))
+                .filter(acc => acc.type === 'Liability' && acc.name.toLowerCase().includes(language.supplier.toLowerCase()))
                 .map(acc => ({ id: acc.code, name: acc.name }));
             
             setSuppliers(supplierAccounts);
         } catch (e: any) {
-            setError("Failed to load suppliers.");
+            setError(`Failed to load ${language.suppliers.toLowerCase()}.`);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [language]);
 
   return (
     <>
-      <p className="text-muted-foreground mb-6">Manage your list of suppliers and their contact information.</p>
+      <p className="text-muted-foreground mb-6">{`Manage your list of ${language.suppliers.toLowerCase()} and their contact information.`}</p>
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
             <div>
-                <CardTitle>All Suppliers</CardTitle>
-                <CardDescription>A list of all your company's suppliers.</CardDescription>
+                <CardTitle>{`All ${language.suppliers}`}</CardTitle>
+                <CardDescription>{`A list of all your company's ${language.suppliers.toLowerCase()}.`}</CardDescription>
             </div>
             <Button>
               <PlusCircle className="mr-2 h-4 w-4" />
-              Add New Supplier
+              {`Add New ${language.supplier}`}
             </Button>
           </div>
         </CardHeader>
@@ -72,8 +72,8 @@ const SuppliersPage = () => {
                 <Table>
                     <TableHeader>
                     <TableRow>
-                        <TableHead>Supplier ID</TableHead>
-                        <TableHead>Supplier Name</TableHead>
+                        <TableHead>{`${language.supplier} ID`}</TableHead>
+                        <TableHead>{`${language.supplier} Name`}</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -88,7 +88,7 @@ const SuppliersPage = () => {
             )}
              { !isLoading && !error && suppliers.length === 0 && (
                 <div className="flex justify-center items-center h-40 text-muted-foreground">
-                    <p>No suppliers found in the chart of accounts.</p>
+                    <p>{`No ${language.suppliers.toLowerCase()} found in the chart of accounts.`}</p>
                 </div>
             )}
         </CardContent>

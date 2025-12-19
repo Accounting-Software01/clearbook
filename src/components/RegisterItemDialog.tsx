@@ -66,7 +66,7 @@ export function RegisterItemDialog({ open, onOpenChange, mode, onSuccess }: Regi
     
     // Endpoint logic is now more aligned with the rest of the application structure
     const endpoint = mode === 'product' 
-        ? 'https://hariindustries.net/busa-api/database/register-product.php'
+        ? 'https://hariindustries.net/clearbook/register-product.php'
         : 'https://hariindustries.net/busa-api/database/register-raw-material.php';
 
     const handleInputChange = (field: keyof ItemDetails, value: string) => {

@@ -1,9 +1,7 @@
-
 'use client';
 import React, { useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
-import { DateRangePicker } from '@/components/ui/date-range-picker';
 import {
   Table,
   TableBody,
@@ -13,13 +11,13 @@ import {
   TableRow,
   TableFooter
 } from "@/components/ui/table";
+import { DatePicker } from '@/components/ui/date-picker'; // Changed from DateRangePicker
 import { format } from 'date-fns';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, FileDown } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
-import type { DateRange } from 'react-day-picker';
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-
+import { useUser } from '@/contexts/UserContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ReportAccount {
     name: string;
@@ -39,16 +37,13 @@ interface BalanceSheetData {
     totalLiabilitiesAndEquity: number;
 }
 
-interface BackendResponse {
-    balances: { [accountId: string]: number };
-    periodChanges: { [accountId: string]: number };
+// Simplified interface to match the new, efficient API response
+interface BackendBalance {
+    accountId: string;
+    balance: number; // Net balance (credit - debit)
 }
 
-
-const formatCurrency = (amount: number | null | undefined) => {
-    if (amount === null || amount === undefined || isNaN(amount)) {
-        return '0.00';
-    }
+const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -56,28 +51,31 @@ const formatCurrency = (amount: number | null | undefined) => {
 };
 
 const BalanceSheetPage = () => {
+    const { user } = useUser();
     const [reportData, setReportData] = useState<BalanceSheetData | null>(null);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-        from: new Date(new Date().getFullYear(), 0, 1),
-        to: new Date(),
-    });
+    const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const generateReport = useCallback(async () => {
-        if (!dateRange?.from || !dateRange.to) {
-            setError("Please select a date range for the report.");
+        if (!reportDate) {
+            setError("Please select a date for the report.");
+            return;
+        }
+
+        if (!user?.company_id) {
+            setError("Could not determine your company. Please ensure you are logged in correctly.");
             return;
         }
 
         setIsLoading(true);
         setError(null);
-        
-        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
-        const toDate = format(dateRange.to, 'yyyy-MM-dd');
-        
-        const url = new URL('https://hariindustries.net/busa-api/database/balance-sheet.php');
-        url.searchParams.append('fromDate', fromDate);
+        setReportData(null);
+
+        const toDate = format(reportDate, 'yyyy-MM-dd');
+
+        const url = new URL('https://hariindustries.net/clearbook/balance_sheet.php');
+        url.searchParams.append('company_id', user.company_id);
         url.searchParams.append('toDate', toDate);
 
         try {
@@ -86,60 +84,51 @@ const BalanceSheetPage = () => {
                 const errorJson = await response.json().catch(() => ({}));
                 throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
             }
-            const data: BackendResponse = await response.json();
+            const data: BackendBalance[] = await response.json();
 
-            if (data.balances && data.periodChanges) {
+            if (Array.isArray(data)) {
                 const assets: ReportSection = { title: 'Assets', accounts: [], total: 0 };
                 const liabilities: ReportSection = { title: 'Liabilities', accounts: [], total: 0 };
                 const equity: ReportSection = { title: 'Equity', accounts: [], total: 0 };
-                let periodRevenue = 0;
-                let periodExpense = 0;
+                let totalRevenue = 0;
+                let totalExpense = 0;
 
-                // Process final balances for Assets, Liabilities, Equity
-                for (const accountId in data.balances) {
-                    const account = chartOfAccounts.find(acc => acc.code === accountId);
-                    if (!account) continue;
-                    
-                    const balance = data.balances[accountId];
+                data.forEach(item => {
+                    const account = chartOfAccounts.find(acc => acc.code === item.accountId);
+                    if (!account) return;
+
+                    const balance = item.balance; // This is (credit - debit)
 
                     switch (account.type) {
                         case 'Asset':
-                            assets.accounts.push({ name: account.name, amount: balance });
-                            assets.total += balance;
+                            // Assets have a debit balance, so we invert the sign
+                            assets.accounts.push({ name: account.name, amount: -balance });
+                            assets.total -= balance;
                             break;
                         case 'Liability':
-                            liabilities.accounts.push({ name: account.name, amount: -balance });
-                            liabilities.total -= balance;
+                            // Liabilities have a credit balance, which is correct
+                            liabilities.accounts.push({ name: account.name, amount: balance });
+                            liabilities.total += balance;
                             break;
                         case 'Equity':
-                             equity.accounts.push({ name: account.name, amount: -balance });
-                             equity.total -= balance;
+                            // Equity has a credit balance, which is correct
+                            equity.accounts.push({ name: account.name, amount: balance });
+                            equity.total += balance;
                             break;
-                    }
-                }
-                
-                // Calculate net profit for the selected period
-                for (const accountId in data.periodChanges) {
-                    const account = chartOfAccounts.find(acc => acc.code === accountId);
-                    if (!account) continue;
-
-                    const periodChange = data.periodChanges[accountId];
-
-                     switch (account.type) {
                         case 'Revenue':
-                            periodRevenue += periodChange;
-                            break;
+                             totalRevenue += balance; // Credit balance
+                             break;
                         case 'Expense':
-                            // periodChange is (credit-debit), so it's already negative for expenses
-                            periodExpense += periodChange;
-                            break;
+                        case 'Cost of Sales':
+                             totalExpense += balance; // Debit balance (negative)
+                             break;
                     }
-                }
+                });
 
-                const netProfitForPeriod = periodRevenue + periodExpense; // expense is negative
-                equity.accounts.push({ name: 'Current Period Net Profit', amount: netProfitForPeriod });
-                equity.total += netProfitForPeriod;
-
+                const retainedEarnings = totalRevenue + totalExpense;
+                equity.accounts.push({ name: "Retained Earnings", amount: retainedEarnings });
+                equity.total += retainedEarnings;
+                
                 setReportData({
                     assets,
                     liabilities,
@@ -147,7 +136,7 @@ const BalanceSheetPage = () => {
                     totalLiabilitiesAndEquity: liabilities.total + equity.total,
                 });
             } else {
-                 throw new Error("Invalid data format received from server.");
+                throw new Error("Invalid data format received from server.");
             }
         } catch (e: any) {
             setError(`Failed to load data: ${e.message}`);
@@ -155,134 +144,183 @@ const BalanceSheetPage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [dateRange]);
+    }, [reportDate, user]);
 
-    const chartData = reportData ? [
-        { name: 'Balance Sheet', Assets: reportData.assets.total, Liabilities: reportData.liabilities.total, Equity: reportData.equity.total },
-    ] : [];
+    const handleExportPdf = useCallback(() => {
+        if (!reportData || !user?.company_id || !reportDate) return;
+
+        const doc = new jsPDF();
+        const toDateFmt = format(reportDate, 'PPP');
+        
+        doc.setFontSize(18);
+        doc.text('Balance Sheet', 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Company: ${user.company_name || user.company_id}`, 14, 30);
+        doc.text(`As of: ${toDateFmt}`, 14, 36);
+
+        const body = [];
+        // Assets
+        body.push([{ content: reportData.assets.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.assets.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.assets.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.assets.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+        body.push([' ', ' ']); // Spacer
+        // Liabilities
+        body.push([{ content: reportData.liabilities.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.liabilities.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.liabilities.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.liabilities.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+         body.push([' ', ' ']); // Spacer
+        // Equity
+        body.push([{ content: reportData.equity.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.equity.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.equity.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.equity.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+        body.push([' ', ' ']); // Spacer
+        // Total L + E
+        body.push([{ content: 'Total Liabilities & Equity', colSpan: 2, styles: { fontStyle: 'bold', fillColor: '#f1f5f9' } }]);
+        body[body.length - 1][1] = { content: formatCurrency(reportData.totalLiabilitiesAndEquity), styles: { fontStyle: 'bold', halign: 'right', fillColor: '#f1f5f9' } };
 
 
-  return (
-    <>
-        <p className="text-muted-foreground mb-6">Generate a balance sheet to see a snapshot of your company's financial health.</p>
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg items-end bg-card">
-                <div className="md:col-span-2 space-y-2">
-                    <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
-                    <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
-                </div>
-                <Button onClick={generateReport} disabled={isLoading} className="w-full">
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Generate Report
-                </Button>
+        autoTable(doc, {
+            startY: 42,
+            head: [['Description', 'Amount']],
+            body: body,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 47] },
+        });
+        
+        doc.save(`Balance-Sheet-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+
+    }, [reportData, reportDate, user]);
+
+    return (
+        <>
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold">Balance Sheet</h1>
+                <p className="text-muted-foreground">Review your company’s financial position at a specific point in time.</p>
             </div>
 
-            {isLoading ? (
-                <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-            ) : error ? (
-                <Card className="flex flex-col justify-center items-center h-60 text-destructive bg-card"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></Card>
-            ) : reportData ? (
-                <div className="space-y-8">
-                    <Card className="bg-card">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                {/* Left Column: Controls */}
+                <div className="lg:col-span-2 lg:sticky lg:top-20">
+                    <Card>
                         <CardHeader>
-                            <CardTitle>Financial Position</CardTitle>
+                            <CardTitle>Report Options</CardTitle>
+                            <CardDescription>Select the date for the report.</CardDescription>
                         </CardHeader>
-                        <CardContent className="h-60">
-                            <ChartContainer config={{}} className="w-full h-full">
-                                <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                    <XAxis type="number" hide />
-                                    <YAxis type="category" dataKey="name" hide />
-                                    <Tooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
-                                    <Legend />
-                                    <Bar dataKey="Assets" stackId="a" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} />
-                                    <Bar dataKey="Liabilities" stackId="b" fill="hsl(var(--chart-2))" />
-                                    <Bar dataKey="Equity" stackId="b" fill="hsl(var(--chart-3))" radius={[0, 4, 4, 0]} />
-                                </BarChart>
-                            </ChartContainer>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <label htmlFor="report-date" className="font-semibold text-sm">As of Date</label>
+                                <DatePicker id="report-date" date={reportDate} onDateChange={setReportDate} />
+                            </div>
+                        </CardContent>
+                         <CardFooter>
+                            <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Generate Report
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
+
+                {/* Right Column: Report Display */}
+                <div className="lg:col-span-3">
+                     <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Balance Sheet</CardTitle>
+                                <CardDescription>
+                                    {reportDate 
+                                        ? `As of ${format(reportDate, 'PPP')}`
+                                        : "Generate a report to get started."}
+                                </CardDescription>
+                            </div>
+                             <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={handleExportPdf}
+                                disabled={!reportData || isLoading}
+                            >
+                                <FileDown className="mr-2 h-4 w-4"/>
+                                Export to PDF
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                            ) : error ? (
+                                <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
+                            ) : reportData ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Description</TableHead>
+                                            <TableHead className="text-right">Amount</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow className="font-bold text-md bg-muted">
+                                            <TableCell>{reportData.assets.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.assets.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        <TableRow className="font-bold text-lg">
+                                            <TableCell className="pl-4">Total {reportData.assets.title}</TableCell>
+                                            <TableCell className="text-right font-mono border-t-2 border-b-4">{formatCurrency(reportData.assets.total)}</TableCell>
+                                        </TableRow>
+                                        
+                                        <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
+
+                                        <TableRow className="font-bold text-md bg-muted">
+                                            <TableCell>{reportData.liabilities.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.liabilities.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                         <TableRow className="font-semibold">
+                                            <TableCell className="pl-4">Total {reportData.liabilities.title}</TableCell>
+                                            <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.liabilities.total)}</TableCell>
+                                        </TableRow>
+
+                                        <TableRow className="font-bold text-md bg-muted mt-4">
+                                            <TableCell>{reportData.equity.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.equity.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        <TableRow className="font-semibold">
+                                            <TableCell className="pl-4">Total {reportData.equity.title}</TableCell>
+                                            <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.equity.total)}</TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                     <TableFooter>
+                                        <TableRow className="font-bold text-lg">
+                                            <TableCell>Total Liabilities &amp; Equity</TableCell>
+                                            <TableCell className="text-right font-mono border-t-2 border-b-4">{formatCurrency(reportData.totalLiabilitiesAndEquity)}</TableCell>
+                                        </TableRow>
+                                    </TableFooter>
+                                </Table>
+                            ) : (
+                                 <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the Balance Sheet.</p></div>
+                            )}
                         </CardContent>
                     </Card>
-
-                    <div className="border rounded-lg p-4 bg-card">
-                        <h3 className="text-lg font-bold text-center">Balance Sheet</h3>
-                        <p className="text-center text-muted-foreground mb-6">
-                            As of {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
-                        </p>
-                        
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Amount</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {/* Assets Section */}
-                                <TableRow className="font-bold bg-muted/30">
-                                    <TableCell>{reportData.assets.title}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                                {reportData.assets.accounts.map(acc => (
-                                    <TableRow key={acc.name}>
-                                        <TableCell className="pl-8">{acc.name}</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow className="font-bold text-lg">
-                                    <TableCell className="pl-4">Total Assets</TableCell>
-                                    <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.assets.total)}</TableCell>
-                                </TableRow>
-                                
-                                {/* Spacer Row */}
-                                <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
-
-                                {/* Liabilities Section */}
-                                <TableRow className="font-bold bg-muted/30">
-                                    <TableCell>{reportData.liabilities.title}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                                {reportData.liabilities.accounts.map(acc => (
-                                    <TableRow key={acc.name}>
-                                        <TableCell className="pl-8">{acc.name}</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                    </TableRow>
-                                ))}
-                                 <TableRow className="font-semibold">
-                                    <TableCell className="pl-4">Total Liabilities</TableCell>
-                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.liabilities.total)}</TableCell>
-                                </TableRow>
-
-                                {/* Equity Section */}
-                                <TableRow className="font-bold bg-muted/30 mt-4">
-                                    <TableCell>{reportData.equity.title}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                                {reportData.equity.accounts.map(acc => (
-                                    <TableRow key={acc.name}>
-                                        <TableCell className="pl-8">{acc.name}</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow className="font-semibold">
-                                    <TableCell className="pl-4">Total Equity</TableCell>
-                                    <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.equity.total)}</TableCell>
-                                </TableRow>
-
-                            </TableBody>
-                             <TableFooter>
-                                <TableRow className="font-bold text-lg">
-                                    <TableCell>Total Liabilities &amp; Equity</TableCell>
-                                    <TableCell className="text-right font-mono border-t-2 border-b-4 border-primary/50">{formatCurrency(reportData.totalLiabilitiesAndEquity)}</TableCell>
-                                </TableRow>
-                            </TableFooter>
-                        </Table>
-                    </div>
                 </div>
-            ) : (
-                 <Card className="flex justify-center items-center h-60 text-muted-foreground bg-card"><p>Generate a report to see the balance sheet.</p></Card>
-            )}
-        </div>
-    </>
-  );
+            </div>
+        </>
+    );
 };
 
 export default BalanceSheetPage;

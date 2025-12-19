@@ -64,7 +64,7 @@ export function AddStockDialog({ open, onOpenChange, mode, onSuccess }: AddStock
     const title = mode === 'product' ? 'Add Finished Good Stock' : 'Add Raw Material Stock';
     const description = 'Record a purchase of an existing item. This will update inventory and post a journal entry.';
     
-    const endpoint = 'https://hariindustries.net/busa-api/database/add_stock.php';
+    const endpoint = 'https://hariindustries.net/clearbook/add_stock.php';
 
     const resetForm = () => {
         setSelectedItem(null);

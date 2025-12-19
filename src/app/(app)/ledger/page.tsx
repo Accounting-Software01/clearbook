@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,6 +17,8 @@ import { DateRange } from 'react-day-picker';
 import { format, parseISO, isValid } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useUser } from '@/contexts/UserContext';
 
 interface LedgerEntry {
     date: string;
@@ -39,6 +40,8 @@ const formatCurrency = (amount: number | null | undefined) => {
 
 
 const GeneralLedgerPage = () => {
+  const { language } = useLanguage();
+  const { user } = useUser(); // Get the user from the context
   const [fetchedEntries, setFetchedEntries] = useState<LedgerEntry[]>([]);
   const [selectedAccount, setSelectedAccount] = useState('101200');
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
@@ -49,8 +52,11 @@ const GeneralLedgerPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchLedgerEntries = useCallback(async () => {
-    if (!selectedAccount || !dateRange?.from || !dateRange?.to) {
+    if (!selectedAccount || !dateRange?.from || !dateRange?.to || !user?.company_id) { // Check for company_id
         setFetchedEntries([]);
+        if (!user?.company_id) {
+            setError("Could not determine company. Please ensure you are logged in correctly.");
+        }
         return;
     }
 
@@ -60,7 +66,8 @@ const GeneralLedgerPage = () => {
     const fromDate = format(dateRange.from, 'yyyy-MM-dd');
     const toDate = format(dateRange.to, 'yyyy-MM-dd');
     
-    const url = new URL('https://hariindustries.net/busa-api/database/general-ledger.php');
+    const url = new URL('https://hariindustries.net/clearbook/general-ledger.php');
+    url.searchParams.append('company_id', user.company_id); // Add company_id to the request
     url.searchParams.append('accountId', selectedAccount);
     url.searchParams.append('fromDate', fromDate);
     url.searchParams.append('toDate', toDate);
@@ -91,7 +98,7 @@ const GeneralLedgerPage = () => {
     } finally {
         setIsLoading(false);
     }
-  }, [selectedAccount, dateRange]);
+  }, [selectedAccount, dateRange, user]); // Add user to the dependency array
 
   const { openingBalance, endingBalance, entriesWithBalance } = useMemo(() => {
     if (fetchedEntries.length === 0) {
@@ -122,7 +129,7 @@ const GeneralLedgerPage = () => {
 
   return (
     <>
-        <p className="text-muted-foreground mb-6">View the detailed transaction history for any account in the system.</p>
+        <p className="text-muted-foreground mb-6">{`View the detailed transaction history for any account in the system.`}</p>
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg items-end bg-card">
                 <div className="md:col-span-2 space-y-2">
@@ -147,16 +154,16 @@ const GeneralLedgerPage = () => {
                 <div className="md:col-start-3">
                     <Button onClick={fetchLedgerEntries} disabled={isLoading} className="w-full">
                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        View Ledger
+                        {`View ${language.ledger}`}
                     </Button>
                 </div>
             </div>
 
             <Card className="bg-card">
                 <CardHeader>
-                    <CardTitle>Account: {selectedAccount} - {selectedAccountName}</CardTitle>
+                    <CardTitle>{`Account: ${selectedAccount} - ${selectedAccountName}`}</CardTitle>
                     <CardDescription>
-                        Transactions from {dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to {dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}
+                        {`Transactions from ${dateRange?.from ? format(dateRange.from, 'LLL dd, y') : ''} to ${dateRange?.to ? format(dateRange.to, 'LLL dd, y') : ''}`}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -21,14 +20,20 @@ import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import type { Payee } from '@/types/payee';
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth from your hooks folder
 
+
+
+
+// Control account constants
 const CUSTOMER_CONTROL_ACCOUNT = '101200'; // Trade Receivables - Customers
 const SUPPLIER_CONTROL_ACCOUNT = '201020'; // Trade Creditors - Suppliers
 
 interface JournalEntryLine {
     id: number;
     accountId: string;
-    debit: number;
+    
+debit: number;
     credit: number;
     payeeId?: string;
     payees?: Payee[]; // List of relevant payees for this line
@@ -36,6 +41,8 @@ interface JournalEntryLine {
 
 const JournalPage = () => {
     const { toast } = useToast();
+    const { user } = useAuth(); // Corrected from useAuths() and assuming 'user' is the returned object 
+
     const [entryDate, setEntryDate] = useState<Date | undefined>(new Date());
     const [narration, setNarration] = useState('');
     const [lines, setLines] = useState<JournalEntryLine[]>([
@@ -44,6 +51,7 @@ const JournalPage = () => {
     ]);
     const [isLoading, setIsLoading] = useState(false);
     const [allPayees, setAllPayees] = useState<Payee[]>([]);
+    const [isOpeningEntry, setIsOpeningEntry] = useState(false); // New state for opening entry
 
     // Fetch all payees once when the component mounts
     useEffect(() => {
@@ -135,6 +143,7 @@ const JournalPage = () => {
             { id: 1, accountId: '', debit: 0, credit: 0 },
             { id: 2, accountId: '', debit: 0, credit: 0 },
         ]);
+        setIsOpeningEntry(false); // Reset opening entry state
     }
 
     const handlePostEntry = async () => {
@@ -158,19 +167,32 @@ const JournalPage = () => {
             toast({ variant: 'destructive', title: 'Missing Payee', description: 'Please select a customer or supplier for control accounts.' });
             return;
         }
+
+        // Changed user?.id to user?.uid for validation
+        if (!user?.uid || !user?.company_id) {
+            toast({ variant: 'destructive', title: 'User or Company ID missing.', description: 'Please ensure you are logged in and your company is selected.' });
+            return;
+        }
         
         setIsLoading(true);
+
+        // Determine the API endpoint based on isOpeningEntry
+        const apiEndpoint = isOpeningEntry 
+            ? 'https://hariindustries.net/busa-api/database/opening-entry.php'
+            : 'https://hariindustries.net/busa-api/database/journal-entry.php';
 
         const payload = {
             entryDate: format(entryDate, 'yyyy-MM-dd'),
             narration,
             lines: lines.map(({id, payees, ...rest}) => rest), // Remove client-side fields
             totalDebits,
-            totalCredits
+            totalCredits,
+            user_id: user.uid, // Changed user.id to user.uid
+            company_id: user.company_id, // Add company_id to the payload
         };
 
         try {
-            const response = await fetch('https://hariindustries.net/busa-api/database/journal-entry.php', {
+            const response = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -184,7 +206,8 @@ const JournalPage = () => {
             const result = await response.json();
 
             if (result.success) {
-                toast({ title: 'Journal Entry Posted!', description: `Voucher #${result.journalVoucherId} has been successfully recorded.` });
+                const entryType = isOpeningEntry ? 'Opening Entry' : 'Journal Entry';
+                toast({ title: `${entryType} Posted!`, description: `Voucher #${result.journalVoucherId} has been successfully recorded.` });
                 resetForm();
             } else {
                 throw new Error(result.error || 'The server indicated a failure, but did not provide an error message.');
@@ -220,6 +243,20 @@ const JournalPage = () => {
                         </div>
                     </div>
                     
+                    {/* New Toggle for Opening Entry */}
+                    <div className="mb-6 flex items-center space-x-2">
+                        <input
+                            type="checkbox"
+                            id="isOpeningEntry"
+                            checked={isOpeningEntry}
+                            onChange={(e) => setIsOpeningEntry(e.target.checked)}
+                            className="form-checkbox h-4 w-4 text-primary rounded"
+                        />
+                        <label htmlFor="isOpeningEntry" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            This is an Opening Entry
+                        </label>
+                    </div>
+
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>

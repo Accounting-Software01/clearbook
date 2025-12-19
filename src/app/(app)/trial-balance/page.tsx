@@ -1,7 +1,6 @@
-
 'use client';
 import React, { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -14,13 +13,18 @@ import {
 } from "@/components/ui/table";
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { format } from 'date-fns';
-import { Loader2, AlertCircle, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Loader2, AlertCircle, AlertTriangle, CheckCircle, FileDown } from 'lucide-react';
 import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DateRange } from 'react-day-picker';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useUser } from '@/contexts/UserContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface BackendBalance {
     accountId: string;
+    accountName: string;
     debit: number;
     credit: number;
 }
@@ -43,6 +47,8 @@ const formatCurrency = (amount: number | null | undefined) => {
 };
 
 const TrialBalancePage = () => {
+    const { language } = useLanguage();
+    const { user } = useUser();
     const [reportData, setReportData] = useState<TrialBalanceEntry[]>([]);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: new Date(new Date().getFullYear(), 0, 1),
@@ -56,6 +62,11 @@ const TrialBalancePage = () => {
             setError("Please select a valid date range for the report.");
             return;
         }
+        
+        if (!user?.company_id) {
+            setError("Could not determine your company. Please ensure you are logged in correctly.");
+            return;
+        }
 
         setIsLoading(true);
         setError(null);
@@ -64,6 +75,10 @@ const TrialBalancePage = () => {
         const toDate = format(dateRange.to, 'yyyy-MM-dd');
         
         const url = new URL('https://hariindustries.net/busa-api/database/trial-balance.php');
+        url.searchParams.append('company_id', user.company_id);
+        if (user.id) {
+             url.searchParams.append('user_id', String(user.id));
+        }
         url.searchParams.append('fromDate', fromDate);
         url.searchParams.append('toDate', toDate);
 
@@ -76,18 +91,12 @@ const TrialBalancePage = () => {
             const data: BackendBalance[] = await response.json();
 
             if (Array.isArray(data)) {
-                 const formattedData = data.map(backendEntry => {
-                    const account = chartOfAccounts.find(acc => acc.code === backendEntry.accountId);
-                    if (!account) return null;
-
-                    return {
-                        accountId: account.code,
-                        accountName: account.name,
-                        debit: backendEntry.debit > 0 ? backendEntry.debit : null,
-                        credit: backendEntry.credit > 0 ? backendEntry.credit : null,
-                    };
-                }).filter((entry): entry is TrialBalanceEntry => entry !== null);
-
+                 const formattedData = data.map(entry => ({
+                    accountId: entry.accountId,
+                    accountName: entry.accountName,
+                    debit: entry.debit > 0 ? entry.debit : null,
+                    credit: entry.credit > 0 ? entry.credit : null,
+                }));
                 setReportData(formattedData);
             } else {
                  throw new Error("Invalid data format received from server.");
@@ -99,7 +108,7 @@ const TrialBalancePage = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [dateRange]);
+    }, [dateRange, user]);
     
     const { totalDebits, totalCredits, isBalanced } = React.useMemo(() => {
         const debits = reportData.reduce((acc, entry) => acc + (entry.debit || 0), 0);
@@ -111,66 +120,146 @@ const TrialBalancePage = () => {
         };
     }, [reportData]);
 
-  return (
-    <>
-        <p className="text-muted-foreground mb-6">Verify account balances and browse the complete chart of accounts.</p>
-        <div className="space-y-6">
-            <Tabs defaultValue="trial-balance">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="trial-balance">Trial Balance</TabsTrigger>
-                    <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
-                </TabsList>
-                <TabsContent value="trial-balance" className="mt-6">
+    const handleExportPdf = useCallback(() => {
+        if (!reportData.length || !user?.company_id) return;
+
+        const doc = new jsPDF();
+        const fromDateFmt = dateRange?.from ? format(dateRange.from, 'PPP') : 'N/A';
+        const toDateFmt = dateRange?.to ? format(dateRange.to, 'PPP') : 'N/A';
+        
+        // Title
+        doc.setFontSize(18);
+        doc.text('Trial Balance', 14, 22);
+
+        // Sub-header info
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        // Assuming company_name is available on the user object. If not, fallback to company_id.
+        doc.text(`Company: ${user.company_name || user.company_id}`, 14, 30);
+        doc.text(`Period: ${fromDateFmt} to ${toDateFmt}`, 14, 36);
+
+        // Table
+        autoTable(doc, {
+            startY: 42,
+            head: [['Account Code', 'Account Name', 'Debit', 'Credit']],
+            body: reportData.map(entry => [
+                entry.accountId,
+                entry.accountName,
+                { content: formatCurrency(entry.debit), styles: { halign: 'right' } },
+                { content: formatCurrency(entry.credit), styles: { halign: 'right' } },
+            ]),
+            foot: [[
+                { content: 'Totals', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: formatCurrency(totalDebits), styles: { halign: 'right', fontStyle: 'bold' } },
+                { content: formatCurrency(totalCredits), styles: { halign: 'right', fontStyle: 'bold' } },
+            ]],
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 47] },
+            footStyles: { fillColor: [244, 244, 245], textColor: [34, 41, 47] },
+        });
+        
+        doc.save(`Trial-Balance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+
+    }, [reportData, dateRange, totalDebits, totalCredits, user]);
+
+    return (
+        <>
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold">Financial Reports</h1>
+                <p className="text-muted-foreground">Generate key financial statements and review company accounts.</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                {/* Left Column: Controls */}
+                <div className="lg:col-span-2 lg:sticky lg:top-20">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Generate Trial Balance</CardTitle>
-                            <CardDescription>Select a date range to see the movement of all accounts in that period.</CardDescription>
+                            <CardTitle>Report Options</CardTitle>
+                            <CardDescription>Select the period for the report.</CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end bg-muted/20">
-                                <div className="md:col-span-2 space-y-2">
-                                    <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
-                                    <DateRangePicker date={dateRange} onDateChange={setDateRange} id="report-date-range"/>
-                                </div>
-                                <Button onClick={generateReport} disabled={isLoading} className="w-full">
-                                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Generate Report
-                                </Button>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
+                                <DateRangePicker id="report-date-range" date={dateRange} onDateChange={setDateRange} />
                             </div>
-                            {isLoading ? (
-                                <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                            ) : error ? (
-                                <div className="flex flex-col justify-center items-center h-40 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
-                            ) : reportData.length > 0 ? (
-                                <>
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead className="w-1/4">Account Code</TableHead>
-                                                <TableHead className="w-1/2">Account Name</TableHead>
-                                                <TableHead className="text-right">Debit</TableHead>
-                                                <TableHead className="text-right">Credit</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {reportData.map((entry) => (
-                                                <TableRow key={entry.accountId}>
-                                                    <TableCell>{entry.accountId}</TableCell>
-                                                    <TableCell>{entry.accountName}</TableCell>
-                                                    <TableCell className="text-right font-mono">{formatCurrency(entry.debit)}</TableCell>
-                                                    <TableCell className="text-right font-mono">{formatCurrency(entry.credit)}</TableCell>
+                        </CardContent>
+                         <CardFooter>
+                            <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Generate Report
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
+
+                {/* Right Column: Report Display */}
+                <div className="lg:col-span-3">
+                    <Tabs defaultValue="trial-balance">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="trial-balance">{language.trialBalance}</TabsTrigger>
+                            <TabsTrigger value="chart-of-accounts">{language.chartOfAccounts}</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="trial-balance" className="mt-6">
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <div>
+                                        <CardTitle>{language.trialBalance}</CardTitle>
+                                        <CardDescription>
+                                            {dateRange?.from && dateRange?.to 
+                                                ? `For the period from ${format(dateRange.from, 'PPP')} to ${format(dateRange.to, 'PPP')}`
+                                                : "Generate a report to see the trial balance."}
+                                        </CardDescription>
+                                    </div>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={handleExportPdf}
+                                        disabled={reportData.length === 0 || isLoading}
+                                    >
+                                        <FileDown className="mr-2 h-4 w-4"/>
+                                        Export to PDF
+                                    </Button>
+                                </CardHeader>
+                                <CardContent>
+                                    {isLoading ? (
+                                        <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                                    ) : error ? (
+                                        <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
+                                    ) : reportData.length > 0 ? (
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="w-[120px]">Account Code</TableHead>
+                                                    <TableHead>Account Name</TableHead>
+                                                    <TableHead className="text-right">Debit</TableHead>
+                                                    <TableHead className="text-right">Credit</TableHead>
                                                 </TableRow>
-                                            ))}
-                                        </TableBody>
-                                        <TableFooter>
-                                            <TableRow>
-                                                <TableCell colSpan={2} className="text-right font-bold">Totals</TableCell>
-                                                <TableCell className="text-right font-bold font-mono">{formatCurrency(totalDebits)}</TableCell>
-                                                <TableCell className="text-right font-bold font-mono">{formatCurrency(totalCredits)}</TableCell>
-                                            </TableRow>
-                                        </TableFooter>
-                                    </Table>
-                                    <div className="mt-4 flex justify-end">
+                                            </TableHeader>
+                                            <TableBody>
+                                                {reportData.map((entry) => (
+                                                    <TableRow key={entry.accountId}>
+                                                        <TableCell>{entry.accountId}</TableCell>
+                                                        <TableCell>{entry.accountName}</TableCell>
+                                                        <TableCell className="text-right font-mono">{formatCurrency(entry.debit)}</TableCell>
+                                                        <TableCell className="text-right font-mono">{formatCurrency(entry.credit)}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                            <TableFooter>
+                                                <TableRow>
+                                                    <TableCell colSpan={2} className="text-right font-bold">Totals</TableCell>
+                                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(totalDebits)}</TableCell>
+                                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(totalCredits)}</TableCell>
+                                                </TableRow>
+                                            </TableFooter>
+                                        </Table>
+                                    ) : (
+                                        <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the trial balance.</p></div>
+                                    )}
+                                </CardContent>
+                                {reportData.length > 0 && (
+                                    <CardFooter className="flex justify-end">
                                         {isBalanced ? (
                                             <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded-md border border-green-200">
                                                 <CheckCircle className="h-5 w-5" />
@@ -182,48 +271,46 @@ const TrialBalancePage = () => {
                                                 <span className="font-semibold">Not Balanced</span>
                                             </div>
                                         )}
+                                    </CardFooter>
+                                )}
+                            </Card>
+                        </TabsContent>
+                        
+                        <TabsContent value="chart-of-accounts" className="mt-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>{language.chartOfAccounts}</CardTitle>
+                                    <CardDescription>A complete list of all accounts in the general ledger.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="max-h-[600px] overflow-y-auto relative">
+                                        <Table>
+                                            <TableHeader className="sticky top-0 bg-background z-10">
+                                                <TableRow>
+                                                    <TableHead>Code</TableHead>
+                                                    <TableHead>Name</TableHead>
+                                                    <TableHead>Type</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {chartOfAccounts.map((account) => (
+                                                    <TableRow key={account.code}>
+                                                        <TableCell className="font-mono">{account.code}</TableCell>
+                                                        <TableCell>{account.name}</TableCell>
+                                                        <TableCell><span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-full">{account.type}</span></TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
                                     </div>
-                                </>
-                            ) : (
-                                 <div className="flex justify-center items-center h-40 text-muted-foreground"><p>Generate a report to see the trial balance.</p></div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-                 <TabsContent value="chart-of-accounts" className="mt-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Chart of Accounts</CardTitle>
-                            <CardDescription>A complete list of all accounts in the general ledger.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="max-h-[600px] overflow-y-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Code</TableHead>
-                                            <TableHead>Name</TableHead>
-                                            <TableHead>Type</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {chartOfAccounts.map((account) => (
-                                            <TableRow key={account.code}>
-                                                <TableCell className="font-mono">{account.code}</TableCell>
-                                                <TableCell>{account.name}</TableCell>
-                                                <TableCell><span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-full">{account.type}</span></TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
-        </div>
-    </>
-  );
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </div>
+        </>
+    );
 };
 
 export default TrialBalancePage;
