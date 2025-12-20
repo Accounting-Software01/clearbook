@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { ThemeProvider } from '@/components/theme-provider';
 import AppLayout from './AppLayout';
 import { UserProvider } from '@/contexts/UserContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
@@ -18,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="light">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -27,17 +26,10 @@ export default function RootLayout({
       <body className={cn("font-body antialiased bg-cover bg-center bg-fixed")}>
         <UserProvider>
           <LanguageProvider>
-            <ThemeProvider
-                attribute="class"
-                defaultTheme="dark"
-                enableSystem
-                disableTransitionOnChange
-            >
-              <AppLayout>
-                {children}
-              </AppLayout>
-              <Toaster />
-            </ThemeProvider>
+            <AppLayout>
+              {children}
+            </AppLayout>
+            <Toaster />
           </LanguageProvider>
         </UserProvider>
       </body>

@@ -6,7 +6,6 @@ import { Sidebar } from '@/components/Sidebar';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 import { NotificationCenter } from '@/components/NotificationCenter';
 import { useUser } from '@/contexts/UserContext';
@@ -87,7 +86,7 @@ export default function AppLayout({
                         </div>
                          <div className="flex items-center gap-2">
                              {user && <NotificationCenter userRole={user.role} userCompanyId={user.company_id} />}
-                             <ThemeToggle />
+                             
                              <Button variant="ghost" size="sm" onClick={logout}>
                                 <LogOut className="mr-2 h-4 w-4" />
                                 Logout

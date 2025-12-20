@@ -70,7 +70,7 @@ export function Sidebar() {
                               (user.role === 'production_manager' && user.company_type === 'manufacturing');
 
     return (
-        <aside className="w-64 flex-shrink-0 rounded-2xl bg-primary dark:bg-slate-900 border shadow-lg flex flex-col">
+        <aside className="w-64 flex-shrink-0 rounded-2xl bg-primary border shadow-lg flex flex-col">
             <div className="p-6 flex items-center justify-center gap-2 border-b border-white/20">
                 <Library className="h-8 w-8 text-primary-foreground" />
                 <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
@@ -82,7 +82,7 @@ export function Sidebar() {
                              item.subItems ? (
                                 <li key={index}>
                                     <Collapsible>
-                                        <CollapsibleTrigger className={cn("flex items-center justify-between w-full gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white")}>
+                                        <CollapsibleTrigger className={cn("flex items-center justify-between w-full gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white")}>
                                             <div className="flex items-center gap-3">
                                                 <item.icon className="h-5 w-5" />
                                                 <span className="font-medium">{item.label}</span>
@@ -95,7 +95,7 @@ export function Sidebar() {
                                                     key={subItem.href}
                                                     href={subItem.href} 
                                                     className={cn(
-                                                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/70 hover:bg-white/10 hover:text-white dark:text-white/60 dark:hover:text-white",
+                                                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/70 hover:bg-white/10 hover:text-white",
                                                         pathname === subItem.href && "bg-white/10 text-white font-semibold"
                                                     )}
                                                 >
@@ -111,7 +111,7 @@ export function Sidebar() {
                                 <Link 
                                     href={item.href!} 
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                         pathname === item.href && "bg-white/20 text-white font-semibold shadow-md"
                                     )}
                                 >
@@ -127,7 +127,7 @@ export function Sidebar() {
                                 <Link 
                                     href="/inventory"
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                         pathname === '/inventory' && "bg-white/20 text-white font-semibold shadow-md"
                                     )}
                                 >
@@ -142,7 +142,7 @@ export function Sidebar() {
                                 <Link 
                                     href="/sales"
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                         pathname === '/sales' && "bg-white/20 text-white font-semibold shadow-md"
                                     )}
                                 >
@@ -156,7 +156,7 @@ export function Sidebar() {
                                 <Link 
                                     href="/procurement"
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                         pathname === '/procurement' && "bg-white/20 text-white font-semibold shadow-md"
                                     )}
                                 >
@@ -170,7 +170,7 @@ export function Sidebar() {
                                 <Link 
                                     href="/production"
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                         pathname === '/production' && "bg-white/20 text-white font-semibold shadow-md"
                                     )}
                                 >
@@ -185,7 +185,7 @@ export function Sidebar() {
                                     <Link 
                                         href="/admin/register-user"
                                         className={cn(
-                                            "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                            "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                             pathname === '/admin/register-user' && "bg-white/20 text-white font-semibold shadow-md"
                                         )}
                                     >
@@ -197,7 +197,7 @@ export function Sidebar() {
                                     <Link 
                                         href="/admin/settings"
                                         className={cn(
-                                            "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white",
+                                            "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white",
                                             pathname === '/admin/settings' && "bg-white/20 text-white font-semibold shadow-md"
                                         )}
                                     >
@@ -213,13 +213,13 @@ export function Sidebar() {
             <div className="p-4 border-t border-white/20">
                  <button
                     onClick={logout}
-                    className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white dark:text-white/70 dark:hover:text-white w-full"
+                    className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white w-full"
                 >
                     <LogOut className="h-5 w-5" />
                     <span className="font-medium">Logout</span>
                 </button>
             </div>
-            <div className="p-4 border-t border-white/20 text-center text-xs text-primary-foreground/70 dark:text-slate-400">
+            <div className="p-4 border-t border-white/20 text-center text-xs text-primary-foreground/70">
                 <p>&copy; 2024 ClearBooks</p>
             </div>
         </aside>
