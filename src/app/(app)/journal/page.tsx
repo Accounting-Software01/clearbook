@@ -179,7 +179,7 @@ const JournalPage = () => {
         // Determine the API endpoint based on isOpeningEntry
         const apiEndpoint = isOpeningEntry 
             ? 'https://hariindustries.net/busa-api/database/opening-entry.php'
-            : 'https://hariindustries.net/busa-api/database/journal-entry.php';
+            : 'https://hariindustries.net/clearbook/journal-entry.php';
 
         const payload = {
             entryDate: format(entryDate, 'yyyy-MM-dd'),

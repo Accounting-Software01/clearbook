@@ -91,9 +91,10 @@ const TrialBalancePage = () => {
             const data: BackendBalance[] = await response.json();
 
             if (Array.isArray(data)) {
-                 const formattedData = data.map(entry => ({
+                const accountNameMap = new Map(chartOfAccounts.map(account => [account.code, account.name]));
+                const formattedData = data.map(entry => ({
                     accountId: entry.accountId,
-                    accountName: entry.accountName,
+                    accountName: accountNameMap.get(entry.accountId) || entry.accountName,
                     debit: entry.debit > 0 ? entry.debit : null,
                     credit: entry.credit > 0 ? entry.credit : null,
                 }));

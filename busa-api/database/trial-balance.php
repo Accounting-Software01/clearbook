@@ -40,17 +40,32 @@ try {
         SELECT
             acc.id AS accountId,
             acc.name AS accountName,
-            SUM(COALESCE(jvl.debit, 0)) AS totalDebit,
-            SUM(COALESCE(jvl.credit, 0)) AS totalCredit
-        FROM accounts AS acc
-        LEFT JOIN journal_voucher_lines AS jvl ON acc.id = jvl.account_id
-        LEFT JOIN journal_vouchers AS jv ON jvl.voucher_id = jv.id
-            AND jv.company_id = ? 
-            AND jv.entry_date <= ?
-        WHERE acc.company_id = ?
-        GROUP BY acc.id, acc.name
-        HAVING totalDebit > 0 OR totalCredit > 0
-        ORDER BY acc.id;
+            COALESCE(trans.totalDebit, 0) AS totalDebit,
+            COALESCE(trans.totalCredit, 0) AS totalCredit
+        FROM
+            accounts AS acc
+        LEFT JOIN
+            (
+                SELECT
+                    jvl.account_id,
+                    SUM(jvl.debit) AS totalDebit,
+                    SUM(jvl.credit) AS totalCredit
+                FROM
+                    journal_voucher_lines AS jvl
+                JOIN
+                    journal_vouchers AS jv ON jvl.voucher_id = jv.id
+                WHERE
+                    jvl.company_id = ?
+                    AND jv.entry_date <= ?
+                GROUP BY
+                    jvl.account_id
+            ) AS trans ON acc.id = trans.account_id
+        WHERE
+            acc.company_id = ?
+        HAVING
+            totalDebit > 0 OR totalCredit > 0
+        ORDER BY
+            acc.id;
     ";
 
     $stmt = $conn->prepare($sql);
