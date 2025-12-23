@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import { createPaymentVoucher, getJournalVouchers, updateVoucherStatus, getVoucherOverview, setGlobalLock } from '@/lib/db';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 import RecentVouchersTable from '@/components/ui/RecentVouchersTable';
 import IndividualVoucherPrint from '@/components/IndividualVoucherPrint';
 import jsPDF from 'jspdf';
@@ -30,7 +30,7 @@ interface VoucherOverview { pending_count: number; is_locked: boolean; }
 const NewPaymentVoucherPage = () => {
     // Hooks
     const { toast } = useToast();
-    const { user, isLoading: userLoading } = useUser();
+    const { user, isLoading: userLoading } = useAuth();
     const printRef = useRef<HTMLDivElement>(null);
 
     // State
@@ -50,7 +50,7 @@ const NewPaymentVoucherPage = () => {
     const [isFetchingPreview, setIsFetchingPreview] = useState(false);
 
     // Roles & Permissions
-    const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'admin_manager';
+    const isAdmin = user?.role === 'admin';
     const isAccountant = user?.role === 'accountant';
 
     // Download Handlers

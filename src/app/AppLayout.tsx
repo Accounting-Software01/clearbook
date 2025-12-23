@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { NotificationCenter } from '@/components/NotificationCenter';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 import SessionExpired from '@/components/SessionExpired';
+import { RecentActivities } from '@/components/RecentActivities';
 
 const navItems = [
     { href: '/dashboard', label: 'Dashboard' },
@@ -23,6 +24,12 @@ const navItems = [
     { href: '/inventory', label: 'Inventory', icon: Boxes },
     { href: '/customers', label: 'Customers' },
     { href: '/suppliers', label: 'Suppliers' },
+    { href: '/sales', label: 'Sales' },
+    { href: '/procurement', label: 'Procurement' },
+    { href: '/production', label: 'Production' },
+    { href: '/notifications', label: 'Notifications' },
+    { href: '/admin/settings', label: 'Settings' },
+    { href: '/admin/register-user', label: 'Register User' }
 ];
 
 export default function AppLayout({
@@ -32,22 +39,18 @@ export default function AppLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, isLoading, sessionExpired, logout } = useUser();
+    const { user, isLoading, logout } = useAuth();
     const [isCardCollapsed, setIsCardCollapsed] = useState(false);
 
     const isAuthPage = pathname === '/login' || pathname === '/signup';
 
     useEffect(() => {
-        if (!isLoading && !user && !isAuthPage && !sessionExpired) {
+        if (!isLoading && !user && !isAuthPage) {
             router.replace('/login');
         } else if (user && isAuthPage) {
             router.replace('/dashboard');
         }
-    }, [isLoading, user, isAuthPage, router, sessionExpired, pathname]);
-
-    if (sessionExpired) {
-        return <SessionExpired />;
-    }
+    }, [isLoading, user, isAuthPage, router, pathname]);
 
     if (isLoading || (!user && !isAuthPage)) {
         return (
@@ -70,7 +73,7 @@ export default function AppLayout({
             <main className="flex-1 h-full overflow-hidden">
                 <Card className="w-full h-full flex flex-col shadow-2xl bg-card/80 backdrop-blur-xl transition-all duration-300">
                     <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-4">
                            <div className="flex items-center gap-2 group">
                                 <Button size="icon-sm" variant="ghost" className="rounded-full bg-red-500 hover:bg-red-600 text-red-900" onClick={() => setIsCardCollapsed(!isCardCollapsed)}>
                                     <X className="opacity-0 group-hover:opacity-100 transition-opacity"/>
@@ -80,8 +83,9 @@ export default function AppLayout({
                                 </Button>
                                <button className="h-3 w-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors"></button>
                            </div>
-                            <div className="flex items-center gap-2 ml-4">
+                           <div className="flex items-center gap-4 border-l pl-4">
                                 <h1 className="text-base font-semibold">{title}</h1>
+                                <RecentActivities currentTitle={title} />
                             </div>
                         </div>
                          <div className="flex items-center gap-2">

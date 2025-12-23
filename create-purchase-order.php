@@ -1,3 +1,4 @@
+
 <?php
 /************************************
  * ERROR REPORTING
@@ -22,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 /************************************
  * DB CONNECTION
  ************************************/
-require_once __DIR__ . '/db_connect.php';
+// Assuming db_connect.php sets up $conn
+require_once 'src/app/api/db_connect.php';
 
 if (!isset($conn) || $conn->connect_error) {
     http_response_code(500);
@@ -35,19 +37,18 @@ if (!isset($conn) || $conn->connect_error) {
  ************************************/
 $data = json_decode(file_get_contents("php://input"));
 
-if (
-    !isset($data->company_id) ||
-    !isset($data->supplier_id) ||
-    !isset($data->order_date) ||
-    !isset($data->lines) ||
-    !isset($data->created_by_user_id)
-) {
-    http_response_code(400);
-    echo json_encode([
-        "success" => false,
-        "error" => "Incomplete data. Required fields: company_id, supplier_id, order_date, lines, created_by_user_id"
-    ]);
-    exit();
+$required_fields = [
+    'company_id', 'supplier_id', 'po_date', 'currency', 'created_by', 'lines'
+];
+foreach ($required_fields as $field) {
+    if (!isset($data->$field)) {
+        http_response_code(400);
+        echo json_encode([
+            "success" => false,
+            "error" => "Incomplete data. Missing field: " . $field
+        ]);
+        exit();
+    }
 }
 
 if (!is_array($data->lines) || count($data->lines) === 0) {
@@ -59,25 +60,44 @@ if (!is_array($data->lines) || count($data->lines) === 0) {
 /************************************
  * DATA PREPARATION
  ************************************/
-$company_id = trim($data->company_id);
+$company_id = (int)$data->company_id;
 $supplier_id = (int)$data->supplier_id;
-$order_date = $data->order_date;
+$po_date = $data->po_date;
 $expected_delivery_date = $data->expected_delivery_date ?? null;
-$notes = $data->notes ?? null;
-$user_id = (int)$data->created_by_user_id;
+$currency = $data->currency;
+$payment_terms = $data->payment_terms ?? null;
+$remarks = $data->remarks ?? null;
+$created_by = (int)$data->created_by;
+$status = 'Draft'; // Initial status
 
-$subtotal = 0;
+$total_subtotal = 0;
+$total_vat = 0;
+$grand_total = 0;
+
 foreach ($data->lines as $line) {
-    $quantity = (float)($line->quantity ?? 0);
-    $rate = (float)($line->rate ?? 0);
-    if ($quantity <= 0 || $rate < 0 || empty(trim($line->item_description))) {
-        http_response_code(400);
-        echo json_encode(["success" => false, "error" => "Invalid line item found. All lines must have a description and a quantity greater than zero."]);
-        exit();
+    if (!isset($line->item_id) || !isset($line->quantity) || !isset($line->unit_price)) {
+         http_response_code(400);
+         echo json_encode(["success" => false, "error" => "Invalid line item. Each line must have item_id, quantity, and unit_price."]);
+         exit();
     }
-    $subtotal += $quantity * $rate;
+    $quantity = (float)$line->quantity;
+    $unit_price = (float)$line->unit_price;
+    
+    $line_amount = $quantity * $unit_price;
+    $vat_amount = 0;
+
+    if (isset($line->vat_applicable) && $line->vat_applicable) {
+        $vat_rate = isset($line->vat_rate) ? (float)$line->vat_rate : 0;
+        $vat_amount = $line_amount * ($vat_rate / 100);
+    }
+    
+    $line_total = $line_amount + $vat_amount;
+
+    $total_subtotal += $line_amount;
+    $total_vat += $vat_amount;
+    $grand_total += $line_total;
 }
-$total_amount = $subtotal; // Assuming no tax for now
+
 
 /************************************
  * DATABASE TRANSACTION
@@ -87,72 +107,86 @@ $conn->begin_transaction();
 try {
     // 1. Generate PO Number
     $year = date('Y');
-    $seqSql = "SELECT MAX(CAST(SUBSTRING(po_number, 9) AS UNSIGNED)) as max_no FROM purchase_orders WHERE po_number LIKE ?";
+    $seqSql = "SELECT MAX(CAST(SUBSTRING(po_number, 9) AS UNSIGNED)) as max_no FROM purchase_orders WHERE company_id = ? AND po_number LIKE ?";
     $like = 'PO-' . $year . '%';
     $seqStmt = $conn->prepare($seqSql);
-    $seqStmt->bind_param("s", $like);
+    $seqStmt->bind_param("is", $company_id, $like);
     $seqStmt->execute();
     $res = $seqStmt->get_result()->fetch_assoc();
     $seqStmt->close();
     $nextNo = ($res['max_no'] ?? 0) + 1;
-    $po_number = 'PO-' . $year . '-' . str_pad($nextNo, 5, '0', STR_PAD_LEFT);
+    $po_number = 'PO-' . $year . '-' . str_pad($nextNo, 4, '0', STR_PAD_LEFT);
 
     // 2. Insert Purchase Order Header
-    $poSql = "INSERT INTO purchase_orders (company_id, po_number, supplier_id, order_date, expected_delivery_date, subtotal, total_amount, status, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)";
+    $poSql = "INSERT INTO purchase_orders 
+              (company_id, po_number, supplier_id, po_date, expected_delivery_date, currency, payment_terms, subtotal, vat_total, total_amount, status, remarks, created_by) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $poStmt = $conn->prepare($poSql);
     $poStmt->bind_param(
-        "ssissddsi",
+        "isissssdddssi",
         $company_id,
         $po_number,
         $supplier_id,
-        $order_date,
+        $po_date,
         $expected_delivery_date,
-        $subtotal,
-        $total_amount,
-        $notes,
-        $user_id
+        $currency,
+        $payment_terms,
+        $total_subtotal,
+        $total_vat,
+        $grand_total,
+        $status,
+        $remarks,
+        $created_by
     );
     $poStmt->execute();
     $poId = $poStmt->insert_id;
     $poStmt->close();
 
-    // 3. Insert Purchase Order Lines
-    $lineSql = "INSERT INTO purchase_order_lines (purchase_order_id, item_description, quantity, rate, total) VALUES (?, ?, ?, ?, ?)";
-    $lineStmt = $conn->prepare($lineSql);
+    // 3. Insert Purchase Order Items
+    $itemSql = "INSERT INTO purchase_order_items 
+                (purchase_order_id, item_id, description, quantity, unit_price, line_amount, vat_applicable, vat_rate, vat_amount, line_total) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    $itemStmt = $conn->prepare($itemSql);
 
     foreach ($data->lines as $line) {
+        $item_id = (int)$line->item_id;
+        $description = $line->description ?? null;
         $quantity = (float)$line->quantity;
-        $rate = (float)$line->rate;
-        $line_total = $quantity * $rate;
-        $lineStmt->bind_param(
-            "isddd",
+        $unit_price = (float)$line->unit_price;
+        $line_amount = $quantity * $unit_price;
+        
+        $vat_applicable = (isset($line->vat_applicable) && $line->vat_applicable) ? 1 : 0;
+        $vat_rate = ($vat_applicable) ? (float)($line->vat_rate ?? 0) : null;
+        $vat_amount = ($vat_applicable) ? $line_amount * ($vat_rate / 100) : 0;
+
+        $line_total = $line_amount + $vat_amount;
+
+        $itemStmt->bind_param(
+            "iisdddiddd",
             $poId,
-            $line->item_description,
+            $item_id,
+            $description,
             $quantity,
-            $rate,
+            $unit_price,
+            $line_amount,
+            $vat_applicable,
+            $vat_rate,
+            $vat_amount,
             $line_total
         );
-        $lineStmt->execute();
+        $itemStmt->execute();
     }
-    $lineStmt->close();
+    $itemStmt->close();
 
     // 4. Commit Transaction
     $conn->commit();
 
-    // 5. Fetch Created PO for Response (Optional but good practice)
-    $selectSql = "SELECT po.*, s.name as supplier_name FROM purchase_orders po JOIN suppliers s ON po.supplier_id = s.id WHERE po.id = ?";
-    $finalStmt = $conn->prepare($selectSql);
-    $finalStmt->bind_param("i", $poId);
-    $finalStmt->execute();
-    $createdPo = $finalStmt->get_result()->fetch_assoc();
-    $finalStmt->close();
-
-    // Respond
     http_response_code(201);
     echo json_encode([
         "success" => true, 
         "message" => "Purchase Order created successfully.",
-        "purchase_order" => $createdPo
+        "po_id" => $poId,
+        "po_number" => $po_number
     ]);
 
 } catch (Throwable $e) {
@@ -160,7 +194,7 @@ try {
     http_response_code(500);
     echo json_encode([
         "success" => false,
-        "error" => "Failed to create purchase order due to a server error.",
+        "error" => "Failed to create purchase order.",
         "details" => $e->getMessage()
     ]);
 }

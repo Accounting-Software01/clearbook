@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -7,13 +6,20 @@ import { Loader2 } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 
 
+// Define a user type that matches the data from session storage
+interface User {
+    id: string;
+    [key: string]: any;
+}
+
 const useUser = () => {
-    const [user, setUser] = useState<{ uid: string } | null>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const checkUser = async () => {
-            const currentUser = await getCurrentUser();
+        // getUser is synchronous, so no need for async/await.
+        const checkUser = () => {
+            const currentUser = getUser();
             setUser(currentUser);
             setIsLoading(false);
         }
@@ -38,9 +44,10 @@ export default function RootPage() {
     }
   }, [isLoading, user, router]);
 
+  // Render a loading spinner while checking auth state to prevent flash of content
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    <div className="flex h-screen items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin" />
     </div>
   );
 }

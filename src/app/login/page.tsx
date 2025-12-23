@@ -111,9 +111,7 @@ export default function LoginPage() {
                 <div className="mt-4 text-center text-sm">
                 This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply.
                   Don&apos;t have an account?{' '}
-                  <Link href="/signup" className="underline">
-                    Sign up
-                  </Link>
+                
                 </div>
               </CardContent>
             </div>

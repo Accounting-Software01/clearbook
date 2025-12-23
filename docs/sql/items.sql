@@ -1,0 +1,14 @@
+CREATE TABLE items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    unit_price DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    vat_rate DECIMAL(5, 2) NULL, 
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (company_id) REFERENCES companies(id),
+    INDEX(name)
+);

@@ -1,7 +1,7 @@
-"use client";
+'use client';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getLanguageMapping, Language } from '@/lib/contextual-language';
-import { useUser } from './UserContext'; // Correctly using useUser from UserContext
+import { useAuth } from '@/hooks/useAuth';
 
 interface LanguageContextType {
     language: Language | null;
@@ -11,7 +11,7 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
-    const { user } = useUser();
+    const { user } = useAuth();
     const companyType = user?.company_type || 'hospital'; // Default to 'hospital' if not available
 
     const [language, setLanguage] = useState<Language | null>(() => getLanguageMapping(companyType));

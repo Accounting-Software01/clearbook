@@ -15,9 +15,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { JournalSettings } from '@/components/JournalSettings'
 import { JournalApprovals } from '@/components/JournalApprovals'
+import ChartOfAccounts from '@/components/accounting/ChartOfAccounts'
 
 // Placeholder components for the new accounting sections
-const ChartOfAccounts = () => <Card><CardHeader><CardTitle>Chart of Accounts</CardTitle></CardHeader><CardContent><p>Create and manage your ledger accounts here.</p></CardContent></Card>
 const Taxes = () => <Card><CardHeader><CardTitle>Tax Settings</CardTitle></CardHeader><CardContent><p>Configure VAT, withholding tax, and other tax settings.</p></CardContent></Card>
 
 const settingsNav = [

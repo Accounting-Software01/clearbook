@@ -1,111 +1,49 @@
+const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
+                    
 
-// src/lib/api.ts
+/**
+ * A centralized API fetch function.
+ * All frontend requests to the backend API should use this function.
+ * It automatically includes credentials, sets the correct headers, 
+ * and handles JSON parsing and error formatting.
+ *
+ * @param endpoint The API endpoint to call (e.g., '/login.php').
+ * @param options The standard `fetch` options object.
+ * @returns The parsed JSON response from the API.
+ * @throws An error with a user-friendly message if the request fails.
+ */
+export async function api<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const url = `${API_BASE_URL}/${endpoint}`;
 
-const API_BASE_URL = 'https://hariindustries.net/clearbook';
+    const defaultOptions: RequestInit = {
+        // CRITICAL: Always include credentials (cookies) with every request.
+        credentials: 'include',
+        headers: {
+            // Assume JSON content type unless specified otherwise.
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+    };
 
-// Helper to handle API responses
-async function handleResponse<T>(response: Response): Promise<T> {
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `Server responded with status ${response.status}` }));
-        throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+    // Merge default options with any provided options.
+    const finalOptions = { ...defaultOptions, ...options };
+
+    try {
+        const response = await fetch(url, finalOptions);
+
+        // Try to parse the body for both successful and failed responses.
+        const data = await response.json();
+
+        if (!response.ok) {
+            // Use the error message from the backend, or a default one.
+            throw new Error(data.message || data.error || `HTTP Error: ${response.status}`);
+        }
+
+        return data;
+
+    } catch (error: any) {
+        // Re-throw the error to be caught by the calling function's try/catch block.
+        // This allows components to handle specific errors if needed.
+        throw new Error(error.message || 'An unexpected network error occurred.');
     }
-    const data = await response.json();
-    if (data.success === false) {
-        throw new Error(data.error || 'API returned a failure status.');
-    }
-    // The actual data is often nested in a 'data' property
-    return data.data || data;
 }
-
-// Interfaces
-export interface JournalSettings {
-  manualJournalsEnabled: boolean;
-  requireApproval: boolean;
-  allowBackdating: boolean;
-  backdatingLimitDays: number;
-  periodLockDate?: string | null;
-  yearEndLockDate?: string | null;
-  restrictedAccounts: string;
-}
-
-export interface Payee {
-    id: string;
-    name: string;
-    type: string;
-}
-
-export interface JournalVoucher {
-    id: number;
-    voucher_number: string;
-    entry_date: string;
-    narration: string;
-    total_debits: number;
-    status: string;
-}
-
-export interface JournalEntryLine {
-    id: number;
-    accountId: string;
-    debit: number;
-    credit: number;
-    description?: string;
-    payeeId?: string;
-}
-
-// API Functions
-
-export const getJournalSettings = async (companyId: number, userId: string): Promise<JournalSettings> => {
-    const response = await fetch(`${API_BASE_URL}/get_company_settings.php?company_id=${companyId}&user_id=${userId}`);
-    return handleResponse<JournalSettings>(response);
-};
-
-export const updateJournalSettings = async (companyId: number, userId: string, settings: Partial<JournalSettings>): Promise<{ success: boolean, message: string }> => {
-    const response = await fetch(`${API_BASE_URL}/update_company_settings.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, user_id: userId, ...settings })
-    });
-    return handleResponse<{ success: boolean, message: string }>(response);
-};
-
-// External PHP API
-export const getPayees = async (companyId: number, userId: string): Promise<Payee[]> => {
-    const response = await fetch(`${API_BASE_URL}/get-payees.php?company_id=${companyId}&user_id=${userId}`);
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-};
-
-export const getJournalVouchers = async (companyId: number, userId: string): Promise<JournalVoucher[]> => {
-    const response = await fetch(`${API_BASE_URL}/get-journal-vouchers.php?company_id=${companyId}&user_id=${userId}`);
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-};
-
-export const getVoucherDetails = async (voucherId: number, companyId: number, userId: string): Promise<{ success: boolean, voucher: any, error?: string }> => {
-    const response = await fetch(`${API_BASE_URL}/get_voucher_details.php?voucher_id=${voucherId}&company_id=${companyId}&user_id=${userId}`);
-    return handleResponse<{ success: boolean, voucher: any, error?: string }>(response);
-};
-
-export const updateJournalStatus = async (voucherId: number, newStatus: 'approved' | 'rejected', companyId: number, userId: string): Promise<{ success: boolean, error?: string }> => {
-    const response = await fetch(`${API_BASE_URL}/update-journal-status.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, user_id: userId, voucher_id: voucherId, status: newStatus })
-    });
-    return handleResponse<{ success: boolean, error?: string }>(response);
-};
-
-export const postJournalEntry = async (payload: {
-    entryDate: string;
-    narration: string;
-    lines: Omit<JournalEntryLine, 'payees'|'id'>[];
-    company_id: number;
-    user_id: string;
-}): Promise<{ status: string; voucher_number: string; error?: string, success: boolean }> => {
-    const response = await fetch(`${API_BASE_URL}/journal-entry.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    return handleResponse<{ status: string; voucher_number: string; error?: string, success: boolean }>(response);
-};

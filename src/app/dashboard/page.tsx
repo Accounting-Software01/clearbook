@@ -5,8 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, UserPlus, Settings, Star, UserCircle, Loader2, TrendingUp, DollarSign, ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useUser } from '@/contexts/UserContext';
-import SessionExpired from '@/components/SessionExpired';
+import { useAuth } from '@/hooks/useAuth';
 
 // Motivational Quotes
 const motivationalQuotes = [
@@ -18,16 +17,13 @@ const motivationalQuotes = [
 ];
 
 const userRoles = [
-    "admin_manager",
+    "admin",
     "accountant",
-    "sales_manager",
-    "store_manager",
-    "procurement_manager",
-    "production_manager"
+    "staff"
 ];
 
 export default function DashboardPage() {
-  const { user, isLoading, sessionExpired } = useUser();
+  const { user, isLoading } = useAuth();
   const [lastLogin, setLastLogin] = useState<string | null>(null);
   const [quote, setQuote] = useState("");
 
@@ -44,14 +40,10 @@ export default function DashboardPage() {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
   }
 
-  if (sessionExpired) {
-      return <SessionExpired />;
-  }
-
   const sortedUserRoles = user ? [user.role, ...userRoles.filter(r => r !== user.role)] : userRoles;
 
   if (!user) {
-    return null; // Should not happen if sessionExpired is handled, but as a fallback
+    return null; 
   }
 
   return (
@@ -124,7 +116,7 @@ export default function DashboardPage() {
                 <div className="pt-4">
                     <h3 className="text-xl font-semibold mb-4">System Status & Settings</h3>
                     <div className="grid gap-4 md:grid-cols-3">
-                        {user.role === 'admin_manager' && (
+                        {user.role === 'admin' && (
                           <>
                             <div className="p-4 flex flex-col items-center justify-center text-center rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                                 <UserPlus className="w-8 h-8 mb-2 text-primary"/>
