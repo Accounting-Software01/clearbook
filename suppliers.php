@@ -1,51 +1,221 @@
 <?php
 ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-header("Access-Control-Allow-Origin: *");
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+$allowed_origins = [
+    'https://9003-firebase-studiogit-1765450741734.cluster-cbeiita7rbe7iuwhvjs5zww2i4.cloudworkstations.dev',
+    'https://hariindustries.net'
+];
+
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: $origin");
+}
+
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
-header("Content-Type: application/json; charset=UTF-8");
+header("Content-Type: application/json");
 
-require_once __DIR__ . '/db_connect.php';
-
-if (!isset($conn) || $conn->connect_error) {
-    http_response_code(500);
-    echo json_encode(["success" => false, "error" => "Database connection failed"]);
-    exit();
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
 }
 
-$company_id = $_GET['company_id'] ?? null;
+require_once 'db_connect.php';
 
-if (!$company_id) {
-    http_response_code(400);
-    echo json_encode(["success" => false, "error" => "Company ID is required."]);
-    exit();
-}
+global $conn;
+$method = $_SERVER['REQUEST_METHOD'];
 
 try {
-    $sql = "SELECT id, name, email FROM suppliers WHERE company_id = ? AND is_active = 1 ORDER BY name ASC";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $company_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $suppliers = [];
-    while ($row = $result->fetch_assoc()) {
-        $suppliers[] = $row;
-    }
-    
-    $stmt->close();
-    $conn->close();
+    switch ($method) {
 
-    http_response_code(200);
-    echo json_encode(['success' => true, 'data' => $suppliers]);
+        case 'GET':
+            if (empty($_GET['company_id'])) {
+                throw new Exception('Company ID is required.', 400);
+            }
+            $company_id = trim($_GET['company_id']);
+            handle_get($conn, $company_id);
+            break;
+
+        case 'POST':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Invalid JSON data received', 400);
+            }
+
+            if (empty($data['company_id']) || empty($data['user_id'])) {
+                throw new Exception('Company ID and User ID are required.', 400);
+            }
+
+            $company_id = trim($data['company_id']);
+            $user_id    = (int)$data['user_id'];
+
+            handle_post($conn, $data, $company_id, $user_id);
+            break;
+
+        default:
+            http_response_code(405);
+            echo json_encode(['success' => false, 'error' => "Method {$method} not allowed"]);
+    }
 
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        "success" => false, 
-        "error" => "An error occurred while fetching suppliers.",
-        "details" => $e->getMessage()
-    ]);
+    $code = ($e->getCode() >= 400 && $e->getCode() < 600) ? $e->getCode() : 500;
+    http_response_code($code);
+    echo json_encode(['success' => false, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+} finally {
+    if ($conn) {
+        $conn->close();
+    }
+}
+
+function handle_get($conn, string $company_id) {
+
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
+
+    if ($id) {
+        $query = "SELECT * FROM suppliers WHERE id = ? AND company_id = ?";
+        $stmt = $conn->prepare($query);
+        if (!$stmt) throw new Exception($conn->error, 500);
+
+        $stmt->bind_param("is", $id, $company_id);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $data = $result->fetch_assoc();
+        $stmt->close();
+
+    } else {
+        $query = "SELECT id, code, name, contact_person, ap_account_id, status FROM suppliers WHERE company_id = ? ORDER BY name";
+        $stmt = $conn->prepare($query);
+        if (!$stmt) throw new Exception($conn->error, 500);
+
+        $stmt->bind_param("s", $company_id);
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+        $data = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+
+    echo json_encode($data);
+}
+
+function handle_post($conn, array $data, string $company_id, int $user_id) {
+
+    $conn->begin_transaction();
+
+    try {
+        if (empty(trim($data['name'])) || empty(trim($data['phone']))) {
+            throw new Exception('Supplier name and phone number are required.', 400);
+        }
+
+        $code = generate_supplier_code($conn, $company_id);
+
+        $query = "
+            INSERT INTO suppliers (
+                company_id, code, name, type, contact_person, phone, email, status,
+                country, state, city, billing_address, ap_account_id, currency,
+                payment_terms, vat_registered, vat_number, wht_applicable,
+                bank_name, account_name, account_number, preferred_payment_method,
+                created_by
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ";
+
+        $stmt = $conn->prepare($query);
+        if (!$stmt) {
+            throw new Exception("Database prepare failed: " . $conn->error, 500);
+        }
+
+        $payment_terms_val = 0; 
+        if (isset($data['payment_terms']) && strtolower($data['payment_terms']) !== 'immediate') {
+            $payment_terms_val = (int)filter_var($data['payment_terms'], FILTER_SANITIZE_NUMBER_INT);
+        }
+
+        $vat_registered_val = (isset($data['vat_registered']) && $data['vat_registered'] === 'yes') ? 1 : 0;
+        $wht_applicable_val = (isset($data['wht_applicable']) && $data['wht_applicable'] === 'yes') ? 1 : 0;
+
+        $name = $data['name'] ?? '';
+        $type = $data['type'] ?? '';
+        $contact_person = $data['contact_person'] ?? '';
+        $phone = $data['phone'] ?? '';
+        $email = $data['email'] ?? '';
+        $status = $data['status'] ?? 'active';
+        $country = $data['country'] ?? '';
+        $state = $data['state'] ?? '';
+        $city = $data['city'] ?? '';
+        $address = $data['address'] ?? '';
+        $ap_account_id = isset($data['ap_account_id']) ? (int)$data['ap_account_id'] : 0;
+        $currency = $data['currency'] ?? '';
+        $vat_number = $data['vat_number'] ?? '';
+        $bank_name = $data['bank_name'] ?? '';
+        $account_name = $data['account_name'] ?? '';
+        $account_number = $data['account_number'] ?? '';
+        $preferred_payment_method = $data['preferred_payment_method'] ?? '';
+
+        $stmt->bind_param(
+            "ssssssssssssisisissssi",
+            $company_id,
+            $code,
+            $name,
+            $type,
+            $contact_person,
+            $phone,
+            $email,
+            $status,
+            $country,
+            $state,
+            $city,
+            $address,
+            $ap_account_id,
+            $currency,
+            $payment_terms_val,
+            $vat_registered_val,
+            $vat_number,
+            $wht_applicable_val,
+            $bank_name,
+            $account_name,
+            $account_number,
+            $preferred_payment_method,
+            $user_id
+        );
+
+        if (!$stmt->execute()) {
+            throw new Exception("Database execution failed: " . $stmt->error, 500);
+        }
+
+        $supplier_id = $stmt->insert_id;
+        $stmt->close();
+
+        $conn->commit();
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Supplier created successfully.',
+            'supplier_id' => $supplier_id,
+            'supplier_code' => $code
+        ]);
+
+    } catch (Exception $e) {
+        $conn->rollback();
+        throw $e;
+    }
+}
+
+function generate_supplier_code($conn, string $company_id): string {
+
+    $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM suppliers WHERE company_id = ?");
+    if (!$stmt) throw new Exception("Prepare failed: " . $conn->error);
+
+    $stmt->bind_param("s", $company_id);
+    $stmt->execute();
+
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    $next = $row['count'] + 1;
+    return 'SUP' . str_pad($next, 4, '0', STR_PAD_LEFT);
 }
 ?>

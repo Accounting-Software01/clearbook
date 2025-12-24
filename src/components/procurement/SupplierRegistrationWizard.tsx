@@ -32,8 +32,6 @@ interface SupplierData {
     // Step 3
     ap_account_id: string;
     currency: string;
-    opening_balance: number;
-    balance_type: 'credit' | 'debit';
     payment_terms: 'immediate' | '7' | '14' | '30' | 'custom';
      // Step 4
     vat_registered: 'yes' | 'no';
@@ -55,7 +53,7 @@ interface SupplierSaveResponse {
 interface SupplierRegistrationWizardProps {
     isOpen: boolean;
     onOpenChange: (isOpen: boolean) => void;
-    onComplete: () => void;
+    onComplete: (supplierId?: string, supplierName?: string) => void;
 }
 
 const STEPS = [
@@ -88,8 +86,6 @@ export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }:
         address: '',
         ap_account_id: '201020',
         currency: 'NGN',
-        opening_balance: 0,
-        balance_type: 'credit',
         payment_terms: 'immediate',
         vat_registered: 'no',
         vat_number: '',
@@ -121,7 +117,6 @@ export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }:
 
     const handleSave = async () => {
        if (!user || !user.uid || !user.company_id) {
-
             toast({
                 title: "Authentication Error",
                 description: "Your user session is invalid. Please log out and log back in.",
@@ -144,7 +139,7 @@ export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }:
             });
 
             toast({ title: "Success", description: result.message || 'Supplier created successfully!' });
-            onComplete();
+            onComplete(result.supplier_id, supplierData.name);
         } catch (error: any) {
             toast({ title: "Save Failed", description: error.message || "An unknown error occurred.", variant: "destructive" });
         } finally {
@@ -249,19 +244,6 @@ export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }:
                                     </SelectContent>
                                 </Select>
                             </div>
-                        </div>
-                        <div className="border-t pt-4 mt-4">
-                             <Label>Opening Balance</Label>
-                             <div className="grid grid-cols-2 gap-4 mt-2">
-                                 <Input name="opening_balance" type="number" value={supplierData.opening_balance || 0} onChange={handleInputChange} />
-                                 <Select name="balance_type" value={supplierData.balance_type} onValueChange={(value) => handleSelectChange('balance_type', value)}>
-                                     <SelectTrigger><SelectValue /></SelectTrigger>
-                                     <SelectContent>
-                                         <SelectItem value="credit">Credit (You owe supplier)</SelectItem>
-                                         <SelectItem value="debit">Debit (Supplier owes you)</SelectItem>
-                                     </SelectContent>
-                                 </Select>
-                             </div>
                         </div>
                         <div className="space-y-2 pt-4 mt-4 border-t">
                             <Label htmlFor="payment_terms">Payment Terms</Label>

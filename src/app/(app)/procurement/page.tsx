@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -17,6 +16,8 @@ import { SupplierRegistrationWizard } from '@/components/procurement/SupplierReg
 import { PurchaseOrderList } from '@/components/procurement/PurchaseOrderList';
 import { NewPurchaseOrderForm } from '@/components/procurement/NewPurchaseOrderForm';
 import { GrnTabContent } from '@/components/procurement/GrnTabContent';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { SupplierOpeningBalanceForm } from '@/components/procurement/SupplierOpeningBalanceForm';
 
 // --- TYPES ---
 interface Supplier {
@@ -41,6 +42,8 @@ export default function ProcurementPage() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [showOpeningBalanceDialog, setShowOpeningBalanceDialog] = useState(false);
+    const [newlyCreatedSupplier, setNewlyCreatedSupplier] = useState<{id: string, name: string} | null>(null);
 
 
     // --- DATA FETCHING & MUTATIONS ---
@@ -49,7 +52,9 @@ export default function ProcurementPage() {
         setIsLoading(true);
         setError(null);
         try {
-            const data = await api<Supplier[]>('supplier.php', { params: { company_id: user.company_id } });
+            // CORRECTED: Manually construct the query string for the GET request
+            const endpoint = `supplier.php?company_id=${user.company_id}`;
+            const data = await api<Supplier[]>(endpoint);
             setSuppliers(data);
         } catch (e: any) {
             setError(e.message);
@@ -65,9 +70,24 @@ export default function ProcurementPage() {
         }
     }, [user, activeTab, fetchSuppliers]);
 
-    const handleWizardComplete = () => {
+    const handleWizardComplete = (supplierId?: string, supplierName?: string) => {
         setIsWizardOpen(false);
-        fetchSuppliers();
+        fetchSuppliers(); // Refresh the list
+        if (supplierId && supplierName) {
+            setNewlyCreatedSupplier({ id: supplierId, name: supplierName });
+            setShowOpeningBalanceDialog(true);
+        }
+    }
+
+    const handleCloseOpeningBalanceDialog = () => {
+        setShowOpeningBalanceDialog(false);
+        setNewlyCreatedSupplier(null);
+        setActiveTab('suppliers');
+    }
+
+    const handleAddOpeningBalance = () => {
+        setShowOpeningBalanceDialog(false);
+        setActiveTab('opening_balance');
     }
 
     // --- RENDER ---
@@ -82,11 +102,13 @@ export default function ProcurementPage() {
             </header>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                 <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="orders"><List className="mr-2 h-4 w-4"/>Purchase Orders</TabsTrigger>
                     <TabsTrigger value="new_po"><FilePlus className="mr-2 h-4 w-4"/>New PO</TabsTrigger>
                     <TabsTrigger value="grn"><Truck className="mr-2 h-4 w-4"/>Goods Received</TabsTrigger>
                     <TabsTrigger value="suppliers"><Building className="mr-2 h-4 w-4"/>Suppliers</TabsTrigger>
+                    {/* This tab is only visible when the opening balance form needs to be shown */}
+                    {activeTab === 'opening_balance' && <TabsTrigger value="opening_balance">Opening Balance</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="orders" className="mt-4">
@@ -158,6 +180,11 @@ export default function ProcurementPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                <TabsContent value="opening_balance" className="mt-4">
+                    {newlyCreatedSupplier && <SupplierOpeningBalanceForm supplier={newlyCreatedSupplier} onComplete={() => setActiveTab('suppliers')} />}
+                </TabsContent>
+
             </Tabs>
 
             <SupplierRegistrationWizard 
@@ -165,6 +192,21 @@ export default function ProcurementPage() {
                 onOpenChange={setIsWizardOpen} 
                 onComplete={handleWizardComplete} 
             />
+
+            <AlertDialog open={showOpeningBalanceDialog} onOpenChange={setShowOpeningBalanceDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Supplier Successfully Created</AlertDialogTitle>
+                        <AlertDialogDescription>
+                           Does supplier {newlyCreatedSupplier?.name} have an opening balance that you want to record?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={handleCloseOpeningBalanceDialog}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleAddOpeningBalance}>Yes, add opening balance</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
         </div>
     );
