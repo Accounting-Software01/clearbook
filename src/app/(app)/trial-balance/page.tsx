@@ -18,7 +18,7 @@ import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DateRange } from 'react-day-picker';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -48,7 +48,7 @@ const formatCurrency = (amount: number | null | undefined) => {
 
 const TrialBalancePage = () => {
     const { language } = useLanguage();
-    const { user } = useUser();
+    const { user } = useAuth();
     const [reportData, setReportData] = useState<TrialBalanceEntry[]>([]);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: new Date(new Date().getFullYear(), 0, 1),

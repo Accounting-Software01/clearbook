@@ -17,7 +17,7 @@ import { Loader2, AlertCircle, FileDown } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import type { DateRange } from 'react-day-picker';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -56,7 +56,7 @@ const formatCurrency = (amount: number) => {
 
 const ProfitLossPage = () => {
     const { language } = useLanguage();
-    const { user } = useUser();
+    const { user } = useAuth();
     const [reportData, setReportData] = useState<ProfitLossData | null>(null);
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: new Date(new Date().getFullYear(), 0, 1),
