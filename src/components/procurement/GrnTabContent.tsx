@@ -7,13 +7,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, AlertCircle, PlusCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
-import { PurchaseOrder } from '@/types/purchase-order';
 import { Button } from '@/components/ui/button';
 import { GrnCreator } from './GrnCreator';
 
+// Simplified type to match the actual API response for the list view
+interface PurchaseOrderForList {
+    id: string;
+    po_number: string;
+    supplier_name: string; // Corrected from supplier.name
+    po_date: string;       // Corrected from order_date
+    status: string;
+}
+
 export function GrnTabContent() {
     const { user } = useAuth();
-    const [selectableOrders, setSelectableOrders] = useState<PurchaseOrder[]>([]);
+    const [selectableOrders, setSelectableOrders] = useState<PurchaseOrderForList[]>([]);
     const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -23,19 +31,17 @@ export function GrnTabContent() {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await api<{ success: boolean; purchase_orders: PurchaseOrder[] }>('get-purchase-orders.php', {
-                params: { company_id: user.company_id }
-            });
-            if (response.success) {
-                // Filter for orders that can be received against
-                const openOrders = response.purchase_orders.filter(
-                    po => po.status === 'Approved' || po.status === 'Partially Received'
-                );
-                setSelectableOrders(openOrders);
-            } else {
-                setError("Failed to load purchase orders.");
-            }
+            // Correctly construct the URL with the company_id query parameter
+            const url = `get-purchase-orders.php?company_id=${user.company_id}`;
+            const orders = await api<PurchaseOrderForList[]>(url);
+
+            // Filter for orders that can be received against ('Approved' or 'Partially Received')
+            const openOrders = orders.filter(
+                po => po.status === 'Approved' || po.status === 'Partially Received'
+            );
+            setSelectableOrders(openOrders);
         } catch (e: any) {
+            console.error("API Error:", e);
             setError("An error occurred while fetching orders.");
         } finally {
             setIsLoading(false);
@@ -43,33 +49,35 @@ export function GrnTabContent() {
     }, [user]);
 
     useEffect(() => {
-        // Fetch orders only if no PO is selected
         if (!selectedPoId) {
             fetchSelectableOrders();
         }
     }, [fetchSelectableOrders, selectedPoId]);
 
     const handleGrnCreated = () => {
-        // After GRN is created, reset to the selection list
-        setSelectedPoId(null);
+        setSelectedPoId(null); // Go back to the list view
+        fetchSelectableOrders(); // Refresh the list of orders
     };
     
     const handleCancel = () => {
         setSelectedPoId(null);
-    }
+    };
 
+    // If a PO is selected, show the GRN creation screen
     if (selectedPoId) {
         return <GrnCreator poId={selectedPoId} onGrnCreated={handleGrnCreated} onCancel={handleCancel} />;
     }
 
+    // Display loading or error states
     if (isLoading) return <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-    if (error) return <div className="text-destructive text-center"><AlertCircle className="mx-auto mb-2" />{error}</div>;
+    if (error) return <div className="text-destructive text-center py-10"><AlertCircle className="mx-auto mb-2 h-8 w-8" /><p>{error}</p></div>;
 
+    // Display the list of selectable purchase orders
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Create Goods Received Note</CardTitle>
-                <CardDescription>Select a Purchase Order to receive items against.</CardDescription>
+                <CardTitle>Create Goods Received Note (GRN)</CardTitle>
+                <CardDescription>Select an approved Purchase Order to receive items against.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Table>
@@ -84,12 +92,12 @@ export function GrnTabContent() {
                     </TableHeader>
                     <TableBody>
                         {selectableOrders.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-center py-10">No open purchase orders available to receive against.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={5} className="text-center py-10">No approved purchase orders available to receive against.</TableCell></TableRow>
                         ) : selectableOrders.map(po => (
                             <TableRow key={po.id}>
                                 <TableCell className="font-mono">{po.po_number}</TableCell>
-                                <TableCell>{po.supplier.name}</TableCell>
-                                <TableCell>{po.order_date}</TableCell>
+                                <TableCell>{po.supplier_name}</TableCell> {/* Corrected */} 
+                                <TableCell>{new Date(po.po_date).toLocaleDateString()}</TableCell> {/* Corrected and formatted */}
                                 <TableCell>{po.status}</TableCell>
                                 <TableCell className="text-right">
                                     <Button size="sm" onClick={() => setSelectedPoId(po.id)}>

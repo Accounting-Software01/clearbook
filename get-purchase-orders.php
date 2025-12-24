@@ -6,7 +6,7 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json; charset=UTF-8");
 
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/src/app/api/db_connect.php';
 
 if (!isset($conn) || $conn->connect_error) {
     http_response_code(500);
@@ -15,6 +15,7 @@ if (!isset($conn) || $conn->connect_error) {
 }
 
 $company_id = $_GET['company_id'] ?? null;
+$po_id = $_GET['id'] ?? null;
 
 if (!$company_id) {
     http_response_code(400);
@@ -23,12 +24,11 @@ if (!$company_id) {
 }
 
 try {
-    // Main query to get purchase orders and supplier name
     $sql = "
         SELECT 
             po.id, 
             po.po_number, 
-            po.order_date, 
+            po.order_date as po_date, 
             po.expected_delivery_date, 
             po.total_amount, 
             po.status,
@@ -40,43 +40,43 @@ try {
             suppliers s ON po.supplier_id = s.id
         WHERE 
             po.company_id = ?
-        ORDER BY 
-            po.order_date DESC, po.id DESC
     ";
+    
+    $params = [$company_id];
+    $types = "s";
+
+    if ($po_id) {
+        $sql .= " AND po.id = ?";
+        $params[] = $po_id;
+        $types .= "i";
+    }
+
+    $sql .= " ORDER BY po.order_date DESC, po.id DESC";
 
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $company_id);
+    $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $result = $stmt->get_result();
 
     $purchase_orders = [];
     while ($po = $result->fetch_assoc()) {
-        // Sub-query to get lines for each purchase order
-        $lineSql = "SELECT id, item_description, quantity, rate, total FROM purchase_order_lines WHERE purchase_order_id = ?";
+        $lineSql = "SELECT id, item_description, quantity, rate as unit_price, total as total_price FROM purchase_order_lines WHERE purchase_order_id = ?";
         $lineStmt = $conn->prepare($lineSql);
         $lineStmt->bind_param("i", $po['id']);
         $lineStmt->execute();
         $linesResult = $lineStmt->get_result();
         $lines = [];
         while ($line = $linesResult->fetch_assoc()) {
+            $line['quantity'] = (int)$line['quantity'];
+            $line['unit_price'] = (float)$line['unit_price'];
+            $line['total_price'] = (float)$line['total_price'];
             $lines[] = $line;
         }
         $lineStmt->close();
 
-        // Structure the response object
-        $purchase_orders[] = [
-            'id' => $po['id'],
-            'po_number' => $po['po_number'],
-            'order_date' => $po['order_date'],
-            'expected_delivery_date' => $po['expected_delivery_date'],
-            'total_amount' => (float)$po['total_amount'],
-            'status' => $po['status'],
-            'supplier' => [
-                'id' => $po['supplier_id'],
-                'name' => $po['supplier_name']
-            ],
-            'lines' => $lines
-        ];
+        $po['items'] = $lines;
+        $po['total_amount'] = (float)$po['total_amount'];
+        $purchase_orders[] = $po;
     }
 
     $stmt->close();

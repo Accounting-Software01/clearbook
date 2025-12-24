@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Loader2, MoreHorizontal, AlertCircle, FilePlus, Building, Truck, List } from 'lucide-react';
+import { PlusCircle, Loader2, AlertCircle, FilePlus, Building, Truck, List, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +16,8 @@ import { NewPurchaseOrderForm } from '@/components/procurement/NewPurchaseOrderF
 import { GrnTabContent } from '@/components/procurement/GrnTabContent';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { SupplierOpeningBalanceForm } from '@/components/procurement/SupplierOpeningBalanceForm';
+import { SupplierActions } from '@/components/procurement/SupplierActions';
+import { ApprovalsTab } from '@/components/procurement/ApprovalsTab';
 
 // --- TYPES ---
 interface Supplier {
@@ -45,6 +45,7 @@ export default function ProcurementPage() {
     const [showOpeningBalanceDialog, setShowOpeningBalanceDialog] = useState(false);
     const [newlyCreatedSupplier, setNewlyCreatedSupplier] = useState<{id: string, name: string} | null>(null);
 
+    const isAdmin = user?.role === 'admin';
 
     // --- DATA FETCHING & MUTATIONS ---
     const fetchSuppliers = useCallback(async () => {
@@ -52,7 +53,6 @@ export default function ProcurementPage() {
         setIsLoading(true);
         setError(null);
         try {
-            // CORRECTED: Manually construct the query string for the GET request
             const endpoint = `supplier.php?company_id=${user.company_id}`;
             const data = await api<Supplier[]>(endpoint);
             setSuppliers(data);
@@ -90,6 +90,18 @@ export default function ProcurementPage() {
         setActiveTab('opening_balance');
     }
 
+    // --- Action Handlers ---
+    const handleEditSupplier = (supplier: Supplier) => {
+        console.log('Edit supplier:', supplier);
+        toast({ title: "Edit Action Triggered", description: `You can now implement the logic to edit ${supplier.name}.`});
+    }
+
+    const handleDeleteSupplier = (supplier: Supplier) => {
+        console.log('Delete supplier:', supplier);
+        toast({ title: "Delete Action Triggered", description: `You can now implement the logic to delete ${supplier.name}.`, variant: 'destructive'});
+    }
+
+
     // --- RENDER ---
     return (
         <div className="p-4 sm:p-6 lg:p-8 space-y-6">
@@ -102,11 +114,12 @@ export default function ProcurementPage() {
             </header>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                 <TabsList className="grid w-full grid-cols-5">
+                 <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
                     <TabsTrigger value="orders"><List className="mr-2 h-4 w-4"/>Purchase Orders</TabsTrigger>
                     <TabsTrigger value="new_po"><FilePlus className="mr-2 h-4 w-4"/>New PO</TabsTrigger>
                     <TabsTrigger value="grn"><Truck className="mr-2 h-4 w-4"/>Goods Received</TabsTrigger>
                     <TabsTrigger value="suppliers"><Building className="mr-2 h-4 w-4"/>Suppliers</TabsTrigger>
+                     {isAdmin && <TabsTrigger value="approvals"><ShieldCheck className="mr-2 h-4 w-4"/>Approvals</TabsTrigger>}
                     {/* This tab is only visible when the opening balance form needs to be shown */}
                     {activeTab === 'opening_balance' && <TabsTrigger value="opening_balance">Opening Balance</TabsTrigger>}
                 </TabsList>
@@ -131,9 +144,11 @@ export default function ProcurementPage() {
                                     <CardTitle>All Suppliers</CardTitle>
                                     <CardDescription>Manage your company's suppliers.</CardDescription>
                                 </div>
-                                <Button onClick={() => setIsWizardOpen(true)}>
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Add New Supplier
-                                </Button>
+                                 {isAdmin && (
+                                    <Button onClick={() => setIsWizardOpen(true)}>
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Add New Supplier
+                                    </Button>
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -157,20 +172,16 @@ export default function ProcurementPage() {
                                     {suppliers.map((supplier) => (
                                         <TableRow key={supplier.id}>
                                             <TableCell className="font-mono">{supplier.code}</TableCell>
-                                            <TableCell className="font-medium">
-                                                <Link href={`/procurement/suppliers/${supplier.id}`} className="hover:underline">{supplier.name}</Link>
-                                            </TableCell>
+                                            <TableCell className="font-medium">{supplier.name}</TableCell>
                                             <TableCell>{supplier.contact_person || 'N/A'}</TableCell>
                                             <TableCell className="font-mono">{supplier.ap_account_id}</TableCell>
                                             <TableCell><Badge variant={supplier.status === 'active' ? 'default' : 'destructive'}>{supplier.status}</Badge></TableCell>
                                             <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                                 <SupplierActions 
+                                                    supplier={supplier} 
+                                                    onEdit={handleEditSupplier}
+                                                    onDelete={handleDeleteSupplier}
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -180,6 +191,12 @@ export default function ProcurementPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                {isAdmin && (
+                    <TabsContent value="approvals" className="mt-4">
+                        <ApprovalsTab />
+                    </TabsContent>
+                )}
 
                 <TabsContent value="opening_balance" className="mt-4">
                     {newlyCreatedSupplier && <SupplierOpeningBalanceForm supplier={newlyCreatedSupplier} onComplete={() => setActiveTab('suppliers')} />}

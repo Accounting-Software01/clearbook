@@ -2,19 +2,30 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, FilePlus, Eye, CheckCircle } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
-import { PurchaseOrder } from '@/types/purchase-order';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
+
+interface PurchaseOrder {
+    id: number;
+    po_number: string;
+    supplier_name: string;
+    po_date: string;
+    total_amount: number;
+    status: string;
+}
+
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
+const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-GB');
 
 export function PurchaseOrderList() {
     const { user } = useAuth();
-    const { toast } = useToast();
+    const router = useRouter();
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -22,17 +33,12 @@ export function PurchaseOrderList() {
     const fetchOrders = useCallback(async () => {
         if (!user?.company_id) return;
         setIsLoading(true);
+        setError(null);
         try {
-            const response = await api<{ success: boolean; purchase_orders: PurchaseOrder[] }>('get-purchase-orders.php', {
-                params: { company_id: user.company_id }
-            });
-            if (response.success) {
-                setOrders(response.purchase_orders);
-            } else {
-                setError("Failed to load purchase orders.");
-            }
+            const data = await api<PurchaseOrder[]>(`purchase-orders.php?company_id=${user.company_id}`);
+            setOrders(data);
         } catch (e: any) {
-            setError("An error occurred while fetching orders.");
+            setError(e.message);
         } finally {
             setIsLoading(false);
         }
@@ -42,62 +48,70 @@ export function PurchaseOrderList() {
         fetchOrders();
     }, [fetchOrders]);
 
-    const handleApprove = async (poId: string) => {
-        try {
-            await api('purchase-order-actions.php', {
-                method: 'POST',
-                body: { action: 'approve', po_id: poId },
-            });
-            toast({ title: "Success", description: "Purchase order approved." });
-            fetchOrders(); // Refresh the list
-        } catch (e: any) {
-            toast({ variant: "destructive", title: "Approval Failed", description: e.message });
-        }
+    const handleRowClick = (id: number) => {
+        router.push(`/procurement/po/${id}`);
     };
 
-    if (isLoading) return <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-    if (error) return <div className="text-destructive text-center"><AlertCircle className="mx-auto mb-2" />{error}</div>;
+    const getStatusVariant = (status: string) => {
+        switch (status.toLowerCase()) {
+            case 'draft': return 'secondary';
+            case 'submitted':
+            case 'approved': return 'default';
+            case 'completed': return 'success';
+            case 'rejected':
+            case 'cancelled': return 'destructive';
+            default: return 'outline';
+        }
+    };
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Purchase Orders</CardTitle>
-                <CardDescription>A list of all purchase orders in your company.</CardDescription>
+                 <div className="flex justify-between items-center">
+                    <CardTitle>Purchase Orders</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={fetchOrders} aria-label="Refresh orders">
+                         <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                </div>
             </CardHeader>
             <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>PO Number</TableHead>
-                            <TableHead>Supplier</TableHead>
-                            <TableHead>PO Date</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {orders.length === 0 ? (
-                            <TableRow><TableCell colSpan={5} className="text-center py-10">No purchase orders found.</TableCell></TableRow>
-                        ) : orders.map(po => (
-                            <TableRow key={po.id}>
-                                <TableCell className="font-mono">{po.po_number}</TableCell>
-                                <TableCell>{po.supplier.name}</TableCell>
-                                <TableCell>{po.order_date}</TableCell>
-                                <TableCell><Badge>{po.status}</Badge></TableCell>
-                                <TableCell className="text-right">
-                                    {user?.role === 'admin' && po.status === 'Pending' && (
-                                        <Button variant="outline" size="sm" onClick={() => handleApprove(po.id)}>
-                                            <CheckCircle className="mr-2 h-4 w-4"/> Approve
-                                        </Button>
-                                    )}
-                                    <Button variant="ghost" size="icon" className="ml-2">
-                                        <Eye className="h-4 w-4" />
-                                    </Button>
-                                </TableCell>
+                {isLoading ? (
+                    <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                ) : error ? (
+                    <div className="flex flex-col items-center justify-center h-60 text-destructive">
+                        <AlertCircle className="h-8 w-8 mb-2" />
+                        <p>Error loading purchase orders.</p>
+                        <Button variant="link" onClick={fetchOrders}>Try again</Button>
+                    </div>
+                ) : orders.length === 0 ? (
+                     <div className="flex flex-col items-center justify-center h-60 text-muted-foreground">
+                        <p>No purchase orders found.</p>
+                        <p className="text-sm">Create a new PO to get started.</p>
+                    </div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>PO Number</TableHead>
+                                <TableHead>Supplier</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {orders.map((order) => (
+                                <TableRow key={order.id} onClick={() => handleRowClick(order.id)} className="cursor-pointer">
+                                    <TableCell className="font-medium">{order.po_number}</TableCell>
+                                    <TableCell>{order.supplier_name}</TableCell>
+                                    <TableCell>{formatDate(order.po_date)}</TableCell>
+                                    <TableCell><Badge variant={getStatusVariant(order.status)}>{order.status}</Badge></TableCell>
+                                    <TableCell className="text-right font-mono">{formatCurrency(order.total_amount)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
             </CardContent>
         </Card>
     );
