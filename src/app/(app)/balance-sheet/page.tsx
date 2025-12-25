@@ -15,7 +15,7 @@ import { DatePicker } from '@/components/ui/date-picker'; // Changed from DateRa
 import { format } from 'date-fns';
 import { Loader2, AlertCircle, FileDown } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -51,7 +51,7 @@ const formatCurrency = (amount: number) => {
 };
 
 const BalanceSheetPage = () => {
-    const { user } = useUser();
+    const { user } = useAuth();
     const [reportData, setReportData] = useState<BalanceSheetData | null>(null);
     const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
     const [isLoading, setIsLoading] = useState(false);

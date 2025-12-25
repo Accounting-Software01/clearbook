@@ -84,8 +84,8 @@ export default function PurchaseOrderDetailsPage() {
         if (!order || !user?.uid) return;
         setIsUpdating(true);
         try {
-            await api(`purchase-orders.php`, {
-                method: 'PUT',
+            await api(`update_purchase_order_status.php`, {
+                method: 'POST',
                 body: JSON.stringify({ 
                     action: 'update_status', 
                     po_id: order.id, 

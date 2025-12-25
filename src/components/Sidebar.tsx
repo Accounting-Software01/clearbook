@@ -19,7 +19,8 @@ import {
     ShoppingCart,
     Factory,
     LogOut,
-    Settings
+    Settings,
+    DollarSign
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -47,6 +48,7 @@ export function Sidebar() {
             subItems: [
                 { href: '/payment-voucher/new', label: 'Payment Voucher', icon: FilePlus },
                 { href: '/journal', label: 'Journal Entry', icon: BookPlus },
+                { href: '/Account-Payable', label: 'Accounts Payable', icon: DollarSign },
             ]
         },
         {

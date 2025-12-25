@@ -18,7 +18,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { chartOfAccounts } from '@/lib/chart-of-accounts';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/hooks/useAuth';
 
 interface LedgerEntry {
     date: string;
@@ -41,7 +41,7 @@ const formatCurrency = (amount: number | null | undefined) => {
 
 const GeneralLedgerPage = () => {
   const { language } = useLanguage();
-  const { user } = useUser(); // Get the user from the context
+  const { user } = useAuth(); // Get the user from the context
   const [fetchedEntries, setFetchedEntries] = useState<LedgerEntry[]>([]);
   const [selectedAccount, setSelectedAccount] = useState('101200');
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>({

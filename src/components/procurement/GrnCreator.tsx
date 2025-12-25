@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -12,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
-// Use a more detailed type for the PO details
 interface PurchaseOrderLine {
     id: number;
     description: string;
@@ -23,9 +21,9 @@ interface PurchaseOrderLine {
 interface PurchaseOrderDetails {
     id: string;
     po_number: string;
-    supplier_name: string; // Corrected
-    po_date: string; // Corrected
-    items: PurchaseOrderLine[]; // Corrected
+    supplier_name: string;
+    po_date: string;
+    items: PurchaseOrderLine[];
 }
 
 interface GrnCreatorProps {
@@ -40,7 +38,7 @@ interface GrnLine extends PurchaseOrderLine {
 
 export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
     const { toast } = useToast();
-    const { user } = useAuth(); // Get user for company_id
+    const { user } = useAuth(); // Get user for company_id and user_id
     const [order, setOrder] = useState<PurchaseOrderDetails | null>(null);
     const [lines, setLines] = useState<GrnLine[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -52,12 +50,16 @@ export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
         if (!user?.company_id || !poId) return;
         setIsLoading(true);
         try {
-            // Use the correct endpoint and parameters
-            const data = await api<PurchaseOrderDetails>(`get-purchase-orders.php?company_id=${user.company_id}&id=${poId}`);
-            setOrder(data);
+            const response = await api<{ purchase_orders: PurchaseOrderDetails[] }>(`get-purchase-orders.php?company_id=${user.company_id}&id=${poId}`);
+            const orderData = response.purchase_orders[0];
+
+            if (!orderData) {
+                throw new Error("Purchase Order not found or API did not return expected data.");
+            }
             
-            // Initialize the lines for the GRN form
-            const initialGrnLines = data.items.map(line => ({
+            setOrder(orderData);
+            
+            const initialGrnLines = orderData.items.map(line => ({
                 ...line,
                 receiving_now: line.quantity - (line.quantity_received || 0)
             }));
@@ -65,15 +67,17 @@ export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
 
         } catch (e: any) {
             console.error("Error fetching PO details:", e);
-            setError("Failed to load purchase order details.");
+            setError("Failed to load purchase order details. " + e.message);
         } finally {
             setIsLoading(false);
         }
     }, [poId, user?.company_id]);
 
     useEffect(() => {
-        fetchPoDetails();
-    }, [fetchPoDetails]);
+        if(user) {
+            fetchPoDetails();
+        }
+    }, [fetchPoDetails, user]);
 
     const handleQuantityChange = (lineId: number, newQuantity: number) => {
         setLines(lines.map(line => {
@@ -93,7 +97,10 @@ export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
     };
 
     const handleSubmitGrn = async () => {
-        if (!user?.company_id) return;
+        if (!user?.company_id || !user?.uid) {
+            toast({ variant: "destructive", title: "Authentication Error", description: "User information is missing. Please log in again." });
+            return;
+        }
 
         const receivedLines = lines
             .filter(line => line.receiving_now > 0)
@@ -110,18 +117,18 @@ export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
         setIsSubmitting(true);
         const grnData = {
             company_id: user.company_id,
+            user_id: user.uid, // <-- ADDED THIS LINE
             purchase_order_id: poId,
             grn_date: grnDate.toISOString().split('T')[0],
             lines: receivedLines,
         };
 
         try {
-            // Assuming a 'create-grn.php' endpoint exists
             await api('create-grn.php', { method: 'POST', body: JSON.stringify(grnData) });
-            toast({ title: "Success", description: "Goods Received Note created successfully." });
-            onGrnCreated(); // Callback to refresh the list
+            toast({ title: "Success", description: "Goods Received Note and corresponding journal entry have been created." });
+            onGrnCreated(); // Callback to refresh the list and go back
         } catch (e: any) {
-            toast({ variant: "destructive", title: "Submission Failed", description: e.message || "An unknown error occurred." });
+            toast({ variant: "destructive", title: "Submission Failed", description: e.message || "An unknown error occurred while creating the GRN." });
         } finally {
             setIsSubmitting(false);
         }

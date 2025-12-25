@@ -72,7 +72,7 @@ export function PurchaseOrderApprovalList() {
     }, [fetchActionableOrders, user]);
 
     const handleAction = async (poId: string, action: 'submit') => {
-        if (!user?.company_id || !user.id) return;
+        if (!user?.company_id || !user.uid) return;
         
         setIsSubmitting(prev => ({...prev, [poId]: true}));
 
@@ -88,7 +88,7 @@ export function PurchaseOrderApprovalList() {
                     action: action,
                     po_id: poId,
                     company_id: user.company_id,
-                    user_id: user.id
+                    user_id: user.uid
                 }),
                 credentials: 'include',
             });
@@ -152,7 +152,9 @@ export function PurchaseOrderApprovalList() {
                                     {order.status === 'Draft' && (
                                         <>
                                             <Button variant="ghost" size="sm" onClick={() => viewOrderDetails(order.id)}><Eye className="mr-2 h-4 w-4"/>View</Button>
+                                            
                                             <Button 
+                                                type="button"
                                                 size="sm" 
                                                 onClick={() => handleAction(order.id, 'submit')} 
                                                 disabled={isSubmitting[order.id]} 
