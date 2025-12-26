@@ -123,6 +123,9 @@ export function GrnCreator({ poId, onGrnCreated, onCancel }: GrnCreatorProps) {
             lines: receivedLines,
         };
 
+        // **** I HAVE ADDED THIS LOG ****
+        console.log("Submitting GRN with the following company_id:", user.company_id);
+
         try {
             await api('create-grn.php', { method: 'POST', body: JSON.stringify(grnData) });
             toast({ title: "Success", description: "Goods Received Note and corresponding journal entry have been created." });

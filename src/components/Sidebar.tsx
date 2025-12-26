@@ -1,3 +1,4 @@
+
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -30,6 +31,7 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAuth } from '@/hooks/useAuth';
+import { NotificationBell } from './ui/NotificationBell'; // Import the NotificationBell component
 
 export function Sidebar() {
     const pathname = usePathname();
@@ -80,9 +82,12 @@ export function Sidebar() {
 
     return (
         <aside className="w-64 flex-shrink-0 rounded-2xl bg-primary border shadow-lg flex flex-col">
-            <div className="p-6 flex items-center justify-center gap-2 border-b border-white/20">
-                <Library className="h-8 w-8 text-primary-foreground" />
-                <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+            <div className="p-6 flex items-center justify-between gap-2 border-b border-white/20">
+                <div className="flex items-center gap-2">
+                    <Library className="h-8 w-8 text-primary-foreground" />
+                    <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+                </div>
+                <NotificationBell />
             </div>
             <ScrollArea className="flex-grow">
                 <nav className="py-4 px-4">

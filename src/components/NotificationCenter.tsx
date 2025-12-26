@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
+import { getCurrentUser } from '@/lib/auth'; // <-- I've added the missing import
 
 // NOTE: These should be in a shared file, e.g., src/types/index.ts
 interface User {

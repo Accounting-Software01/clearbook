@@ -1,38 +1,55 @@
+
 'use client';
 
 import React, { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SupplierInvoiceList } from './SupplierInvoiceList';
-
-type ApView = 'list' | 'details';
+import { SupplierInvoiceDetails } from './SupplierInvoiceDetails'; // I've added this import
+import { GrnForInvoiceList } from './GrnForInvoiceList';
 
 export function AccountsPayableTabContent() {
-    const [view, setView] = useState<ApView>('list');
+    // State to manage which view is active
     const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
+    // Handler to switch to the details view
     const handleViewDetails = (invoiceId: number) => {
         setSelectedInvoiceId(invoiceId);
-        setView('details');
     };
 
+    // Handler to return to the list view
     const handleBackToList = () => {
         setSelectedInvoiceId(null);
-        setView('list');
     };
-
-    const renderContent = () => {
-        switch (view) {
-            case 'details':
-                // Placeholder for invoice details view
-                return <div>Invoice Details for {selectedInvoiceId} <button onClick={handleBackToList}>Back</button></div>;
-            case 'list':
-            default:
-                return <SupplierInvoiceList onViewDetails={handleViewDetails} />;
-        }
+    
+    // This function will be called after an invoice is approved, returning the user to the list.
+    const handleInvoiceApproved = () => {
+        setSelectedInvoiceId(null);
+        // We could add a toast notification here in the future
     };
 
     return (
-        <div>
-            {renderContent()}
-        </div>
+        <Tabs defaultValue="grn-for-invoicing">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="grn-for-invoicing">GRNs for Invoicing</TabsTrigger>
+                <TabsTrigger value="supplier-invoices">Supplier Invoices</TabsTrigger>
+            </TabsList>
+            <TabsContent value="grn-for-invoicing">
+                <GrnForInvoiceList />
+            </TabsContent>
+            <TabsContent value="supplier-invoices">
+                {
+                    // If an invoice is selected, show details; otherwise, show the list.
+                    selectedInvoiceId ? (
+                        <SupplierInvoiceDetails 
+                            invoiceId={selectedInvoiceId} 
+                            onBack={handleBackToList} 
+                            onInvoiceApproved={handleInvoiceApproved}
+                        />
+                    ) : (
+                        <SupplierInvoiceList onViewDetails={handleViewDetails} />
+                    )
+                }
+            </TabsContent>
+        </Tabs>
     );
 }

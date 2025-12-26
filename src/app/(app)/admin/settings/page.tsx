@@ -43,7 +43,7 @@ const SettingsPage = () => {
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'company'
 
-  if (user?.role !== 'admin_manager') {
+  if (user?.role !== 'staff') {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-red-500">You do not have permission to access this page.</p>

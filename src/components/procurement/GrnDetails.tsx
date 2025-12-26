@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -8,6 +9,7 @@ import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
+// Types
 interface GrnItem {
     id: number;
     raw_material_name: string;
@@ -22,6 +24,9 @@ interface GrnDetailsData {
     supplier_name: string;
     po_number: string;
     items: GrnItem[];
+    supplier_id: number;
+    purchase_order_id: number;
+    is_invoiced: boolean;
 }
 
 interface GrnDetailsProps {
@@ -38,7 +43,6 @@ export function GrnDetails({ grnId, onBack }: GrnDetailsProps) {
     const fetchGrnDetails = useCallback(async () => {
         if (!user?.company_id || !grnId) return;
         setIsLoading(true);
-        setError(null);
         try {
             const response = await api<{ grn: GrnDetailsData }>(`get-grns.php?company_id=${user.company_id}&id=${grnId}`);
             if (response.grn) {
@@ -47,8 +51,7 @@ export function GrnDetails({ grnId, onBack }: GrnDetailsProps) {
                 throw new Error("GRN details not found.");
             }
         } catch (e: any) {
-            console.error("Error fetching GRN details:", e);
-            setError("Failed to load GRN details. Please try again.");
+            setError("Failed to load GRN details.");
         } finally {
             setIsLoading(false);
         }
@@ -58,39 +61,25 @@ export function GrnDetails({ grnId, onBack }: GrnDetailsProps) {
         fetchGrnDetails();
     }, [fetchGrnDetails]);
 
-    if (isLoading) {
-        return <div className="flex justify-center items-center h-60"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-    }
-
-    if (error) {
-        return (
-            <div className="text-destructive text-center py-10">
-                <AlertCircle className="mx-auto mb-2 h-8 w-8" />
-                <p>{error}</p>
-                <Button onClick={onBack} variant="outline" className="mt-4">
-                    <ArrowLeft className="mr-2 h-4 w-4"/> Back to List
-                </Button>
-            </div>
-        );
-    }
-
+    if (isLoading) return <div className="flex justify-center items-center h-60"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+    if (error) return <div className="text-destructive text-center py-10"><AlertCircle className="mx-auto mb-2 h-8 w-8" /> <p>{error}</p></div>;
     if (!grn) return null;
 
     return (
         <Card className="border-t-4 border-blue-600 shadow-lg">
             <CardHeader className="bg-muted/50 p-4">
-                 <div className="flex flex-row items-center justify-between">
+                <div className="flex justify-between items-start">
                     <div>
                         <CardTitle className="text-xl">GRN Details: {grn.grn_number}</CardTitle>
-                        <CardDescription>Details for Goods Received Note.</CardDescription>
+                        <CardDescription>Review the details of the Goods Received Note.</CardDescription>
                     </div>
-                    <Button variant="outline" size="sm" onClick={onBack}>
-                        <ArrowLeft className="mr-2 h-4 w-4"/> Back to List
-                    </Button>
+                    <div className="flex items-center space-x-2">
+                        <Button variant="outline" size="sm" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent className="p-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm p-4 bg-muted/30 rounded-lg">
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm p-4 bg-muted/30 rounded-lg">
                     <div><p className="font-semibold">Supplier:</p> <p>{grn.supplier_name}</p></div>
                     <div><p className="font-semibold">PO Number:</p> <p>{grn.po_number}</p></div>
                     <div><p className="font-semibold">Received Date:</p> <p>{new Date(grn.received_date).toLocaleDateString()}</p></div>
@@ -116,7 +105,7 @@ export function GrnDetails({ grnId, onBack }: GrnDetailsProps) {
                     </TableBody>
                 </Table>
             </CardContent>
-             <CardFooter className="p-4 bg-muted/50 text-xs text-muted-foreground">
+            <CardFooter className="p-4 bg-muted/50 text-xs text-muted-foreground">
                 GRN ID: {grn.id}
             </CardFooter>
         </Card>
