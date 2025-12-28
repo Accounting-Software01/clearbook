@@ -21,7 +21,8 @@ import {
     Factory,
     LogOut,
     Settings,
-    DollarSign
+    DollarSign,
+    Banknote // I've added this icon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -48,9 +49,11 @@ export function Sidebar() {
             icon: ArrowRightLeft, 
             roles: ['admin', 'accountant'],
             subItems: [
+                // I have added the new Payment Workbench link here
+                { href: '/payment-workbench', label: 'Payment Workbench', icon: Banknote },
                 { href: '/payment-voucher/new', label: 'Payment Voucher', icon: FilePlus },
                 { href: '/journal', label: 'Journal Entry', icon: BookPlus },
-                { href: '/Account-Payable', label: 'Accounts Payable', icon: DollarSign },
+                { href: '/Account-Payable', label: 'Invoices', icon: DollarSign },
             ]
         },
         {

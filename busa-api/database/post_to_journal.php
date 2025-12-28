@@ -1,1 +1,79 @@
-<?php\n/*******************************************************************************\n * Reusable function to post a balanced, multi-line journal entry.\n * \n * IMPORTANT:\n * - This function assumes it is called within an existing DB transaction.\n * - It does NOT commit or rollback; the calling script is responsible for that.\n * - It requires a valid, open database connection to be passed.\n ******************************************************************************/\n\nif (function_exists(\'postToJournal\')) {\n    return;\n}\n\nfunction postToJournal(\n    mysqli $conn,\n    string $company_id,\n    int $user_id,\n    string $entry_date,\n    string $narration,\n    array $lines\n) : array {\n\n    /************************************\n     * 1. VALIDATE & BALANCE\n     ************************************/\n    $totalDebits = 0;\n    $totalCredits = 0;\n    if (count($lines) < 2) {\n        return [\"success\" => false, \"error\" => \"Journal entry requires at least two lines.\"];\n    }\n\n    foreach ($lines as $line) {\n        if (!isset($line[\'accountId\']) || !isset($line[\'debit\']) || !isset($line[\'credit\'])) {\n            return [\"success\" => false, \"error\" => \"Invalid journal line format. Each line must have accountId, debit, and credit.\"];\n        }\n        $totalDebits += (float)$line[\'debit\'];\n        $totalCredits += (float)$line[\'credit\'];\n    }\n\n    if (abs($totalDebits - $totalCredits) > 0.01) {\n        return [\"success\" => false, \"error\" => \"Journal entry is not balanced (Debits: {$totalDebits}, Credits: {$totalCredits})\"];\n    }\n    if ($totalDebits === 0.0) {\n        return [\"success\" => false, \"error\" => \"Journal entry total cannot be zero.\"];\n    }\n\n    try {\n        /************************************\n         * 2. DETERMINE STATUS (fixed to \'posted\')\n         ************************************/\n        $status = \'posted\';\n\n        /************************************\n         * 3. GENERATE VOUCHER NUMBER\n         ************************************/\n        $year = date(\'Y\', strtotime($entry_date));\n        $seqSql = \"SELECT MAX(CAST(SUBSTRING(voucher_number, 6) AS UNSIGNED)) AS max_no FROM journal_vouchers WHERE voucher_number LIKE ?\";\n        $like = $year . \'-\%\';\n        $seqStmt = $conn->prepare($seqSql);\n        if (!$seqStmt) throw new Exception(\"Prepare failed (voucher_number): \" . $conn->error);\n        $seqStmt->bind_param(\"s\", $like);\n        $seqStmt->execute();\n        $res = $seqStmt->get_result()->fetch_assoc();\n        $seqStmt->close();\n        $nextNo = ($res[\'max_no\'] ?? 0) + 1;\n        $voucherNumber = $year . \'-\' . str_pad($nextNo, 5, \'0\', STR_PAD_LEFT);\n\n        /************************************\n         * 4. INSERT VOUCHER HEADER\n         ************************************/\n        $voucherSql = \"INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, entry_date, narration, total_debits, total_credits, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\";\n        $voucherStmt = $conn->prepare($voucherSql);\n        if (!$voucherStmt) throw new Exception(\"Prepare failed (voucher_header): \" . $conn->error);\n        $voucherStmt->bind_param(\"sissddds\", $company_id, $user_id, $voucherNumber, $entry_date, $narration, $totalDebits, $totalCredits, $status);\n        $voucherStmt->execute();\n        $voucherId = $voucherStmt->insert_id;\n        $voucherStmt->close();\n        if($voucherId == 0) {\n            throw new Exception(\"Failed to insert journal voucher header.\");\n        }\n\n        /************************************\n         * 5. INSERT JOURNAL LINES\n         ************************************/\n        $lineSql = \"INSERT INTO journal_voucher_lines (company_id, voucher_id, account_id, description, debit, credit) VALUES (?, ?, ?, ?, ?, ?)\";\n        $lineStmt = $conn->prepare($lineSql);\n        if (!$lineStmt) throw new Exception(\"Prepare failed (voucher_lines): \" . $conn->error);\n\n        foreach ($lines as $line) {\n            $desc = $line[\'description\'] ?? $narration;\n            $lineStmt->bind_param(\"sisdsd\", $company_id, $voucherId, $line[\'accountId\'], $desc, $line[\'debit\'], $line[\'credit\']);\n            $lineStmt->execute();\n        }\n        $lineStmt->close();\n\n        /************************************\n         * 6. RETURN SUCCESS\n         ************************************/\n        return [\n            \"success\" => true,\n            \"voucher_id\" => $voucherId,\n            \"voucher_number\" => $voucherNumber,\n        ];\n\n    } catch (Throwable $e) {\n        // The calling function is responsible for rollback.\n        return [\n            \"success\" => false,\n            \"error\" => $e->getMessage(),\n            \"details\" => \"Line: \" . $e->getLine() . \", File: \" . $e->getFile()\n        ];\n    }\n}\n?>
+<?php
+// busa-api/database/post_to_journal.php
+
+/**
+ * Creates a full journal voucher with its line items.
+ *
+ * @param mysqli $conn The database connection object.
+ * @param string $company_id The ID of the company.
+ * @param int $user_id The ID of the user creating the voucher.
+ * @param string $entry_date The date of the journal entry (Y-m-d).
+ * @param string $narration A description of the overall transaction.
+ * @param string $voucher_type The type of voucher (e.g., 'Payment', 'General').
+ * @param array $journal_entries An array of line items for the voucher.
+ * @return array An associative array with 'success' (bool) and 'voucher_id' (int).
+ */
+function post_to_journal($conn, $company_id, $user_id, $entry_date, $narration, $voucher_type, $journal_entries) {
+
+    // Generate a unique voucher number (customize as needed)
+    $voucher_number = 'JV-' . time() . rand(100, 999);
+
+    // 1. Insert into journal_vouchers table
+    $sql_voucher = "INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, narration, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'posted')";
+    $stmt_voucher = $conn->prepare($sql_voucher);
+    if ($stmt_voucher === false) {
+        return ['success' => false, 'message' => 'Voucher prepare failed: ' . $conn->error];
+    }
+
+    $source = 'PaymentWorkbench'; // Or another source identifier
+    $stmt_voucher->bind_param("sisssss", $company_id, $user_id, $voucher_number, $source, $entry_date, $voucher_type, $narration);
+    
+    if (!$stmt_voucher->execute()) {
+        return ['success' => false, 'message' => 'Voucher execute failed: ' . $stmt_voucher->error];
+    }
+
+    $voucher_id = $conn->insert_id; // Get the ID of the newly created voucher
+    $stmt_voucher->close();
+
+    $total_debits = 0.00;
+    $total_credits = 0.00;
+
+    // 2. Insert into journal_voucher_lines table
+    $sql_line = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $stmt_line = $conn->prepare($sql_line);
+    if ($stmt_line === false) {
+        return ['success' => false, 'message' => 'Line prepare failed: ' . $conn->error];
+    }
+
+    foreach ($journal_entries as $entry) {
+        $debit = (float)$entry['debit'];
+        $credit = (float)$entry['credit'];
+        $description = $entry['narration'];
+
+        $stmt_line->bind_param("siisdds", $company_id, $user_id, $voucher_id, $entry['account_id'], $debit, $credit, $description);
+        
+        if (!$stmt_line->execute()) {
+             return ['success' => false, 'message' => 'Line execute failed: ' . $stmt_line->error];
+        }
+
+        $total_debits += $debit;
+        $total_credits += $credit;
+    }
+    $stmt_line->close();
+
+    // 3. Update the totals in the journal_vouchers table
+    $sql_update = "UPDATE journal_vouchers SET total_debits = ?, total_credits = ? WHERE id = ?";
+    $stmt_update = $conn->prepare($sql_update);
+    if ($stmt_update === false) {
+        return ['success' => false, 'message' => 'Update prepare failed: ' . $conn->error];
+    }
+    
+    $stmt_update->bind_param("ddi", $total_debits, $total_credits, $voucher_id);
+    if (!$stmt_update->execute()) {
+        return ['success' => false, 'message' => 'Update execute failed: ' . $stmt_update->error];
+    }
+    $stmt_update->close();
+
+    return ['success' => true, 'voucher_id' => $voucher_id];
+}
+?>
