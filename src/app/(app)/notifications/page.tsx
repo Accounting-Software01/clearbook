@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bell, Info, Tag, User, Building, CheckCheck } from 'lucide-react';
+import { Bell, Info, Tag, User, Building, CheckCheck, Package, FileText, Users, Star, Megaphone, ArrowRight } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 
 // NOTE: The interfaces and dummy data should eventually be moved to a shared file.
@@ -31,6 +31,7 @@ interface Notification {
   message: string;
   timestamp: Date;
   read: boolean;
+  type?: 'admin_welcome';
   targetRole?: string;
   targetCompanyId?: string;
   actionType?: 'input_price';
@@ -38,13 +39,15 @@ interface Notification {
 }
 
 const dummyNotifications: Notification[] = [
-  {
-    id: "1",
-    title: "Welcome to ClearBooks!",
-    message: "Explore your new dashboard and features.",
-    timestamp: new Date(Date.now() - 60 * 60 * 1000),
-    read: false
-  },
+    {
+        id: "admin_welcome_1",
+        title: "🔔 Welcome to ClearBooks – Admin Access Activated",
+        message: "As an Administrator, you now have full control over your organization’s setup, users, and financial activities.",
+        timestamp: new Date(Date.now() - 60 * 60 * 1000),
+        read: false,
+        targetRole: 'admin',
+        type: 'admin_welcome'
+    },
   {
     id: "inv_add_1",
     title: "New Inventory Addition: Bottle",
@@ -85,17 +88,81 @@ const formatTimestamp = (date: Date) => {
 
 const getNotificationIcon = (notification: Notification) => {
   const iconProps = { className: "w-5 h-5" };
-  if (notification.actionType) {
-    return <Tag {...iconProps} />;
-  }
-  if (notification.targetRole) {
-    return <User {...iconProps} />;
-  }
-  if (notification.targetCompanyId) {
-    return <Building {...iconProps} />;
-  }
+  if (notification.type === 'admin_welcome') return <Bell {...iconProps} />;
+  if (notification.actionType) return <Tag {...iconProps} />;
+  if (notification.targetRole) return <User {...iconProps} />;
+  if (notification.targetCompanyId) return <Building {...iconProps} />;
   return <Info {...iconProps} />;
 };
+
+const AdminWelcomeNotification = ({ notification, user, onMarkAsRead }: { notification: Notification, user: User | null, onMarkAsRead: (id: string) => void }) => {
+    return (
+        <Card className="mb-6 border-2 border-blue-500 shadow-lg">
+            <CardHeader className="text-center bg-gray-50/50 dark:bg-gray-900/50 pb-4">
+                <CardTitle className="text-2xl font-bold text-gray-800 dark:text-gray-100">{notification.title}</CardTitle>
+                <CardDescription className="max-w-3xl mx-auto pt-2">Welcome to <strong>ClearBooks</strong>, your all-in-one financial and operations management platform. As an <strong>Administrator</strong>, you now have full control over your organization’s setup, users, and financial activities.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+                <div className="grid md:grid-cols-2 gap-8">
+                    {/* Left Column */}
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="font-semibold text-lg flex items-center mb-3"><Package className="mr-2 h-5 w-5 text-primary" />Available Modules</h3>
+                            <ul className="space-y-2 text-sm list-disc list-inside text-gray-600 dark:text-gray-400">
+                                <li>Accounting & Ledger Management</li>
+                                <li>Sales & Invoicing</li>
+                                <li>Purchasing & Expenses</li>
+                                <li>Inventory & Stock Control</li>
+                                <li>User & Role Management</li>
+                                <li>Reports & Analytics</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-lg flex items-center mb-3"><Building className="mr-2 h-5 w-5 text-primary" />Company Information</h3>
+                            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                                <li><strong>Company ID:</strong> {user?.company_id || 'N/A'}</li>
+                                <li><strong>Registration Tier:</strong> <Badge variant="secondary">Professional</Badge></li>
+                                <li><strong>Subscription Status:</strong> <Badge className="bg-green-100 text-green-800">Active</Badge></li>
+                                <li><strong>Registered Users:</strong> 1 of 5 allowed</li>
+                            </ul>
+                        </div>
+                         <div>
+                            <h3 className="font-semibold text-lg flex items-center mb-3"><Megaphone className="mr-2 h-5 w-5 text-primary" />Announcements & Updates</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Stay informed about new features, system updates, and promotions.</p>
+                        </div>
+                    </div>
+                    {/* Right Column */}
+                    <div className="space-y-6">
+                        <div>
+                            <h3 className="font-semibold text-lg flex items-center mb-3"><Users className="mr-2 h-5 w-5 text-primary" />User Management</h3>
+                            <ul className="space-y-2 text-sm list-disc list-inside text-gray-600 dark:text-gray-400">
+                                <li>Add, edit, or remove users</li>
+                                <li>Assign roles (Admin, Accountant, Staff)</li>
+                                <li>Control module access per user</li>
+                                <li>Monitor user activity and permissions</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-lg flex items-center mb-3"><Star className="mr-2 h-5 w-5 text-primary" />Premium Features</h3>
+                             <ul className="space-y-2 text-sm list-disc list-inside text-gray-600 dark:text-gray-400">
+                                <li>Multi-branch management</li>
+                                <li>Advanced financial reports</li>
+                                <li>Automated tax calculations</li>
+                                <li>Data export & integrations</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+            <div className="p-6 bg-gray-50/50 dark:bg-gray-900/50 flex justify-center">
+                <Button onClick={() => onMarkAsRead(notification.id)}>
+                    <CheckCheck className="mr-2 h-5 w-5" />
+                    Got it, thanks!
+                </Button>
+            </div>
+        </Card>
+    );
+}
 
 const AllNotificationsPage = () => {
   const router = useRouter();
@@ -113,9 +180,10 @@ const AllNotificationsPage = () => {
         if (currentUser) {
           const filtered = dummyNotifications.filter((n) => {
             const isGeneral = !n.targetRole && !n.targetCompanyId;
-            const isTargeted = n.targetRole === currentUser.role && n.targetCompanyId === currentUser.company_id;
-            const isCompanyWide = !n.targetRole && n.targetCompanyId === currentUser.company_id;
-            return isGeneral || isTargeted || isCompanyWide;
+            const isForMyRoleAndCompany = n.targetRole === currentUser.role && n.targetCompanyId === currentUser.company_id;
+            const isForMyCompany = !n.targetRole && n.targetCompanyId === currentUser.company_id;
+            const isForMyRole = n.targetRole === currentUser.role && !n.targetCompanyId;
+            return isGeneral || isForMyRoleAndCompany || isForMyCompany || isForMyRole;
           });
           setNotifications(filtered.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()));
         }
@@ -126,15 +194,27 @@ const AllNotificationsPage = () => {
     };
     fetchData();
   }, []);
+  
+  const markAsRead = (id: string) => {
+    const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+    setNotifications(updated);
+  };
 
+  const markAllAsRead = () => {
+    const updated = notifications.map(n => ({ ...n, read: true }));
+    setNotifications(updated);
+  };
+  
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const adminWelcomeNotification = notifications.find(n => n.type === 'admin_welcome' && !n.read && user?.role === 'admin');
+  const otherNotifications = notifications.filter(n => n.id !== adminWelcomeNotification?.id);
 
   const NotificationList = ({ items }: { items: Notification[] }) => (
     <div className="space-y-3">
-      {items.length === 0 ? (
+      {items.length === 0 && !adminWelcomeNotification ? (
         <div className="text-center py-12 text-gray-500">
           <Info className="mx-auto h-10 w-10 text-gray-400" />
-          <p className="mt-4">No notifications here.</p>
+          <p className="mt-4">No new notifications here.</p>
         </div>
       ) : (
         items.map((notification) => (
@@ -145,7 +225,7 @@ const AllNotificationsPage = () => {
                 ? 'bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
                 : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 shadow-sm'
             }`}
-            onClick={() => router.push(`/notifications/${notification.id}`)}
+            onClick={() => markAsRead(notification.id) /* For now, just mark as read. Later, could go to a detail page */}
           >
             <div className="flex-shrink-0 mt-1 mr-4 p-2 bg-gray-100 dark:bg-gray-700 rounded-full">
               {getNotificationIcon(notification)}
@@ -167,11 +247,6 @@ const AllNotificationsPage = () => {
       )}
     </div>
   );
-
-  const markAllAsRead = () => {
-    const updated = notifications.map(n => ({ ...n, read: true }));
-    setNotifications(updated);
-  };
 
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
@@ -200,14 +275,16 @@ const AllNotificationsPage = () => {
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="unread">
-                Unread <Badge className="ml-2">{unreadCount}</Badge>
+                Unread <Badge className="ml-2">{unreadCount > 0 ? unreadCount : '0'}</Badge>
               </TabsTrigger>
             </TabsList>
             <TabsContent value="all" className="pt-4">
-                <NotificationList items={notifications} />
+                {adminWelcomeNotification && <AdminWelcomeNotification notification={adminWelcomeNotification} user={user} onMarkAsRead={markAsRead} />}
+                <NotificationList items={otherNotifications} />
             </TabsContent>
             <TabsContent value="unread" className="pt-4">
-                <NotificationList items={notifications.filter(n => !n.read)} />
+                {adminWelcomeNotification && <AdminWelcomeNotification notification={adminWelcomeNotification} user={user} onMarkAsRead={markAsRead} />}
+                <NotificationList items={otherNotifications.filter(n => !n.read)} />
             </TabsContent>
           </Tabs>
         </CardContent>

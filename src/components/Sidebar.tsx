@@ -30,7 +30,6 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAuth } from '@/hooks/useAuth';
-import { NotificationBell } from './ui/NotificationBell';
 
 export function Sidebar() {
     const pathname = usePathname();
@@ -114,7 +113,6 @@ export function Sidebar() {
                     <Library className="h-8 w-8 text-primary-foreground" />
                     <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
                 </div>
-                <NotificationBell />
             </div>
             <ScrollArea className="flex-grow">
                 <nav className="py-4 px-4">

@@ -206,7 +206,7 @@ export default function PurchaseOrderDetailsPage() {
                         )}
                         {canGenerateGrn && (
                             <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleGenerateGrn}>
-                                <Truck className="mr-2 h-4 w-4"/> Generate GRN
+                                <Truck className="mr-2 h-4 w-4"/>
                             </Button>
                         )}
                     </CardFooter>

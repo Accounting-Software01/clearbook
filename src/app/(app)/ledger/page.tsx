@@ -1,337 +1,378 @@
 'use client';
-import React, { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DateRangePicker } from '@/components/ui/date-range-picker';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { DateRange } from 'react-day-picker';
+  Card, CardContent, CardHeader, CardTitle, CardDescription
+} from '@/components/ui/card';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { Loader2, BookOpen, MinusSquare, PlusSquare } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
-import { Loader2, AlertCircle, Download, Printer, PlusSquare, MinusSquare } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
+import { cn } from "@/lib/utils";
+import { DateRange } from 'react-day-picker';
 
+// === TYPES ===
 interface Transaction {
-    date: string;
-    accountCode: string;
-    accountName: string;
-    description: string;
-    openingBalance: number;
-    debit: number | null;
-    credit: number | null;
-    balance: number;
+  date: string;
+  reference_number?: string;
+  description: string;
+  debit: number | null;
+  credit: number | null;
+  running_balance: number;
+  account_code: string;
+  account_name: string;
 }
-
-interface HierarchicalAccountEntry extends Account {
+interface HierarchicalAccount extends Account {
+    children: HierarchicalAccount[];
     transactions: Transaction[];
-    children: HierarchicalAccountEntry[];
     opening: number;
     debit: number;
     credit: number;
     closing: number;
 }
+interface SingleLedgerData {
+  account: Account;
+  openingBalance: number;
+  closingBalance: number;
+  transactions: Transaction[];
+  totalDebits: number;
+  totalCredits: number;
+}
 
-const formatCurrency = (amount: number | null | undefined, indicateCr = false) => {
-    if (amount === null || amount === undefined || isNaN(amount)) {
-        return '-';
-    }
-    const value = Math.abs(amount);
-    const formattedValue = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(value);
-    if (indicateCr && amount < 0) {
-        return `${formattedValue} CR`;
-    }
-    return formattedValue;
-};
+// === UTILS ===
+const formatMoney = (val?: number | null) =>
+  val == null ? '-' : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
 
-const GeneralLedgerPage = () => {
-    const { language } = useLanguage();
-    const { user } = useAuth();
+const formatDateSafe = (date?: string) =>
+  date && isValid(parseISO(date)) ? format(parseISO(date), 'dd-MMM-yyyy') : '-';
 
-    const [hierarchicalData, setHierarchicalData] = useState<HierarchicalAccountEntry[]>([]);
-    const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-    const [reportType, setReportType] = useState('trial_balance');
-    const [selectedAccount, setSelectedAccount] = useState('all');
-    const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
-        from: new Date(new Date().getFullYear(), 0, 1),
-        to: new Date(),
-    });
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
+// === MAIN COMPONENT ===
+export default function GeneralLedgerPage() {
+  const { user } = useAuth();
 
-    const accountMap = useMemo(() => {
-        const map = new Map<string, Account>();
-        chartOfAccounts.forEach(acc => map.set(acc.code, acc));
-        return map;
-    }, []);
+  // --- STATE ---
+  const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [selectedAccount, setSelectedAccount] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(new Date().getFullYear(), 0, 1),
+    to: new Date()
+  });
 
-    const buildHierarchy = (transactions: Transaction[]): HierarchicalAccountEntry[] => {
-        const accountNodeMap: Map<string, HierarchicalAccountEntry> = new Map();
-        
-        chartOfAccounts.forEach(acc => {
-            accountNodeMap.set(acc.code, { ...acc, transactions: [], children: [], opening: 0, debit: 0, credit: 0, closing: 0 });
-        });
+  const [singleLedger, setSingleLedger] = useState<SingleLedgerData | null>(null);
+  const [hierarchicalData, setHierarchicalData] = useState<HierarchicalAccount[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-        transactions.forEach(tx => {
-            const node = accountNodeMap.get(tx.accountCode);
-            if (node) {
-                node.transactions.push(tx);
+  // --- MEMOIZED DATA ---
+  const leafAccounts = useMemo(
+    () => chartOfAccounts.filter(a => !chartOfAccounts.some(c => c.parent === a.code)),
+    []
+  );
+
+  const filteredHierarchicalData = useMemo(() => {
+    if (!searchTerm) return hierarchicalData;
+    const lowercasedFilter = searchTerm.toLowerCase();
+
+    const filterAccounts = (accounts: HierarchicalAccount[]): HierarchicalAccount[] => {
+        return accounts.map(account => ({ ...account })).filter(account => {
+            const children = filterAccounts(account.children);
+            if (children.length > 0) {
+                account.children = children;
+                return true;
             }
+            return account.name.toLowerCase().includes(lowercasedFilter) ||
+                   account.code.toLowerCase().includes(lowercasedFilter);
         });
-        
-        accountNodeMap.forEach(node => {
-            if (node.transactions.length > 0) {
-                node.opening = node.transactions[0].openingBalance;
-                node.debit = node.transactions.reduce((sum, tx) => sum + (tx.debit || 0), 0);
-                node.credit = node.transactions.reduce((sum, tx) => sum + (tx.credit || 0), 0);
-                node.closing = node.transactions[node.transactions.length - 1].balance;
-            }
-        });
-
-        const hierarchy: HierarchicalAccountEntry[] = [];
-        accountNodeMap.forEach(node => {
-            if (node.parent) {
-                const parent = accountNodeMap.get(node.parent);
-                if (parent) parent.children.push(node);
-            } else {
-                hierarchy.push(node);
-            }
-        });
-
-        const aggregateParent = (node: HierarchicalAccountEntry) => {
-            if (node.children.length === 0) return;
-            
-            node.children.forEach(aggregateParent);
-
-            node.opening = node.children.reduce((sum, child) => sum + child.opening, 0);
-            node.debit = node.children.reduce((sum, child) => sum + child.debit, 0);
-            node.credit = node.children.reduce((sum, child) => sum + child.credit, 0);
-            node.closing = node.children.reduce((sum, child) => sum + child.closing, 0);
-        }
-
-        hierarchy.forEach(aggregateParent);
-
-        return hierarchy.filter(node => node.transactions.length > 0 || node.children.length > 0);
     };
 
-    const fetchData = useCallback(async () => {
-        if (!dateRange?.from || !dateRange?.to || !user?.company_id) {
-            setError("Company and date range are required.");
-            return;
-        }
+    return filterAccounts(hierarchicalData);
+  }, [searchTerm, hierarchicalData]);
 
-        setIsLoading(true);
-        setError(null);
-        setHierarchicalData([]);
+  // --- DATA FETCHING ---
+  const fetchLedger = useCallback(async () => {
+    if (!dateRange?.from || !dateRange?.to || !user?.company_id) {
+      setError('Please select a valid date range.');
+      return;
+    }
+    if (viewMode === 'single' && !selectedAccount) {
+      setError('Please select an account.');
+      return;
+    }
 
-        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
-        const toDate = format(dateRange.to, 'yyyy-MM-dd');
+    setLoading(true);
+    setError(null);
+    setSingleLedger(null);
+    setHierarchicalData([]);
 
-        const url = new URL('https://hariindustries.net/api/clearbook/general-ledger.php');
-        url.searchParams.append('company_id', user.company_id);
-        url.searchParams.append('fromDate', fromDate);
-        url.searchParams.append('toDate', toDate);
-        url.searchParams.append('accountId', 'all');
-
-        try {
-            const response = await fetch(url.toString());
-            if (!response.ok) {
-                const errorJson = await response.json();
-                throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
-            }
-            const responseData = await response.json();
-            if (responseData.error) throw new Error(responseData.error);
-
-            if (Array.isArray(responseData)) {
-                const transactions: Transaction[] = responseData.map((entry: any) => ({
-                    date: entry.date,
-                    accountCode: entry.account_code,
-                    accountName: entry.account_name,
-                    description: entry.description,
-                    openingBalance: parseFloat(entry.opening_balance),
-                    debit: entry.debit ? parseFloat(entry.debit) : null,
-                    credit: entry.credit ? parseFloat(entry.credit) : null,
-                    balance: parseFloat(entry.balance),
-                }));
-                
-                const hierarchy = buildHierarchy(transactions);
-                setHierarchicalData(hierarchy);
-                setExpandedRows(new Set(hierarchy.map(h => h.code))); // Expand top level by default
-            }
-        } catch (e: any) {
-            console.error("Failed to fetch data:", e);
-            setError(`Failed to load data: ${e.message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [dateRange, user]);
-
-    const filteredData = useMemo(() => {
-        if (reportType === 'account_ledger') {
-            let allTransactions: Transaction[] = [];
-            const collectTransactions = (nodes: HierarchicalAccountEntry[]) => {
-                nodes.forEach(node => {
-                    if (selectedAccount === 'all' || node.code === selectedAccount || node.parent === selectedAccount) {
-                         if(node.children.length === 0) allTransactions.push(...node.transactions)
-                    }
-                    if(node.children) collectTransactions(node.children);
-                });
-            }
-            collectTransactions(hierarchicalData);
-            return allTransactions;
-        }
-        return [];
-    }, [reportType, selectedAccount, hierarchicalData]);
-
-    const toggleRow = (code: string) => {
-        const newExpanded = new Set(expandedRows);
-        if (newExpanded.has(code)) {
-            newExpanded.delete(code);
+    try {
+        if (viewMode === 'single') {
+            const url = new URL('https://hariindustries.net/api/clearbook/general-ledger.php');
+            url.searchParams.set('company_id', user.company_id);
+            url.searchParams.set('accountId', selectedAccount);
+            url.searchParams.set('fromDate', format(dateRange.from, 'yyyy-MM-dd'));
+            url.searchParams.set('toDate', format(dateRange.to, 'yyyy-MM-dd'));
+            const res = await fetch(url.toString());
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error ?? 'Failed to load ledger for ' + selectedAccount);
+            processSingleLedger(data, selectedAccount);
         } else {
-            newExpanded.add(code);
+            const fromDate = format(dateRange.from, 'yyyy-MM-dd');
+            const toDate = format(dateRange.to, 'yyyy-MM-dd');
+
+            // Fire off all requests concurrently
+            const allPromises = leafAccounts.map(account => {
+                const url = new URL('https://hariindustries.net/api/clearbook/general-ledger.php');
+                url.searchParams.set('company_id', user.company_id!);
+                url.searchParams.set('accountId', account.code);
+                url.searchParams.set('fromDate', fromDate);
+                url.searchParams.set('toDate', toDate);
+                return fetch(url.toString()).then(res => res.json()).then(data => {
+                    // Add account info to each transaction
+                    return data.map((tx: any) => ({ ...tx, account_code: account.code, account_name: account.name }));
+                });
+            });
+
+            const allResults = await Promise.all(allPromises);
+            const flatTransactions = allResults.flat();
+            processAllAccountsLedger(flatTransactions);
         }
-        setExpandedRows(newExpanded);
-    };
-    
-    const formatDateSafe = (dateString: string | undefined | null) => {
-        if (!dateString) return 'N/A';
-        const date = parseISO(dateString);
-        return isValid(date) ? format(date, 'dd-MM-yyyy') : 'Invalid Date';
-    };
-
-    const getReportTitle = () => {
-        return reportType === 'trial_balance' ? 'Trial Balance' : `Account Ledger: ${accountMap.get(selectedAccount)?.name || ''}`;
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
+  }, [selectedAccount, dateRange, user, viewMode, leafAccounts]);
 
-    const renderTrialBalanceRow = (node: HierarchicalAccountEntry, level = 0) => {
-        const isExpanded = expandedRows.has(node.code);
-        return (
-            <React.Fragment key={node.code}>
-                <TableRow>
-                    <TableCell style={{ paddingLeft: `${level * 20 + 5}px` }}>
-                       <div style={{display: 'flex', alignItems: 'center'}}>
-                        {node.children.length > 0 && (
-                            <button onClick={() => toggleRow(node.code)} className="mr-2">
-                                {isExpanded ? <MinusSquare size={16}/> : <PlusSquare size={16}/>}
-                            </button>
-                        )}
-                         <span>{node.code} - {node.name}</span>
-                       </div>
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(node.opening)}</TableCell>
-                    <TableCell className="text-right text-green-600">{formatCurrency(node.debit)}</TableCell>
-                    <TableCell className="text-right text-red-600">{formatCurrency(node.credit)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(node.closing)}</TableCell>
-                </TableRow>
-                {isExpanded && node.children.map(child => renderTrialBalanceRow(child, level + 1))}
-            </React.Fragment>
-        )
-    }
+  // --- DATA PROCESSING ---
+  const processSingleLedger = (data: any[], accountCode: string) => {
+      const account = chartOfAccounts.find(a => a.code === accountCode)!;
+      const opening = data[0]?.description === 'Opening Balance' ? Number(data[0].balance) : 0;
+      const transactions = data
+        .filter((r: any) => r.description !== 'Opening Balance')
+        .map((r: any) => ({
+          ...r,
+          debit: r.debit ? Number(r.debit) : null,
+          credit: r.credit ? Number(r.credit) : null,
+          running_balance: Number(r.balance)
+        }));
+      const totalDebits = transactions.reduce((s, t) => s + (t.debit ?? 0), 0);
+      const totalCredits = transactions.reduce((s, t) => s + (t.credit ?? 0), 0);
+      setSingleLedger({
+        account,
+        openingBalance: opening,
+        closingBalance: data.at(-1)?.balance ?? opening,
+        transactions,
+        totalDebits,
+        totalCredits
+      });
+  }
+
+  const processAllAccountsLedger = (data: Transaction[]) => {
+      const accountMap: Map<string, HierarchicalAccount> = new Map();
+      chartOfAccounts.forEach(acc => {
+          accountMap.set(acc.code, { ...acc, children: [], transactions: [], opening: 0, debit: 0, credit: 0, closing: 0 });
+      });
+
+      data.forEach(tx => {
+          const node = accountMap.get(tx.account_code);
+          if (node) node.transactions.push(tx);
+      });
+
+      accountMap.forEach(node => {
+          if (node.transactions.length > 0) {
+              // Sort transactions by date just in case they are not ordered
+              node.transactions.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+              const openingTx = node.transactions[0];
+              node.opening = openingTx.description === 'Opening Balance' ? openingTx.running_balance : 0;
+              
+              const operatingTxs = node.transactions.filter(tx => tx.description !== 'Opening Balance');
+              node.debit = operatingTxs.reduce((sum, tx) => sum + (tx.debit || 0), 0);
+              node.credit = operatingTxs.reduce((sum, tx) => sum + (tx.credit || 0), 0);
+              node.closing = node.transactions.at(-1)?.running_balance ?? node.opening;
+          }
+      });
+      
+      const hierarchy: HierarchicalAccount[] = [];
+      accountMap.forEach(node => {
+          if (node.parent && accountMap.has(node.parent)) {
+              accountMap.get(node.parent)!.children.push(node);
+          } else {
+              hierarchy.push(node);
+          }
+      });
+
+      const aggregateUp = (node: HierarchicalAccount): void => {
+          if (node.children.length > 0) {
+              node.children.forEach(aggregateUp);
+              node.opening = node.children.reduce((sum, child) => sum + child.opening, 0);
+              node.debit = node.children.reduce((sum, child) => sum + child.debit, 0);
+              node.credit = node.children.reduce((sum, child) => sum + child.credit, 0);
+              node.closing = node.children.reduce((sum, child) => sum + child.closing, 0);
+          }
+      };
+      hierarchy.forEach(aggregateUp);
+
+      setHierarchicalData(hierarchy);
+      setExpandedRows(new Set(hierarchy.map(h => h.code)));
+  }
+
+  // --- RENDER HELPERS ---
+  const toggleRow = (code: string) => setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+  });
+
+  const renderTrialBalanceRow = (node: HierarchicalAccount, level = 0) => {
+    const isExpanded = expandedRows.has(node.code);
+    const hasActivity = node.opening !== 0 || node.debit !== 0 || node.credit !== 0 || node.closing !== 0;
+    if(!hasActivity && level > 0) return null; // Don't render empty children
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 border rounded-lg items-end bg-card print-hidden">
-                 <div className="space-y-2">
-                    <label className="font-semibold text-sm">Report Type</label>
-                    <Select value={reportType} onValueChange={setReportType}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="trial_balance">Trial Balance</SelectItem>
-                            <SelectItem value="account_ledger">Account Ledger</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                {reportType === 'account_ledger' && (
-                    <div className="space-y-2">
-                        <label htmlFor="account-select" className="font-semibold text-sm">Account</label>
-                        <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                            <SelectTrigger id="account-select"><SelectValue placeholder="Select an account..." /></SelectTrigger>
-                            <SelectContent>
-                                 <SelectItem value="all">All Accounts</SelectItem>
-                                 {chartOfAccounts.map(account => (
-                                    <SelectItem key={account.code} value={account.code} disabled={account.name.includes('(AUTO)') && chartOfAccounts.some(c => c.parent === account.code)}>{account.code} - {account.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
-                <div className="space-y-2">
-                        <label htmlFor="date-range" className="font-semibold text-sm">Date Range</label>
-                        <DateRangePicker date={dateRange} onDateChange={setDateRange} id="date-range"/>
-                </div>
-                 <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Button onClick={fetchData} disabled={isLoading} className="w-full md:col-span-3">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Generate Report
-                    </Button>
-                </div>
-            </div>
-
-             <Card id="print-section">
-                <CardHeader>
-                    <CardTitle>{getReportTitle()}</CardTitle>
-                    <CardDescription>{`Report from ${dateRange?.from ? format(dateRange.from, 'LLL dd, y') : 'start'} to ${dateRange?.to ? format(dateRange.to, 'LLL dd, y') : 'end'}`}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isLoading && <div className="flex justify-center items-center h-40"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-                    {error && <div className="text-destructive p-4">{error}</div>}
-                    {!isLoading && !error && (
-                         reportType === 'trial_balance' ? (
-                             <Table>
-                                <TableHeader><TableRow>
-                                    <TableHead className="w-2/5">Account</TableHead>
-                                    <TableHead className="text-right">Opening</TableHead>
-                                    <TableHead className="text-right">Debit</TableHead>
-                                    <TableHead className="text-right">Credit</TableHead>
-                                    <TableHead className="text-right">Closing</TableHead>
-                                </TableRow></TableHeader>
-                                <TableBody>
-                                    {hierarchicalData.map(node => renderTrialBalanceRow(node))}
-                                </TableBody>
-                            </Table>
-                         ) : (
-                             <Table>
-                                <TableHeader><TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Account</TableHead>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Debit</TableHead>
-                                    <TableHead className="text-right">Credit</TableHead>
-                                    <TableHead className="text-right">Balance</TableHead>
-                                </TableRow></TableHeader>
-                                <TableBody>
-                                    {filteredData.map((tx, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell>{formatDateSafe(tx.date)}</TableCell>
-                                            <TableCell>{tx.accountCode} - {tx.accountName}</TableCell>
-                                            <TableCell>{tx.description}</TableCell>
-                                            <TableCell className="text-right text-green-600">{formatCurrency(tx.debit)}</TableCell>
-                                            <TableCell className="text-right text-red-600">{formatCurrency(tx.credit)}</TableCell>
-                                            <TableCell className="text-right">{formatCurrency(tx.balance)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                         )
+        <React.Fragment key={node.code}>
+            <TableRow className={cn(!hasActivity && 'text-muted-foreground')}>
+                <TableCell style={{ paddingLeft: `${level * 20 + 5}px` }}>
+                   <div className="flex items-center">
+                    {node.children.length > 0 && (
+                        <Button variant="ghost" size="icon" className="mr-2 h-6 w-6" onClick={() => toggleRow(node.code)}>
+                           {isExpanded ? <MinusSquare size={14}/> : <PlusSquare size={14}/>}
+                        </Button>
                     )}
-                 </CardContent>
-            </Card>
-        </div>
-    );
-};
+                     <span className={cn(!node.children.length ? "font-normal" : "font-semibold")}>{node.code} - {node.name}</span>
+                   </div>
+                </TableCell>
+                <TableCell className="text-right font-mono">{formatMoney(node.opening)}</TableCell>
+                <TableCell className="text-right font-mono text-green-600">{formatMoney(node.debit)}</TableCell>
+                <TableCell className="text-right font-mono text-red-600">{formatMoney(node.credit)}</TableCell>
+                <TableCell className="text-right font-mono">{formatMoney(node.closing)}</TableCell>
+            </TableRow>
+            {isExpanded && node.children.map(child => renderTrialBalanceRow(child, level + 1))}
+        </React.Fragment>
+    )
+  }
 
-export default GeneralLedgerPage;
+  // --- RENDER ---
+  return (
+    <div className="space-y-4 p-4">
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div className='space-y-1'>
+                <CardTitle>General Ledger</CardTitle>
+                <CardDescription>
+                    {`Report from ${dateRange?.from ? format(dateRange.from, 'LLL dd, y') : 'start'} to ${dateRange?.to ? format(dateRange.to, 'LLL dd, y') : 'end'}`}
+                </CardDescription>
+            </div>
+            <ToggleGroup type="single" value={viewMode} onValueChange={(v) => { if(v) setViewMode(v as any)}}>
+                <ToggleGroupItem value="single">Single Account</ToggleGroupItem>
+                <ToggleGroupItem value="all">All Accounts</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4 pt-4">
+              {viewMode === 'single' ? (
+                  <div>
+                      <label className="text-sm font-medium">Account</label>
+                      <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                          <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                          <SelectContent>{leafAccounts.map(acc => <SelectItem key={acc.code} value={acc.code}>{acc.code} – {acc.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                  </div>
+              ) : (
+                  <div>
+                      <label className="text-sm font-medium">Search Account</label>
+                      <Input placeholder="Filter by code or name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                  </div>
+              )}
+              <div>
+                  <label className="text-sm font-medium">Date Range</label>
+                  <DateRangePicker date={dateRange} onDateChange={setDateRange} />
+              </div>
+              <div className="flex items-end">
+                  <Button onClick={fetchLedger} disabled={loading} className="w-full">
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Generate
+                  </Button>
+              </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Error Display */}
+      {error && <Card className="bg-destructive/10 text-destructive text-center p-4">{error}</Card>}
+      
+      {/* Empty State */}
+      {!loading && !error && singleLedger === null && hierarchicalData.length === 0 && (
+        <div className="text-center text-muted-foreground py-16">
+          <BookOpen className="mx-auto mb-3 h-10 w-10" />
+          <p>Select a view, account/date range, and click Generate.</p>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && <div className="flex justify-center py-16"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}
+
+      {/* Single Account View */}
+      {viewMode === 'single' && singleLedger && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{singleLedger.account.name}</CardTitle>
+            <CardDescription>Account Code: {singleLedger.account.code}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Ref</TableHead><TableHead>Description</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Credit</TableHead><TableHead className="text-right">Balance</TableHead></TableRow></TableHeader>
+              <TableBody>
+                <TableRow className="font-semibold"><TableCell colSpan={5}>Opening Balance</TableCell><TableCell className="text-right">{formatMoney(singleLedger.openingBalance)}</TableCell></TableRow>
+                {singleLedger.transactions.map((t, i) => (
+                  <TableRow key={i}>
+                    <TableCell>{formatDateSafe(t.date)}</TableCell><TableCell>{t.reference_number}</TableCell><TableCell>{t.description}</TableCell>
+                    <TableCell className="text-right text-green-600">{t.debit ? formatMoney(t.debit) : '-'}</TableCell>
+                    <TableCell className="text-right text-red-600">{t.credit ? formatMoney(t.credit) : '-'}</TableCell>
+                    <TableCell className="text-right">{formatMoney(t.running_balance)}</TableCell>
+                  </TableRow>
+                ))}
+                 {singleLedger.transactions.length === 0 && <TableRow><TableCell colSpan={6} className="text-center h-24">No transactions found for this period.</TableCell></TableRow>}
+              </TableBody>
+              <TableFooter>
+                <TableRow className="font-bold">
+                  <TableCell colSpan={3}>Period Totals</TableCell>
+                  <TableCell className="text-right text-green-600">{formatMoney(singleLedger.totalDebits)}</TableCell>
+                  <TableCell className="text-right text-red-600">{formatMoney(singleLedger.totalCredits)}</TableCell>
+                  <TableCell className="text-right">{formatMoney(singleLedger.closingBalance)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* All Accounts (Trial Balance) View */}
+      {viewMode === 'all' && filteredHierarchicalData.length > 0 && (
+        <Card>
+            <CardHeader><CardTitle>All Accounts Summary</CardTitle></CardHeader>
+            <CardContent>
+                <Table>
+                    <TableHeader><TableRow><TableHead className="w-2/5">Account</TableHead><TableHead className="text-right">Opening</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Credit</TableHead><TableHead className="text-right">Closing</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                        {filteredHierarchicalData.map(node => renderTrialBalanceRow(node))}
+                    </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

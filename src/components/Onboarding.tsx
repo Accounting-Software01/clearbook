@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Building, Hospital, Factory, Users, ClipboardList, PlusCircle, LineChart, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -13,11 +14,36 @@ interface OnboardingProps {
 const Onboarding = ({ onComplete }: OnboardingProps) => {
   const [step, setStep] = useState(1);
   const router = useRouter();
+  const { user } = useAuth();
 
-  const handleSelectCompanyType = (type: string) => {
-    // In a real app, this would make an API call to set the company type
-    console.log('Company type selected:', type);
-    setStep(3);
+  const handleSelectCompanyType = async (type: string) => {
+    if (!user?.company_id) {
+        console.error("Onboarding: No company_id found for user.");
+        // Here you might want to show a toast or an error message to the user
+        return;
+    }
+    try {
+        const response = await fetch('https://hariindustries.net/api/clearbook/settings.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                company_id: user.company_id,
+                updates: { company_type: type }
+            })
+        });
+
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            throw new Error(result.message || 'Failed to set company type.');
+        }
+
+        setStep(3);
+    } catch (error) {
+        console.error('Failed to set company type:', error);
+        // Here you might want to show a toast or an error message to the user
+    }
   };
 
   const handleFinalStep = (path: string) => {
@@ -105,14 +131,17 @@ const Onboarding = ({ onComplete }: OnboardingProps) => {
             <Card className="w-[500px] text-center p-6">
                 <CardHeader>
                     <Users className="h-12 w-12 text-primary mx-auto mb-4" />
-                    <CardTitle className="text-2xl">User Setup</CardTitle>
+                    <CardTitle className="text-2xl">Set Up Your Team</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <p className="mb-6 text-muted-foreground">
-                        Create accounts for your team and assign roles based on their responsibilities.
+                        Create accounts for your team and assign roles based on their responsibilities. You can do this later from the settings menu.
                     </p>
-                    <Button size="lg" onClick={() => setStep(5)}>Next</Button>
                 </CardContent>
+                <CardFooter className="flex justify-center gap-4">
+                    <Button size="lg" onClick={() => handleFinalStep('/admin/register-user')}>Add Users</Button>
+                    <Button size="lg" variant="outline" onClick={() => setStep(5)}>Skip for Now</Button>
+                </CardFooter>
             </Card>
         </div>
     );
