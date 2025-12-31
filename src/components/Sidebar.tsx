@@ -1,28 +1,26 @@
-
 'use client';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-    LayoutDashboard, 
-    FilePlus, 
-    BookPlus, 
-    BookOpen, 
-    Scale, 
-    FileBarChart2, 
-    Landmark, 
-    ArrowRightLeft, 
-    Users, 
-    UserSquare,
+import {
+    LayoutDashboard,
+    FilePlus,
+    BookPlus,
+    BookOpen,
+    Scale,
+    FileBarChart2,
+    Landmark,
+    ArrowRightLeft,
+    Users,
     Library,
     Boxes,
     ChevronDown,
-    UserPlus,
     ShoppingCart,
     Factory,
     LogOut,
     Settings,
     DollarSign,
-    Banknote // I've added this icon
+    Banknote
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -32,56 +30,82 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useAuth } from '@/hooks/useAuth';
-import { NotificationBell } from './ui/NotificationBell'; // Import the NotificationBell component
+import { NotificationBell } from './ui/NotificationBell';
 
 export function Sidebar() {
     const pathname = usePathname();
     const { user, logout } = useAuth();
 
-    if (!user) {
-        return null;
+    const allNavItems = [
+        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'view_dashboard' },
+        {
+            label: 'Transactions',
+            icon: ArrowRightLeft,
+            subItems: [
+                { href: '/payment-workbench', label: 'Payment Workbench', icon: Banknote, permission: 'view_accounting' },
+                { href: '/payment-voucher/new', label: 'Payment Voucher', icon: FilePlus, permission: 'view_accounting' },
+                { href: '/journal', label: 'Journal Entry', icon: BookPlus, permission: 'view_accounting' },
+                { href: '/Account-Payable', label: 'Invoices', icon: DollarSign, permission: 'view_accounting' },
+            ]
+        },
+        {
+            label: 'Financial Reports',
+            icon: FileBarChart2,
+            subItems: [
+                { href: '/ledger', label: 'General Ledger', icon: BookOpen, permission: 'view_accounting' },
+                { href: '/trial-balance', label: 'Trial Balance', icon: Scale, permission: 'view_accounting' },
+                { href: '/profit-loss', label: 'Profit & Loss', icon: Landmark, permission: 'view_accounting' },
+                { href: '/balance-sheet', label: 'Balance Sheet', icon: Landmark, permission: 'view_accounting' },
+                { href: '/cash-flow', label: 'Cash Flow', icon: ArrowRightLeft, permission: 'view_accounting' },
+            ]
+        },
+        { href: '/inventory', label: 'Inventory', icon: Boxes, permission: 'view_inventory' },
+        { href: '/sales', label: 'Sales', icon: ShoppingCart, permission: 'view_sales' },
+        { href: '/procurement', label: 'Procurement', icon: ShoppingCart, permission: 'view_procurement' },
+        { href: '/production', label: 'Production', icon: Factory, permission: 'view_production', companyType: 'manufacturing' },
+        { href: '/admin/register-user', label: 'Users', icon: Users, permission: 'manage_users' },
+        { href: '/admin/settings', label: 'Settings', icon: Settings, permission: 'manage_settings' },
+    ];
+
+    if (!user || !user.permissions) {
+        return (
+            <aside className="w-64 flex-shrink-0 rounded-2xl bg-primary border shadow-lg flex flex-col">
+                <div className="p-6 flex items-center gap-2 border-b border-white/20">
+                    <Library className="h-8 w-8 text-primary-foreground" />
+                    <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+                </div>
+            </aside>
+        );
     }
 
-    const navItems = [
-        { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'accountant', 'staff'] },
-        {
-            label: 'Transactions', 
-            icon: ArrowRightLeft, 
-            roles: ['admin', 'accountant'],
-            subItems: [
-                // I have added the new Payment Workbench link here
-                { href: '/payment-workbench', label: 'Payment Workbench', icon: Banknote },
-                { href: '/payment-voucher/new', label: 'Payment Voucher', icon: FilePlus },
-                { href: '/journal', label: 'Journal Entry', icon: BookPlus },
-                { href: '/Account-Payable', label: 'Invoices', icon: DollarSign },
-            ]
-        },
-        {
-            label: 'Financial Reports', 
-            icon: FileBarChart2, 
-            roles: ['admin', 'accountant'],
-            subItems: [
-                { href: '/ledger', label: 'General Ledger', icon: BookOpen },
-                { href: '/trial-balance', label: 'Trial Balance', icon: Scale },
-                { href: '/profit-loss', label: 'Profit & Loss', icon: Landmark },
-                { href: '/balance-sheet', label: 'Balance Sheet', icon: Landmark },
-                { href: '/cash-flow', label: 'Cash Flow', icon: ArrowRightLeft },
-            ]
-        },
-        { href: '/inventory', label: 'Inventory', icon: Boxes, roles: ['admin'] },
-        { href: '/sales', label: 'Sales', icon: ShoppingCart, roles: ['admin'] },
-        { href: '/procurement', label: 'Procurement', icon: ShoppingCart, roles: ['admin'] },
-        { href: '/production', label: 'Production', icon: Factory, roles: ['admin'], companyType: 'manufacturing' },
-        {
-            label: 'Admin',
-            icon: Settings,
-            roles: ['admin'],
-            subItems: [
-                { href: '/admin/register-user', label: 'Register User', icon: UserPlus },
-                { href: '/admin/settings', label: 'Settings', icon: Settings },
-            ]
-        }
-    ];
+    const isAdmin = user.role === 'admin';
+
+    const navItems = allNavItems
+        .map(item => {
+            // Filter out items that don't match the user's company type
+            if (item.companyType && item.companyType !== user.company_type) {
+                return null;
+            }
+
+            // If the user is an admin, they can see everything
+            if (isAdmin) {
+                return item;
+            }
+
+            // For non-admin users, check permissions
+            if (item.subItems) {
+                const accessibleSubItems = item.subItems.filter(subItem =>
+                    user.permissions?.includes(subItem.permission)
+                );
+                return accessibleSubItems.length > 0 ? { ...item, subItems: accessibleSubItems } : null;
+            }
+            if (item.permission) {
+                return user.permissions?.includes(item.permission) ? item : null;
+            }
+            return null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
 
     return (
         <aside className="w-64 flex-shrink-0 rounded-2xl bg-primary border shadow-lg flex flex-col">
@@ -95,7 +119,7 @@ export function Sidebar() {
             <ScrollArea className="flex-grow">
                 <nav className="py-4 px-4">
                     <ul className="space-y-2">
-                        {navItems.filter(item => item.roles.includes(user.role) && (!item.companyType || item.companyType === user.company_type)).map((item, index) => (
+                        {navItems.map((item, index) => (
                              item.subItems ? (
                                 <li key={index}>
                                     <Collapsible>

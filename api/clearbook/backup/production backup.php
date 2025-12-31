@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Factory, Trash2, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook } from 'lucide-react';
+import { PlusCircle, Factory, Trash2, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { InventoryItem } from '@/types/inventory';
@@ -19,7 +18,6 @@ interface ProductionOrder {
     quantity_to_produce: number;
     status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
     creation_date: string;
-    notes?: string;
 }
 
 interface MaterialConsumption {
@@ -45,7 +43,6 @@ const OrderList = ({ orders, onStart, onComplete }: { orders: ProductionOrder[],
                     <div>
                         <p className="font-bold">#{order.id} - {order.product_name}</p>
                         <p className="text-sm text-muted-foreground">Quantity: {order.quantity_to_produce} units | Created: {new Date(order.creation_date).toLocaleDateString()}</p>
-                        {order.notes && <p className='text-xs italic text-muted-foreground mt-1'>Note: {order.notes}</p>}
                     </div>
                     <div className='flex items-center gap-2'>
                         <p className={`text-sm font-bold capitalize px-2 py-1 rounded-full ${order.status === 'Pending' ? 'bg-yellow-400/20 text-yellow-500' : order.status === 'In Progress' ? 'bg-blue-400/20 text-blue-500' : 'bg-green-400/20 text-green-500'}`}>{order.status.replace('_', ' ')}</p>
@@ -71,7 +68,6 @@ export default function ProductionPage() {
     // Form state
     const [selectedProduct, setSelectedProduct] = useState<string>("");
     const [quantityToProduce, setQuantityToProduce] = useState<string>("1");
-    const [notes, setNotes] = useState(""); // New state for notes
     const [materialsToConsume, setMaterialsToConsume] = useState<MaterialConsumption[]>([]);
     const [plannedLaborCost, setPlannedLaborCost] = useState("0");
     const [directExpenses, setDirectExpenses] = useState<AdditionalCost[]>([]);
@@ -92,11 +88,11 @@ export default function ProductionPage() {
             const itemsData = await itemsResponse.json();
             if(!itemsResponse.ok) throw new Error(itemsData.message || 'Failed to fetch items');
             
+            // *** FIX: Process the raw item data to parse numbers correctly ***
             const processItem = (item: any): InventoryItem => ({
                 ...item,
-                id: parseInt(item.id, 10),
-                average_unit_cost: parseFloat(item.average_unit_cost) || 0,
-                quantity_on_hand: parseFloat(item.quantity_on_hand) || 0,
+                unit_cost: parseFloat(item.unit_cost) || 0,
+                quantity: parseFloat(item.quantity) || 0,
             });
 
             setInventoryItems({
@@ -105,19 +101,15 @@ export default function ProductionPage() {
             });
 
         } catch (error: any) {
-            toast({ title: "Error Loading Data", description: error.message, variant: 'destructive' });
+            toast({ title: "Error", description: error.message, variant: 'destructive' });
         } finally {
             setIsLoading(false);
         }
     }, [user?.company_id, toast]);
 
-    useEffect(() => {
-        if (user?.company_id) {
-            fetchData();
-        }
-    }, [user?.company_id, fetchData]);
+    useEffect(() => { fetchData(); }, [fetchData]);
 
-    // --- FORM HANDLERS ---
+    // --- FORM HANDLERS FOR DYNAMIC LISTS ---
     const handleAddMaterial = () => setMaterialsToConsume([...materialsToConsume, { id: 0, name: '', quantity: '1' }]);
     const handleRemoveMaterial = (index: number) => setMaterialsToConsume(materialsToConsume.filter((_, i) => i !== index));
 
@@ -165,10 +157,9 @@ export default function ProductionPage() {
         try {
             const payload = {
                 company_id: user.company_id,
-                user_id: user.uid, // Correctly include the user_id
+                user_id: user.id,
                 product_id: parseInt(selectedProduct),
                 quantity_to_produce: parseInt(quantityToProduce),
-                notes: notes,
                 materials: materialsToConsume.map(m => ({ id: m.id, quantity: parseInt(m.quantity) })),
                 planned_labor_cost: parseFloat(plannedLaborCost),
                 direct_expenses: directExpenses.filter(d => d.amount && d.description).map(d => ({ ...d, amount: parseFloat(d.amount) })),
@@ -188,7 +179,6 @@ export default function ProductionPage() {
             // Reset form fields
             setSelectedProduct("");
             setQuantityToProduce("1");
-            setNotes("");
             setMaterialsToConsume([]);
             setPlannedLaborCost("0");
             setDirectExpenses([]);
@@ -209,7 +199,7 @@ export default function ProductionPage() {
                 body: JSON.stringify({ 
                     production_order_id: orderId,
                     company_id: user.company_id, 
-                    user_id: user.uid,
+                    user_id: user.id,
                     status: status
                 }),
             });
@@ -237,7 +227,7 @@ export default function ProductionPage() {
                 <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>Refresh</Button>
             </CardHeader>
             <CardContent>
-                <Tabs defaultValue="orders" className='w-full'>
+                <Tabs defaultValue="orders">
                     <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="orders"><Package className="mr-2 h-4 w-4"/>Pending ({pendingOrders.length})</TabsTrigger>
                         <TabsTrigger value="wip"><ListChecks className="mr-2 h-4 w-4"/>Work In Progress ({wipOrders.length})</TabsTrigger>
@@ -251,43 +241,28 @@ export default function ProductionPage() {
 
                     {/* CREATE NEW ORDER FORM */}
                     <TabsContent value="new" className="mt-4">
-                        <form onSubmit={handleCreateOrder} className="space-y-6 max-w-4xl mx-auto">
-                             <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg flex items-center"><Notebook className="h-5 w-5 mr-2" />1. Define Production Goal</CardTitle>
-                                    <CardDescription>Select the product to manufacture, the quantity, and any relevant notes for this production run.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="p-6 space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="font-medium">Product to Manufacture</label>
-                                            <Select value={selectedProduct} onValueChange={setSelectedProduct} required><SelectTrigger><SelectValue placeholder="Select a finished good..." /></SelectTrigger><SelectContent>{inventoryItems.products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}</SelectContent></Select>
-                                        </div>
-                                        <div>
-                                            <label className="font-medium">Quantity to Produce</label>
-                                            <Input type="number" min="1" value={quantityToProduce} onChange={e => setQuantityToProduce(e.target.value)} required />
-                                        </div>
-                                    </div>
+                        <form onSubmit={handleCreateOrder} className="space-y-6">
+                            <Card>
+                                <CardHeader><CardTitle className="text-lg">1. Define Production Goal</CardTitle></CardHeader>
+                                <CardContent className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="font-medium">Production Notes (Optional)</label>
-                                        <Textarea placeholder="e.g., Special batch for a client, use specific packaging..." value={notes} onChange={e => setNotes(e.target.value)} />
+                                        <label>Product to Manufacture</label>
+                                        <Select value={selectedProduct} onValueChange={setSelectedProduct}><SelectTrigger><SelectValue placeholder="Select a finished good..." /></SelectTrigger><SelectContent>{inventoryItems.products.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}</SelectContent></Select>
                                     </div>
+                                    <div><label>Quantity to Produce</label><Input type="number" min="1" value={quantityToProduce} onChange={e => setQuantityToProduce(e.target.value)} /></div>
                                 </CardContent>
                             </Card>
 
-                             <Card>
-                                <CardHeader className="flex flex-row justify-between items-center">
-                                    <div className='space-y-1'><CardTitle className="text-lg">2. Define Material Consumption</CardTitle><CardDescription>List all raw materials that will be consumed from inventory for this order.</CardDescription></div>
-                                    <Button type="button" size="sm" variant="outline" onClick={handleAddMaterial}><PlusCircle className="h-4 w-4 mr-2"/>Add Material</Button>
-                                </CardHeader>
-                                <CardContent className="p-6 space-y-3">
+                            <Card>
+                                <CardHeader className="flex flex-row justify-between items-center"><CardTitle className="text-lg">2. Define Material Consumption</CardTitle><Button type="button" size="sm" variant="outline" onClick={handleAddMaterial}><PlusCircle className="h-4 w-4 mr-2"/>Add Material</Button></CardHeader>
+                                <CardContent className="space-y-3">
                                     {materialsToConsume.map((material, index) => (
                                         <div key={index} className="flex items-center gap-2">
-                                            <Select onValueChange={(value) => handleMaterialChange(index, value)} value={material.id ? material.id.toString() : ''} required>
+                                            <Select onValueChange={(value) => handleMaterialChange(index, value)} value={material.id ? material.id.toString() : ''}>
                                                 <SelectTrigger><SelectValue placeholder="Select a raw material..." /></SelectTrigger>
                                                 <SelectContent>{inventoryItems.raw_materials.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}</SelectContent>
                                             </Select>
-                                            <Input className="w-48" type="number" min="0.01" step="0.01" placeholder="Quantity" value={material.quantity} onChange={e => handleMaterialQuantityChange(index, e.target.value)} required />
+                                            <Input className="w-48" type="number" min="0.01" step="0.01" placeholder="Quantity" value={material.quantity} onChange={e => handleMaterialQuantityChange(index, e.target.value)} />
                                             <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMaterial(index)}><Trash2 className="h-4 w-4 text-red-500"/></Button>
                                         </div>
                                     ))}
@@ -295,32 +270,29 @@ export default function ProductionPage() {
                                 </CardContent>
                             </Card>
                             
-                             <Card>
-                                <CardHeader>
-                                     <CardTitle className="text-lg">3. Planned Additional Costs</CardTitle>
-                                     <CardDescription>Account for any costs beyond raw materials, such as labor or other direct expenses.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="p-6 space-y-4">
+                            <Card>
+                                <CardHeader><CardTitle className="text-lg">3. Planned Additional Costs</CardTitle></CardHeader>
+                                <CardContent className="space-y-4">
                                     <div>
-                                        <label className='font-medium flex items-center mb-1'><DollarSign className="h-4 w-4 mr-2"/>Planned Direct Labor Cost</label>
+                                        <label className='flex items-center mb-1'><DollarSign className="h-4 w-4 mr-2"/>Planned Direct Labor Cost</label>
                                         <Input type="number" min="0" step="0.01" value={plannedLaborCost} onChange={e => setPlannedLaborCost(e.target.value)} />
                                     </div>
                                     <hr/>
-                                    <div className="space-y-3">
-                                        <div className='flex justify-between items-center'><label className='font-medium'>Direct Expenses</label><Button type="button" size="sm" variant="outline" onClick={handleAddDirectExpense}><PlusCircle className="h-4 w-4 mr-2"/>Add</Button></div>
+                                    <div className="space-y-2">
+                                        <div className='flex justify-between items-center'><label>Direct Expenses</label><Button type="button" size="sm" variant="outline" onClick={handleAddDirectExpense}><PlusCircle className="h-4 w-4 mr-2"/>Add Expense</Button></div>
                                         {directExpenses.map((exp, index) => <div key={index} className="flex items-center gap-2"><Input placeholder="e.g., Special Tool Rental" value={exp.description} onChange={e => handleDirectExpenseChange(index, 'description', e.target.value)}/><Input className="w-48" type="number" min="0.01" step="0.01" placeholder="Amount" value={exp.amount} onChange={e => handleDirectExpenseChange(index, 'amount', e.target.value)}/><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveDirectExpense(index)}><Trash2 className="h-4 w-4 text-red-500"/></Button></div>)}
                                         {directExpenses.length === 0 && <p className='text-xs text-center text-muted-foreground py-2'>No direct expenses added.</p>}
                                     </div>
                                      <hr/>
-                                    <div className="space-y-3">
-                                        <div className='flex justify-between items-center'><label className='font-medium'>Other Miscellaneous Costs</label><Button type="button" size="sm" variant="outline" onClick={handleAddMiscCost}><PlusCircle className="h-4 w-4 mr-2"/>Add</Button></div>
+                                    <div className="space-y-2">
+                                        <div className='flex justify-between items-center'><label>Other Miscellaneous Costs</label><Button type="button" size="sm" variant="outline" onClick={handleAddMiscCost}><PlusCircle className="h-4 w-4 mr-2"/>Add Cost</Button></div>
                                         {miscCosts.map((cost, index) => <div key={index} className="flex items-center gap-2"><Input placeholder="e.g., Factory Overheads" value={cost.description} onChange={e => handleMiscCostChange(index, 'description', e.target.value)}/><Input className="w-48" type="number" min="0.01" step="0.01" placeholder="Amount" value={cost.amount} onChange={e => handleMiscCostChange(index, 'amount', e.target.value)}/><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveMiscCost(index)}><Trash2 className="h-4 w-4 text-red-500"/></Button></div>)}
                                         {miscCosts.length === 0 && <p className='text-xs text-center text-muted-foreground py-2'>No miscellaneous costs added.</p>}
                                     </div>
                                 </CardContent>
                             </Card>
                             
-                            <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>{isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting Production Order...</> : <>Create Production Order</>}</Button>
+                            <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</> : <>Create Production Order</>}</Button>
                         </form>
                     </TabsContent>
                 </Tabs>

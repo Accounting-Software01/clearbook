@@ -1,0 +1,21 @@
+CREATE TABLE `tax_authorities` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `company_id` varchar(20) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `short_name` varchar(100) DEFAULT NULL,
+  `authority_type` enum('Federal','State','Local','Regulatory','Other') NOT NULL DEFAULT 'Other',
+  `jurisdiction` enum('Federal','State','Local') NOT NULL DEFAULT 'Federal',
+  `tax_id` varchar(100) DEFAULT NULL,
+  `contact_person` varchar(255) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `default_tax_rate` decimal(5,2) DEFAULT NULL,
+  `status` enum('active','inactive') NOT NULL DEFAULT 'active',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `company_id` (`company_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;

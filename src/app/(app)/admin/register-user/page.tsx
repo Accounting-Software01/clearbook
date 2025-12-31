@@ -32,12 +32,15 @@ export default function RegisterUserPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [role, setRole] = useState('');
+    const [jobTitle, setJobTitle] = useState('');
+    const [userType, setUserType] = useState('');
+    const [status, setStatus] = useState('Active');
 
     useEffect(() => {
         const fetchUser = async () => {
             try {
                 const user = await getCurrentUser();
-                if (user?.role !== 'admin_manager') {
+                if (user?.role !== 'admin') {
                     setCurrentUser(null);
                 } else {
                     setCurrentUser(user as CurrentUser);
@@ -59,7 +62,7 @@ export default function RegisterUserPage() {
             toast({ title: "Error", description: "Not authorized.", variant: 'destructive' });
             return;
         }
-        if (!fullName || !email || !password || !role) {
+        if (!fullName || !email || !password || !role || !jobTitle || !userType || !status) {
             toast({ title: "Validation Error", description: "Please fill all fields.", variant: 'destructive' });
             return;
         }
@@ -70,12 +73,14 @@ export default function RegisterUserPage() {
         formData.append('email', email);
         formData.append('password', password);
         formData.append('role', role);
-        formData.append('user_type', currentUser.user_type);
+        formData.append('job_title', jobTitle);
+        formData.append('user_type', userType);
+        formData.append('status', status);
         formData.append('company_type', currentUser.company_type);
         formData.append('company_id', currentUser.company_id);
 
         try {
-            const response = await fetch('https://hariindustries.net/busa-api/database/create_user.php', {
+            const response = await fetch('https://hariindustries.net/api/clearbook/create_user.php', {
                 method: 'POST',
                 body: formData,
             });
@@ -86,8 +91,19 @@ export default function RegisterUserPage() {
                 setEmail('');
                 setPassword('');
                 setRole('');
+                setJobTitle('');
+                setUserType('');
+                setStatus('Active');
             } else {
-                toast({ title: "Registration Failed", description: result.error, variant: 'destructive' });
+                if (result.error && typeof result.error === 'string' && result.error.includes('Duplicate entry')) {
+                    toast({
+                        title: "Registration Failed",
+                        description: "This email address is already registered for this company.",
+                        variant: 'destructive'
+                    });
+                } else {
+                    toast({ title: "Registration Failed", description: result.error, variant: 'destructive' });
+                }
             }
         } catch (error) {
             toast({ title: "Network Error", description: "Could not connect to the server.", variant: 'destructive' });
@@ -97,16 +113,14 @@ export default function RegisterUserPage() {
     };
 
     const allRoles = [
+        { value: "admin", label: "Admin" },
         { value: "accountant", label: "Accountant" },
-        { value: "production_manager", label: "Production Manager" },
-        { value: "store_manager", label: "Store Manager" },
-        { value: "procurement_manager", label: "Procurement Manager" },
-        { value: "sales_manager", label: "Sales Manager" },
+        { value: "staff", label: "Staff" },
     ];
 
     const availableRoles = currentUser?.company_type === 'manufacturing'
         ? allRoles
-        : allRoles.filter(r => ['accountant', 'procurement_manager'].includes(r.value));
+        : allRoles.filter(r => ['accountant', 'admin', 'staff'].includes(r.value));
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
@@ -158,6 +172,35 @@ export default function RegisterUserPage() {
                                             {availableRoles.map(role => (
                                                 <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
                                             ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                     <Label htmlFor="jobTitle">Job Title</Label>
+                                     <Input id="jobTitle" value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="e.g., Admin Manager" required className="mt-1"/>
+                                </div>
+                                <div>
+                                    <Label htmlFor="userType">User Type</Label>
+                                    <Select onValueChange={setUserType} value={userType}>
+                                        <SelectTrigger id="userType" className="mt-1">
+                                            <SelectValue placeholder="Select a user type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="internal">Internal User</SelectItem>
+                                            <SelectItem value="external">External User</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label htmlFor="status">Status</Label>
+                                    <Select onValueChange={setStatus} value={status}>
+                                        <SelectTrigger id="status" className="mt-1">
+                                            <SelectValue placeholder="Select a status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Active">Active</SelectItem>
+                                            <SelectItem value="Inactive">Inactive</SelectItem>
+                                            <SelectItem value="Suspended">Suspended</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

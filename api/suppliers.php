@@ -91,7 +91,8 @@ function handle_get($conn, string $company_id) {
         $stmt->close();
 
     } else {
-        $query = "SELECT id, code, name, contact_person, ap_account_id, status FROM suppliers WHERE company_id = ? ORDER BY name";
+        // Modified to include fields required by the SelectPayeeDialog
+        $query = "SELECT id, name, bank_name, account_number, tax_id FROM suppliers WHERE company_id = ? ORDER BY name";
         $stmt = $conn->prepare($query);
         if (!$stmt) throw new Exception($conn->error, 500);
 

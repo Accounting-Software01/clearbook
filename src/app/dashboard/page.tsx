@@ -1,20 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { AlertTriangle, UserPlus, Settings, Star, UserCircle, Loader2, TrendingUp, DollarSign, ShoppingCart, ArrowDown, ArrowUp } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, UserCircle, Loader2, TrendingUp, DollarSign, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
-
-// Motivational Quotes
-const motivationalQuotes = [
-    "The secret of getting ahead is getting started.",
-    "Well done is better than well said.",
-    "The journey of a thousand miles begins with a single step.",
-    "Either you run the day or the day runs you.",
-    "Your limitation is only your imagination."
-];
+import { useToast } from '@/hooks/use-toast';
 
 const userRoles = [
     "admin",
@@ -22,21 +13,63 @@ const userRoles = [
     "staff"
 ];
 
+interface Invoice {
+  id: string; 
+  invoice_number: string;
+  customer_name: string;
+  invoice_date: string; 
+  due_date: string;     
+  total_amount: number;
+  amount_due: number;  
+  status: 'Paid' | 'Unpaid' | 'Partially Paid';
+}
+
+interface FinancialData {
+    totalRevenue: number;
+    outstandingBalance: number;
+    overdueInvoices: number;
+}
+
 export default function DashboardPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { toast } = useToast();
+  
   const [lastLogin, setLastLogin] = useState<string | null>(null);
-  const [quote, setQuote] = useState("");
+  const [financialData, setFinancialData] = useState<FinancialData | null>(null);
+  const [isFinancialLoading, setIsFinancialLoading] = useState(true);
+
+  const fetchFinancialData = useCallback(async () => {
+    if (!user?.company_id) return;
+    setIsFinancialLoading(true);
+    try {
+        const res = await fetch(`https://hariindustries.net/busa-api/database/get-sales-invoices.php?company_id=${user.company_id}`);
+        if (!res.ok) throw new Error('Could not fetch financial data.');
+        const invoices: Invoice[] = await res.json();
+
+        const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total_amount, 0);
+        const outstandingBalance = invoices.reduce((sum, inv) => sum + inv.amount_due, 0);
+        const overdueInvoices = invoices.filter(inv => new Date(inv.due_date) < new Date() && inv.status !== 'Paid').length;
+
+        setFinancialData({ totalRevenue, outstandingBalance, overdueInvoices });
+
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Error fetching financials', description: error.message });
+        setFinancialData(null);
+    } finally {
+        setIsFinancialLoading(false);
+    }
+  }, [user?.company_id, toast]);
 
   useEffect(() => {
     if (user) {
       const now = new Date();
       const formattedLoginTime = `${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`;
       setLastLogin(formattedLoginTime);
+      fetchFinancialData();
     }
-    setQuote(motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)]);
-  }, [user]);
+  }, [user, fetchFinancialData]);
 
-  if (isLoading) {
+  if (isAuthLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
   }
 
@@ -96,46 +129,46 @@ export default function DashboardPage() {
                     )}
                     {lastLogin && <p className='text-xs text-muted-foreground mt-1'>Last login: {lastLogin}</p>}
                 </div>
-                <div className='text-right'>
-                    <p className='text-base italic text-muted-foreground'>"{quote}"</p>
-                </div>
             </div>
         </div>
         <ScrollArea className="h-full pr-4">
             <div className="space-y-6">
-                {/* Quick Reminders */}
+
+                {/* Financial Snapshot */}
+                <div className="pt-4">
+                    <h3 className="text-xl font-semibold mb-4">Financial Snapshot</h3>
+                    {isFinancialLoading ? (
+                        <div className="flex items-center justify-center h-24"><Loader2 className="h-8 w-8 animate-spin" /></div>
+                    ) : financialData ? (
+                        <div className="grid gap-4 md:grid-cols-3">
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Revenue</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                                <CardContent><div className="text-2xl font-bold">${financialData.totalRevenue.toFixed(2)}</div></CardContent>
+                            </Card>
+                             <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                                <CardContent><div className="text-2xl font-bold">${financialData.outstandingBalance.toFixed(2)}</div></CardContent>
+                            </Card>
+                             <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Overdue Invoices</CardTitle><AlertTriangle className="h-4 w-4 text-red-500" /></CardHeader>
+                                <CardContent><div className="text-2xl font-bold">{financialData.overdueInvoices}</div></CardContent>
+                            </Card>
+                        </div>
+                    ) : (
+                         <div className="p-4 flex items-center text-center rounded-lg bg-gray-50">
+                            <Info className="w-5 h-5 mr-3 text-primary"/>
+                            <p className="text-sm text-muted-foreground">No financial data available to display.</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Quick Reminders - Kept as is */}
                 <div className="p-4 rounded-lg bg-yellow-100/30">
                     <h3 className="font-semibold text-base flex items-center"><AlertTriangle className="w-5 h-5 mr-2 text-yellow-500"/>Quick Reminders</h3>
                     <ul className="list-disc list-inside text-sm mt-2 ml-2">
                         <li>3 failed invoices require attention.</li>
                         <li>2 payment vouchers pending approval.</li>
                     </ul>
-                </div>
-
-                {/* Enhanced Settings and Status */}
-                <div className="pt-4">
-                    <h3 className="text-xl font-semibold mb-4">System Status & Settings</h3>
-                    <div className="grid gap-4 md:grid-cols-3">
-                        {user.role === 'admin' && (
-                          <>
-                            <div className="p-4 flex flex-col items-center justify-center text-center rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                                <UserPlus className="w-8 h-8 mb-2 text-primary"/>
-                                <p className="font-semibold text-base">User Registration</p>
-                                <Button variant='link' size='sm' className="mt-1">Manage Users</Button>
-                            </div>
-                            <div className="p-4 flex flex-col items-center justify-center text-center rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                                <Settings className="w-8 h-8 mb-2 text-primary"/>
-                                <p className="font-semibold text-base">Company Settings</p>
-                                <Button variant='link' size='sm' className="mt-1">Configure</Button>
-                            </div>
-                          </>
-                        )}
-                         <div className="p-4 flex flex-col items-center justify-center text-center rounded-lg bg-gray-50">
-                            <Star className="w-8 h-8 mb-2 text-yellow-500"/>
-                            <p className="font-semibold text-base">Subscription</p>
-                            <p className="text-sm text-green-600 font-bold">Premium Plan</p>
-                        </div>
-                    </div>
                 </div>
             </div>
         </ScrollArea>

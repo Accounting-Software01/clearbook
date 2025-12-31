@@ -42,12 +42,12 @@ const CompanySettings = () => {
 
             setIsLoading(true);
             try {
-                const response = await fetch(`https://hariindustries.net/clearbook/get_company_settings.php?company_id=${user.company_id}`);
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get_company_settings.php?company_id=${user.company_id}`);
                 if (!response.ok) throw new Error('Failed to fetch company data.');
                 const data: CompanyData = await response.json();
                 setFormData(data);
                 if (data.company_logo) {
-                    setLogoPreview(`https://hariindustries.net/clearbook/${data.company_logo}`);
+                    setLogoPreview(`https://hariindustries.net/api/clearbook/${data.company_logo}`);
                 }
             } catch (error: any) {
                 toast({ variant: "destructive", title: "Error loading data", description: error.message });
@@ -106,7 +106,7 @@ const CompanySettings = () => {
         }
 
         try {
-            const response = await fetch('https://hariindustries.net/clearbook/update_company.php', {
+            const response = await fetch('https://hariindustries.net/api/clearbook/update_company.php', {
                 method: 'POST',
                 body: submissionData,
             });

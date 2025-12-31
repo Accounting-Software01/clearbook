@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   TableFooter
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusCircle, Trash2, Printer, ArrowRight, Waypoints, FileText, ListOrdered, ShoppingCart, Users, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Printer, RefreshCw, Waypoints, FileText, ListOrdered, ShoppingCart, Users, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -50,16 +50,16 @@ interface SalesItem {
 interface Invoice {
   id: string; 
   invoice_number: string;
-  customer_id: string;
+  customer_id?: string;
   customer_name: string;
   invoice_date: string; 
   due_date: string;     
   total_amount: number;
   amount_due: number;  
   status: 'Paid' | 'Unpaid' | 'Partially Paid';
-  previous_balance: number;
-  current_invoice_balance: number;
-  total_balance: number;
+  previous_balance?: number;
+  current_invoice_balance?: number;
+  total_balance?: number;
 }
 
 // Types for Customer Trail
@@ -95,22 +95,13 @@ interface CustomerTrailData {
   waybills: CustomerWaybillSummary[];
 }
 
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: 'cust001', name: 'ABC Solutions', contact_person: 'John Doe', email: 'john@abc.com', phone: '123-456-7890', address: '123 Main St, Anytown' },
-  { id: 'cust002', name: 'XYZ Corp', contact_person: 'Jane Smith', email: 'jane@xyz.com', phone: '098-765-4321', address: '456 Oak Ave, Somewhere' },
-  { id: 'cust003', name: 'PQR Enterprises', contact_person: 'Peter Jones', email: 'peter@pqr.com', phone: '111-222-3333', address: '789 Pine Ln, Nowhere' },
-];
-
-const MOCK_ITEMS: Item[] = [
-  { id: 'prod001', name: 'Product A (SKU123)', unit_price: 100.50 },
-  { id: 'prod002', name: 'Service B (Hourly Rate)', unit_price: 50.00 },
-  { id: 'prod003', name: 'Product C (Large Pack)', unit_price: 250.75 },
-  { id: 'prod004', name: 'Consulting Hour', unit_price: 150.00 },
-];
 
 const SalesPage = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Main loading state
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   // Sale Form State
   const [invoiceDate, setInvoiceDate] = useState<Date | undefined>(new Date());
@@ -124,7 +115,7 @@ const SalesPage = () => {
   const [salesItems, setSalesItems] = useState<SalesItem[]>([
     { id: Date.now(), item_id: '', item_name: '', unit_price: 0, quantity: 1 },
   ]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatedInvoice, setGeneratedInvoice] = useState<Invoice | null>(null);
 
   // Customer Trail State
@@ -132,20 +123,61 @@ const SalesPage = () => {
   const [customerTrailData, setCustomerTrailData] = useState<CustomerTrailData | null>(null);
   const [isCustomerTrailLoading, setIsCustomerTrailLoading] = useState(false);
 
+  // Invoices List State
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const [isInvoiceLoading, setIsInvoiceLoading] = useState(false);
+  
   // Dropdowns Data
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [allItems, setAllItems] = useState<Item[]>([]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setAllCustomers(MOCK_CUSTOMERS);
-      setAllItems(MOCK_ITEMS);
-    };
+  const fetchInitialData = useCallback(async () => {
+    if (!user?.company_id) return;
+    setIsInitialLoading(true);
+    try {
+      const [customersRes, itemsRes] = await Promise.all([
+        fetch(`https://hariindustries.net/busa-api/database/get-customers.php?company_id=${user.company_id}`),
+        fetch(`https://hariindustries.net/busa-api/database/get-sellable-items.php?company_id=${user.company_id}`),
+      ]);
 
-    if (user?.company_id) {
-      fetchData();
+      if (!customersRes.ok || !itemsRes.ok) {
+        throw new Error('Failed to fetch initial data.');
+      }
+
+      const customers = await customersRes.json();
+      const items = await itemsRes.json();
+
+      setAllCustomers(customers);
+      setAllItems(items);
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error fetching data', description: error.message });
+    } finally {
+      setIsInitialLoading(false);
     }
   }, [user?.company_id, toast]);
+
+  const fetchInvoices = useCallback(async () => {
+    if (!user?.company_id) return;
+    setIsInvoiceLoading(true);
+    try {
+      const res = await fetch(`https://hariindustries.net/busa-api/database/get-sales-invoices.php?company_id=${user.company_id}`);
+      if(!res.ok) throw new Error('Failed to fetch invoices');
+      const invoices = await res.json();
+      setAllInvoices(invoices);
+    } catch (error: any) {
+       toast({ variant: 'destructive', title: 'Error fetching invoices', description: error.message });
+    } finally {
+      setIsInvoiceLoading(false);
+    }
+  }, [user?.company_id, toast]);
+
+
+  useEffect(() => {
+    if (user?.company_id) {
+      fetchInitialData();
+      fetchInvoices();
+    }
+  }, [user?.company_id, fetchInitialData, fetchInvoices]);
 
   useEffect(() => {
     const fetchCustomerTrail = async () => {
@@ -246,13 +278,13 @@ const SalesPage = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     const payload = {
       customer_id: selectedCustomerId,
       invoice_date: format(invoiceDate, 'yyyy-MM-dd'),
       due_date: format(dueDate, 'yyyy-MM-dd'),
       narration: narration,
-      sales_items: salesItems.map(({ id, ...rest }) => rest),
+      sales_items: salesItems.map(({ id, ...rest }) => ({...rest, item_id: rest.item_id.toString()})),
       total_amount: totalAmount,
       user_id: user.uid,
       company_id: user.company_id,
@@ -274,27 +306,20 @@ const SalesPage = () => {
       if (result.success) {
         toast({ title: 'Invoice Generated!', description: `Invoice #${result.invoice_number} recorded.` });
         setGeneratedInvoice(result.invoice);
+        fetchInvoices(); // Refresh invoice list
       } else {
         throw new Error(result.error || 'Server indicated a failure.');
       }
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Failed to generate invoice.', description: error.message });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  const handlePrintInvoice = () => {
-    if (!generatedInvoice) return;
-    console.log('Printing Invoice:', generatedInvoice.invoice_number);
-    toast({ title: 'Printing Invoice', description: `Preparing print for invoice #${generatedInvoice.invoice_number}` });
-  };
-
-  const handleGenerateWaybill = () => {
-    if (!generatedInvoice) return;
-    console.log('Generating Waybill for Invoice:', generatedInvoice.invoice_number);
-    toast({ title: 'Generating Waybill', description: `Preparing waybill for #${generatedInvoice.invoice_number}` });
-  };
+  if (isInitialLoading) {
+      return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /><p className='ml-4'>Loading essential data...</p></div>
+  }
 
   return (
     <>
@@ -303,10 +328,10 @@ const SalesPage = () => {
       <Tabs defaultValue="sale_form" className="w-full">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="sale_form"><ShoppingCart className="h-4 w-4 mr-2" /> Sale Form</TabsTrigger>
-          <TabsTrigger value="sales_trail"><ListOrdered className="h-4 w-4 mr-2" /> Sales Trail</TabsTrigger>
           <TabsTrigger value="invoices"><FileText className="h-4 w-4 mr-2" /> Invoices</TabsTrigger>
-          <TabsTrigger value="waybills"><Waypoints className="h-4 w-4 mr-2" /> Waybills</TabsTrigger>
           <TabsTrigger value="customers_trail"><Users className="h-4 w-4 mr-2" /> Customers Trail</TabsTrigger>
+          <TabsTrigger value="sales_trail"><ListOrdered className="h-4 w-4 mr-2" /> Sales Trail</TabsTrigger>
+          <TabsTrigger value="waybills"><Waypoints className="h-4 w-4 mr-2" /> Waybills</TabsTrigger>
         </TabsList>
 
         {/* Sale Form Tab */}
@@ -317,17 +342,17 @@ const SalesPage = () => {
               <div className="grid md:grid-cols-3 gap-6 mb-6">
                 <div className="space-y-2">
                   <label className="font-semibold text-sm">Customer</label>
-                  <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={isLoading}>
+                  <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={isSubmitting}>
                     <SelectTrigger><SelectValue placeholder="Select a customer..." /></SelectTrigger>
                     <SelectContent>{allCustomers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2"><label className="font-semibold text-sm">Invoice Date</label><DatePicker date={invoiceDate} onDateChange={setInvoiceDate} disabled={isLoading} /></div>
-                <div className="space-y-2"><label className="font-semibold text-sm">Due Date</label><DatePicker date={dueDate} onDateChange={setDueDate} disabled={isLoading} /></div>
+                <div className="space-y-2"><label className="font-semibold text-sm">Invoice Date</label><DatePicker date={invoiceDate} onDateChange={setInvoiceDate} disabled={isSubmitting} /></div>
+                <div className="space-y-2"><label className="font-semibold text-sm">Due Date</label><DatePicker date={dueDate} onDateChange={setDueDate} disabled={isSubmitting} /></div>
               </div>
               <div className="space-y-2 mb-6">
                 <label className="font-semibold text-sm">Narration / Remarks</label>
-                <Textarea placeholder="e.g., Sale of office supplies" value={narration} onChange={(e) => setNarration(e.target.value)} disabled={isLoading}/>
+                <Textarea placeholder="e.g., Sale of office supplies" value={narration} onChange={(e) => setNarration(e.target.value)} disabled={isSubmitting}/>
               </div>
               <h3 className="text-lg font-semibold mb-4">Invoice Items</h3>
               <Table>
@@ -344,21 +369,21 @@ const SalesPage = () => {
                   {salesItems.map((line) => (
                     <TableRow key={line.id}>
                       <TableCell>
-                        <Select value={line.item_id} onValueChange={(v) => handleItemLineChange(line.id, 'item_id', v)} disabled={isLoading}>
+                        <Select value={line.item_id} onValueChange={(v) => handleItemLineChange(line.id, 'item_id', v)} disabled={isSubmitting}>
                           <SelectTrigger><SelectValue placeholder="Select an item..." /></SelectTrigger>
                           <SelectContent>{allItems.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell><Input type="number" className="text-right" value={line.unit_price || ''} onChange={(e) => handleItemLineChange(line.id, 'unit_price', e.target.value)} disabled={isLoading}/></TableCell>
-                      <TableCell><Input type="number" className="text-right" value={line.quantity || ''} onChange={(e) => handleItemLineChange(line.id, 'quantity', e.target.value)} disabled={isLoading}/></TableCell>
+                      <TableCell><Input type="number" className="text-right" value={line.unit_price || ''} onChange={(e) => handleItemLineChange(line.id, 'unit_price', parseFloat(e.target.value))} disabled={isSubmitting}/></TableCell>
+                      <TableCell><Input type="number" className="text-right" value={line.quantity || ''} onChange={(e) => handleItemLineChange(line.id, 'quantity', parseInt(e.target.value))} disabled={isSubmitting}/></TableCell>
                       <TableCell className="text-right font-bold">{(line.unit_price * line.quantity).toFixed(2)}</TableCell>
-                      <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItemLine(line.id)} disabled={isLoading || salesItems.length <= 1}><Trash2 className="h-4 w-4" /></Button></TableCell>
+                      <TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItemLine(line.id)} disabled={isSubmitting || salesItems.length <= 1}><Trash2 className="h-4 w-4" /></Button></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
                 <TableFooter>
                   <TableRow>
-                    <TableCell colSpan={2}><Button variant="outline" size="sm" onClick={handleAddItemLine} disabled={isLoading}><PlusCircle className="mr-2 h-4 w-4"/>Add Item</Button></TableCell>
+                    <TableCell colSpan={2}><Button variant="outline" size="sm" onClick={handleAddItemLine} disabled={isSubmitting}><PlusCircle className="mr-2 h-4 w-4"/>Add Item</Button></TableCell>
                     <TableCell className="text-right font-bold">{totalQuantity}</TableCell>
                     <TableCell className="text-right font-bold">{totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
@@ -370,12 +395,57 @@ const SalesPage = () => {
               )}
             </CardContent>
             <CardFooter className="justify-end space-x-2">
-              {generatedInvoice && <><Button variant="outline" onClick={handlePrintInvoice}>Print</Button><Button variant="outline" onClick={handleGenerateWaybill}>Waybill</Button></>}
-              <Button onClick={handleGenerateInvoice} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Generate Invoice</Button>
+              {generatedInvoice && <><Button variant="outline">Print</Button><Button variant="outline">Waybill</Button></>}
+              <Button onClick={handleGenerateInvoice} disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Generate Invoice</Button>
               {generatedInvoice && <Button variant="secondary" onClick={resetForm}>Reset</Button>}
             </CardFooter>
           </Card>
         </TabsContent>
+
+         {/* Invoices Tab */}
+        <TabsContent value="invoices">
+            <Card>
+                <CardHeader className="flex flex-row justify-between items-center">
+                    <CardTitle>All Sales Invoices</CardTitle>
+                    <Button variant="outline" size="sm" onClick={fetchInvoices} disabled={isInvoiceLoading}>
+                        <RefreshCw className={`mr-2 h-4 w-4 ${isInvoiceLoading ? 'animate-spin' : ''}`}/>Refresh
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    {isInvoiceLoading ? (
+                        <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin"/></div>
+                    ) : allInvoices.length > 0 ? (
+                        <Table>
+                            <TableHeader><TableRow>
+                                <TableHead>Invoice #</TableHead>
+                                <TableHead>Customer</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Due Date</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                                <TableHead className="text-right">Balance Due</TableHead>
+                                <TableHead>Status</TableHead>
+                            </TableRow></TableHeader>
+                            <TableBody>
+                                {allInvoices.map(inv => (
+                                    <TableRow key={inv.id}>
+                                        <TableCell className="font-bold">{inv.invoice_number}</TableCell>
+                                        <TableCell>{inv.customer_name}</TableCell>
+                                        <TableCell>{format(new Date(inv.invoice_date), 'PPP')}</TableCell>
+                                        <TableCell>{format(new Date(inv.due_date), 'PPP')}</TableCell>
+                                        <TableCell className="text-right">{inv.total_amount.toFixed(2)}</TableCell>
+                                        <TableCell className="text-right">{inv.amount_due.toFixed(2)}</TableCell>
+                                        <TableCell><span className={`px-2 py-1 text-xs rounded-full ${inv.status === 'Paid' ? 'bg-green-100 text-green-800' : inv.status === 'Partially Paid' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>{inv.status}</span></TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <p className="text-center text-muted-foreground py-12">No sales invoices found.</p>
+                    )}
+                </CardContent>
+            </Card>
+        </TabsContent>
+
 
         {/* Customers Trail Tab */}
         <TabsContent value="customers_trail">
@@ -419,13 +489,15 @@ const SalesPage = () => {
                   </div>
                 </div>
               )}
+               {!isCustomerTrailLoading && !customerTrailData && selectedCustomerTrailId && (
+                 <p className="text-center text-muted-foreground py-12">No data found for this customer.</p>
+               )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Other Tabs Placeholder */}
         <TabsContent value="sales_trail"><Card><CardHeader><CardTitle>Sales Trail</CardTitle></CardHeader><CardContent><p>Coming soon...</p></CardContent></Card></TabsContent>
-        <TabsContent value="invoices"><Card><CardHeader><CardTitle>Invoices</CardTitle></CardHeader><CardContent><p>Coming soon...</p></CardContent></Card></TabsContent>
         <TabsContent value="waybills"><Card><CardHeader><CardTitle>Waybills</CardTitle></CardHeader><CardContent><p>Coming soon...</p></CardContent></Card></TabsContent>
 
       </Tabs>

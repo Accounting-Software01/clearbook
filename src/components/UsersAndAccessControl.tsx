@@ -33,9 +33,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, MoreHorizontal, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-// This should come from your user context or session
-const MOCK_COMPANY_ID = 'CBI12345';
+import { useAuth } from '@/hooks/useAuth';
+import RolesAndPermissions from './RolesAndPermissions'; // Import the new component
 
 interface User {
     user_id: string;
@@ -52,6 +51,7 @@ const statusVariant: { [key: string]: 'secondary' | 'outline' | 'destructive' | 
 };
 
 const UsersAndAccessControl = () => {
+    const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isInviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -63,14 +63,20 @@ const UsersAndAccessControl = () => {
 
     useEffect(() => {
         const fetchUsers = async () => {
+            if (!currentUser?.company_id) return;
+
             setIsLoading(true);
             try {
-                const response = await fetch(`http://your-api-domain.com/get_users.php?company_id=${MOCK_COMPANY_ID}`);
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get_users.php?company_id=${currentUser.company_id}`);
                 if (!response.ok) {
                     throw new Error('Failed to fetch users.');
                 }
                 const data = await response.json();
-                setUsers(data);
+                if (data.success) {
+                    setUsers(data.users);
+                } else {
+                    throw new Error(data.error || 'Failed to fetch users.');
+                }
             } catch (error: any) {
                 toast({ variant: "destructive", title: "Error", description: error.message });
             } finally {
@@ -78,25 +84,33 @@ const UsersAndAccessControl = () => {
             }
         };
         fetchUsers();
-    }, [toast]);
+    }, [toast, currentUser]);
 
     const handleInviteUser = async (e: FormEvent) => {
         e.preventDefault();
+        if (!currentUser?.company_id) return;
+
         setIsSendingInvite(true);
         try {
-            const response = await fetch('http://your-api-domain.com/invite_user.php', {
+            const response = await fetch('https://hariindustries.net/api/clearbook/invite_user.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: inviteEmail, role: inviteRole, company_id: MOCK_COMPANY_ID }),
+                body: JSON.stringify({ email: inviteEmail, role: inviteRole, company_id: currentUser.company_id }),
             });
 
             const result = await response.json();
 
-            if (!response.ok) {
+            if (!result.success) {
                 throw new Error(result.error || 'Failed to send invitation.');
             }
 
-            setUsers(prevUsers => [...prevUsers, result.newUser]);
+            // Refetch users to show the new invitation
+            const fetchUsersResponse = await fetch(`https://hariindustries.net/api/clearbook/get_users.php?company_id=${currentUser.company_id}`);
+            const data = await fetchUsersResponse.json();
+            if (data.success) {
+                setUsers(data.users);
+            }
+
             toast({ title: "Success!", description: result.message });
             setInviteEmail('');
             setInviteRole('');
@@ -108,6 +122,21 @@ const UsersAndAccessControl = () => {
             setIsSendingInvite(false);
         }
     };
+    
+    const allRoles = [
+        { value: "admin", label: "Admin" },
+        { value: "accountant", label: "Accountant" },
+        { value: "production_manager", label: "Production Manager" },
+        { value: "store_manager", label: "Store Manager" },
+        { value: "procurement_manager", label: "Procurement Manager" },
+        { value: "sales_manager", label: "Sales Manager" },
+        { value: "staff", label: "Staff" },
+    ];
+
+    const availableRoles = currentUser?.company_type === 'manufacturing'
+        ? allRoles
+        : allRoles.filter(r => ['admin', 'accountant', 'staff'].includes(r.value));
+
 
     return (
         <>
@@ -139,10 +168,9 @@ const UsersAndAccessControl = () => {
                                         <Select value={inviteRole} onValueChange={setInviteRole} required>
                                             <SelectTrigger className="col-span-3"><SelectValue placeholder="Select a role" /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="Admin">Admin</SelectItem>
-                                                <SelectItem value="Manager">Manager</SelectItem>
-                                                <SelectItem value="Accountant">Accountant</SelectItem>
-                                                <SelectItem value="Staff">Staff</SelectItem>
+                                                {availableRoles.map(role => (
+                                                    <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -194,15 +222,9 @@ const UsersAndAccessControl = () => {
                 </CardContent>
             </Card>
 
-            <Card className="mt-8">
-                <CardHeader>
-                    <CardTitle>Roles & Permissions</CardTitle>
-                    <CardDescription>Define roles and control what users can see or do.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-sm text-muted-foreground">In-depth role and permission customization will be available here in a future update.</p>
-                </CardContent>
-            </Card>
+            <div className="mt-8">
+                <RolesAndPermissions />
+            </div>
         </>
     );
 };

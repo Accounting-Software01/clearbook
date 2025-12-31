@@ -11,14 +11,13 @@ import SubscriptionAndBilling from '@/components/SubscriptionAndBilling'
 import NotificationsAndAlerts from '@/components/NotificationsAndAlerts'
 import SecurityAndAudit from '@/components/SecurityAndAudit'
 import SystemPreferences from '@/components/SystemPreferences'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { JournalSettings } from '@/components/JournalSettings'
 import { JournalApprovals } from '@/components/JournalApprovals'
 import ChartOfAccounts from '@/components/accounting/ChartOfAccounts'
-
-// Placeholder components for the new accounting sections
-const Taxes = () => <Card><CardHeader><CardTitle>Tax Settings</CardTitle></CardHeader><CardContent><p>Configure VAT, withholding tax, and other tax settings.</p></CardContent></Card>
+import BankAccounts from '@/components/accounting/BankAccounts'
+import Taxes from '@/components/accounting/Taxes'
+import TaxAuthorities from '@/components/accounting/TaxAuthorities'
 
 const settingsNav = [
   { title: 'Company', href: 'company', component: <CompanySettings /> },
@@ -28,7 +27,9 @@ const settingsNav = [
     isHeader: true,
   },
   { title: 'Chart of Accounts', href: 'accounting-coa', component: <ChartOfAccounts />, isSubItem: true },
-  { title: 'Taxes', href: 'accounting-taxes', component: <Taxes />, isSubItem: true },
+  { title: 'Bank Accounts', href: 'accounting-banks', component: <BankAccounts />, isSubItem: true },
+  { title: 'Tax Settings', href: 'accounting-taxes', component: <Taxes />, isSubItem: true },
+  { title: 'Tax Authorities', href: 'accounting-authorities', component: <TaxAuthorities />, isSubItem: true },
   { title: 'Voucher Rules', href: 'accounting-voucher', component: <JournalSettings />, isSubItem: true },
   { title: 'Journal Approvals', href: 'accounting-approvals', component: <JournalApprovals />, isSubItem: true },
   { title: 'Approvals & Controls', href: 'approvals-controls', component: <ApprovalsAndControls /> },
@@ -43,7 +44,7 @@ const SettingsPage = () => {
   const searchParams = useSearchParams()
   const activeTab = searchParams.get('tab') || 'company'
 
-  if (user?.role !== 'staff') {
+  if (user?.role !== 'admin') {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-red-500">You do not have permission to access this page.</p>

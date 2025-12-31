@@ -73,7 +73,7 @@ export default function LoginPage() {
                   <Library className="h-12 w-12 text-white mb-4 mx-auto" />
                   <h2 className="text-2xl font-bold">ClearBooks</h2>
                   <p className="text-white/80 mt-2">
-                    Your comprehensive financial command center.
+                  A unified financial platform designed to eliminate silos, improve accuracy, and give leaders real-time insight across the entire organization. <br />One system. Total visibility. Full financial control.
                   </p>
               </div>
             </div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 </form>
                 <div className="mt-4 text-center text-sm">
                 This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply.
-                  Don&apos;t have an account?{' '}
+                  Don&apos;t have an account?{' '} Contact us.
                 
                 </div>
               </CardContent>

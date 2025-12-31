@@ -2,14 +2,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
-import { Banknote, Building, ChevronsRight, HardHat, Loader2, PlusCircle, Receipt, Search, Trash2, User, Wallet, Check, Landmark, Scale, ShieldCheck } from 'lucide-react';
+import { Loader2, PlusCircle, Search, Trash2, ShieldCheck } from 'lucide-react';
 import { PaymentVoucher, PaymentVoucherLineItem } from '@/types/payment-voucher';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SelectPayeeDialog } from '@/components/SelectPayeeDialog';
@@ -20,6 +20,9 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from '@/lib/api';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Supplier } from '@/types/supplier';
+import { TaxAuthority } from '@/types/tax-authority';
+import { SupplierInvoice } from '@/types/supplier-invoice'; // Assuming this type exists
+
 
 const NewPaymentVoucherPage = () => {
     const { user } = useAuth();
@@ -39,23 +42,24 @@ const NewPaymentVoucherPage = () => {
     const [isGLDialogOpen, setIsGLDialogOpen] = useState(false);
     const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [unpaidInvoices, setUnpaidInvoices] = useState<SupplierInvoice[]>([]);
+    const [isFetchingInvoices, setIsFetchingInvoices] = useState(false);
 
     const handleInputChange = (field: keyof PaymentVoucher | keyof PaymentVoucherLineItem, value: any, index?: number) => {
         if (index !== undefined && Array.isArray(pv.lineItems)) {
             const updatedLineItems = [...pv.lineItems];
             const lineItem = { ...updatedLineItems[index], [field]: value };
 
-            // Recalculate VAT and WHT if applicable
             if (field === 'debitAmount' || field === 'vatApplicable' || field === 'whtApplicable') {
                 const baseAmount = parseFloat(lineItem.debitAmount) || 0;
                 if (lineItem.vatApplicable) {
-                    lineItem.vatRate = 7.5; // Default or from settings
+                    lineItem.vatRate = 7.5; 
                     lineItem.vatAmount = baseAmount * (lineItem.vatRate / 100);
                 } else {
                     lineItem.vatAmount = 0;
                 }
                 if (lineItem.whtApplicable) {
-                    lineItem.whtRate = 5; // Default or from settings
+                    lineItem.whtRate = 5; 
                     lineItem.whtAmount = baseAmount * (lineItem.whtRate / 100);
                 } else {
                     lineItem.whtAmount = 0;
@@ -68,28 +72,51 @@ const NewPaymentVoucherPage = () => {
         }
     };
 
-    const handleSelectPayee = (payee: Supplier) => {
+    const handleSelectPayee = (payee: Supplier | TaxAuthority) => {
+        const isSupplier = 'account_number' in payee; // Differentiate supplier from tax authority
         setPv(prev => ({
             ...prev,
             payeeCode: payee.id.toString(),
             payeeName: payee.name,
-            payeeBankName: payee.bank_name,
-            payeeBankAccountNo: payee.account_number,
-            payeeTaxId: payee.tax_id,
+            payeeBankName: isSupplier ? payee.bank_name : '',
+            payeeBankAccountNo: isSupplier ? payee.account_number : '',
+            payeeTaxId: payee.tax_id || '',
         }));
+
+        if (isSupplier) {
+            fetchUnpaidInvoices(payee.id);
+        }
     };
+
+    const fetchUnpaidInvoices = async (supplierId: number) => {
+        if (!user?.company_id) return;
+        setIsFetchingInvoices(true);
+        try {
+            const invoices = await api.get<SupplierInvoice[]>(
+                `/api/get-supplier-invoices.php?company_id=${user.company_id}&supplier_id=${supplierId}&status=unpaid`
+            );
+            setUnpaidInvoices(invoices);
+        } catch (error) {
+            console.error("Failed to fetch unpaid invoices", error);
+            toast({ variant: "destructive", title: "Failed to fetch invoices" });
+        }
+        setIsFetchingInvoices(false);
+    };
+
+    const handleSelectInvoice = (invoiceNumber: string) => {
+        const selectedInvoice = unpaidInvoices.find(inv => inv.invoice_number === invoiceNumber);
+        if (selectedInvoice) {
+            handleInputChange('sourceDocumentNo', selectedInvoice.invoice_number);
+            if (pv.lineItems?.length) {
+                handleInputChange('debitAmount', selectedInvoice.total_amount, 0);
+            }
+        }
+    }
 
     const addLineItem = () => {
         const newLine: PaymentVoucherLineItem = {
-            lineNo: (pv.lineItems?.length || 0) + 1,
-            accountType: 'Expense',
-            glAccountCode: '',
-            accountName: '',
-            lineDescription: '',
-            costCenter: '',
-            debitAmount: 0,
-            creditAmount: 0,
-            vatApplicable: false, vatRate: 0, vatAmount: 0,
+            lineNo: (pv.lineItems?.length || 0) + 1, accountType: 'Expense', glAccountCode: '', accountName: '', lineDescription: '',
+            costCenter: '', debitAmount: 0, creditAmount: 0, vatApplicable: false, vatRate: 0, vatAmount: 0,
             whtApplicable: false, whtRate: 0, whtAmount: 0,
         };
         setPv(prev => ({ ...prev, lineItems: [...(prev.lineItems || []), newLine] }));
@@ -112,23 +139,16 @@ const NewPaymentVoucherPage = () => {
         setEditingLineIndex(null);
     };
 
-    const { grossAmount, totalVAT, totalWHT, netPayable, totalDebit, totalCredit, isBalanced } = useMemo(() => {
-        const lineItems = pv.lineItems || [];
-        const gross = lineItems.reduce((sum, item) => sum + (Number(item.debitAmount) || 0), 0);
-        const vat = lineItems.reduce((sum, item) => sum + (Number(item.vatAmount) || 0), 0);
-        const wht = lineItems.reduce((sum, item) => sum + (Number(item.whtAmount) || 0), 0);
-        const debit = gross + vat;
-        const credit = wht;
-
-        return {
-            grossAmount: gross,
-            totalVAT: vat,
-            totalWHT: wht,
-            netPayable: debit - credit,
-            totalDebit: debit,
-            totalCredit: credit,
-            isBalanced: Math.abs(debit - (credit + (gross + vat - wht))) < 0.01 // Dr(Expense+VAT) = Cr(WHT + Bank)
-        };
+    const { grossAmount, totalVAT, totalWHT, netPayable, totalDebit, isBalanced } = useMemo(() => {
+      const lineItems = pv.lineItems || [];
+      const gross = lineItems.reduce((sum, item) => sum + (Number(item.debitAmount) || 0), 0);
+      const vat = lineItems.reduce((sum, item) => sum + (Number(item.vatAmount) || 0), 0);
+      const wht = lineItems.reduce((sum, item) => sum + (Number(item.whtAmount) || 0), 0);
+      const debit = gross + vat;
+      return {
+          grossAmount: gross, totalVAT: vat, totalWHT: wht, netPayable: debit - wht, totalDebit: debit,
+          isBalanced: Math.abs(debit - (wht + (gross + vat - wht))) < 0.01
+      };
     }, [pv.lineItems]);
 
     const handleSubmit = async () => {
@@ -138,21 +158,10 @@ const NewPaymentVoucherPage = () => {
         }
         setIsSubmitting(true);
         try {
-            // Construct the final payload according to backend logic
-            const finalPayload = {
-                ...pv,
-                preparedBy: user?.email,
-                grossAmount,
-                totalVAT,
-                totalWHT,
-                netPayable,
-            };
-            
+            const finalPayload = { ...pv, preparedBy: user?.email, grossAmount, totalVAT, totalWHT, netPayable, companyId: user?.company_id };
             const response = await api<{ status: string; message: string; created_voucher_id?: string; errors?: string[] }>('/api/payment-voucher/create', {
-                method: 'POST',
-                body: JSON.stringify(finalPayload),
+                method: 'POST', body: JSON.stringify(finalPayload),
             });
-
             if (response.status === 'success') {
                 toast({ title: "Voucher Submitted!", description: response.message });
                 router.push(`/payment-voucher/${response.created_voucher_id}`); 
@@ -183,20 +192,15 @@ const NewPaymentVoucherPage = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Column 1: Header, Payee */}
                     <div className="lg:col-span-2 space-y-6">
                         <Card>
                             <CardHeader><CardTitle>A. Payment Voucher Header</CardTitle></CardHeader>
                             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="space-y-2"><Label>PV No</Label><Input disabled value="(Auto-generated)" /></div>
                                 <div className="space-y-2"><Label>Voucher Date</Label><DatePicker date={new Date(pv.voucherDate!)} setDate={(d) => d && handleInputChange('voucherDate', d.toISOString())} /></div>
-                                <div className="space-y-2"><Label>Payment Type</Label><Select value={pv.paymentType} onValueChange={(v) => handleInputChange('paymentType', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bank">Bank</SelectItem><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Mobile">Mobile</SelectItem><SelectItem value="FX">FX</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2"><Label>Payment Mode</Label><Select value={pv.paymentMode} onValueChange={(v) => handleInputChange('paymentMode', v)}><SelectTrigger><SelectValue placeholder="Select..."/></SelectTrigger><SelectContent><SelectItem value="Transfer">Transfer</SelectItem><SelectItem value="Cheque">Cheque</SelectItem><SelectItem value="Cash">Cash</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2"><Label>Currency</Label><Select value={pv.currency} onValueChange={(v) => handleInputChange('currency', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="NGN">NGN</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2"><Label>Exchange Rate</Label><Input type="number" value={pv.exchangeRate} onChange={(e) => handleInputChange('exchangeRate', e.target.value)} disabled={pv.currency === 'NGN'} /></div>
+                                <div className="space-y-2"><Label>Payment Type</Label><Select value={pv.paymentType} onValueChange={(v) => handleInputChange('paymentType', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bank">Bank</SelectItem><SelectItem value="Cash">Cash</SelectItem></SelectContent></Select></div>
                             </CardContent>
                         </Card>
-
                         <Card>
                             <CardHeader><CardTitle>B. Payee Information</CardTitle></CardHeader>
                             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -208,20 +212,33 @@ const NewPaymentVoucherPage = () => {
                             </CardContent>
                         </Card>
                     </div>
-
-                    {/* Column 2: Source Doc, Narration */}
                     <div className="lg:col-span-1 space-y-6">
                         <Card>
                             <CardHeader><CardTitle>C. Source Document Reference</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="space-y-2"><Label>Source Module</Label><Select value={pv.sourceModule} onValueChange={(v) => handleInputChange('sourceModule', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="AP">Accounts Payable</SelectItem><SelectItem value="Payroll">Payroll</SelectItem><SelectItem value="Expense">Expense</SelectItem><SelectItem value="FA">Fixed Assets</SelectItem><SelectItem value="Treasury">Treasury</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2"><Label>Source Document No</Label><Input placeholder="e.g., INV-2024-582" value={pv.sourceDocumentNo} onChange={(e) => handleInputChange('sourceDocumentNo', e.target.value)} /></div>
-                                <div className="space-y-2"><Label>Description / Narration</Label><Textarea placeholder="Payment for..." value={pv.narration} onChange={(e) => handleInputChange('narration', e.target.value)} /></div>
+                               {pv.payeeType === 'Supplier' && (
+                                    <div className="space-y-2">
+                                        <Label>Unpaid Invoices</Label>
+                                        <Select onValueChange={handleSelectInvoice} disabled={isFetchingInvoices || unpaidInvoices.length === 0}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={isFetchingInvoices ? "Fetching invoices..." : "Select an invoice"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {unpaidInvoices.map(invoice => (
+                                                    <SelectItem key={invoice.id} value={invoice.invoice_number}>
+                                                        {invoice.invoice_number} - {invoice.total_amount}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+                                <div className="space-y-2"><Label>Source Document No</Label><Input placeholder="e.g., INV-2024-582" value={pv.sourceDocumentNo || ''} onChange={(e) => handleInputChange('sourceDocumentNo', e.target.value)} /></div>
+                                <div className="space-y-2"><Label>Description / Narration</Label><Textarea placeholder="Payment for..." value={pv.narration || ''} onChange={(e) => handleInputChange('narration', e.target.value)} /></div>
                             </CardContent>
                         </Card>
                     </div>
                 </div>
-
                 <Card>
                     <CardHeader><CardTitle>D. Line Items (Accounting Distribution)</CardTitle></CardHeader>
                     <CardContent>
@@ -254,7 +271,6 @@ const NewPaymentVoucherPage = () => {
                         <Button variant="outline" onClick={addLineItem}><PlusCircle className="mr-2 h-4 w-4" />Add Line</Button>
                     </CardFooter>
                 </Card>
-                
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <Card>
                         <CardHeader><CardTitle>E. Tax Summary</CardTitle></CardHeader>
@@ -266,35 +282,23 @@ const NewPaymentVoucherPage = () => {
                             <div className="flex justify-between font-bold"><span>Net Amount Payable:</span><span>{netPayable.toFixed(2)}</span></div>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardHeader><CardTitle>F. Payment Details</CardTitle></CardHeader>
-                         <CardContent className="grid grid-cols-2 gap-4">
-                             <div className="space-y-2"><Label>Bank/Cash Account</Label><Input placeholder="e.g., 101101 - GTB Bank" value={pv.bankOrCashAccount} onChange={(e) => handleInputChange('bankOrCashAccount', e.target.value)}/></div>
-                             <div className="space-y-2"><Label>Cheque No / Ref</Label><Input placeholder="Optional" value={pv.chequeNoOrRef} onChange={(e) => handleInputChange('chequeNoOrRef', e.target.value)}/></div>
-                        </CardContent>
-                    </Card>
+                     <Card className="bg-slate-50 sticky bottom-0">
+                         <CardHeader className="flex-row justify-between items-center">
+                             <div>
+                                 <CardTitle>Voucher Totals</CardTitle>
+                                 <p className={`text-sm ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>{isBalanced ? 'Voucher is balanced.' : 'Voucher is out of balance!'}</p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-sm text-slate-500">Total Debit</p>
+                                 <p className="font-bold text-lg">{totalDebit.toFixed(2)}</p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-sm text-slate-500">Net Paid Amount</p>
+                                 <p className="font-bold text-2xl text-blue-600">{pv.currency} {netPaidAmount.toFixed(2)}</p>
+                             </div>
+                         </CardHeader>
+                     </Card>
                 </div>
-
-                <Card className="bg-slate-50 sticky bottom-0">
-                    <CardHeader className="flex-row justify-between items-center">
-                        <div>
-                            <CardTitle>Voucher Totals</CardTitle>
-                            <p className={`text-sm ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>{isBalanced ? 'Voucher is balanced and ready.' : 'Voucher is out of balance!'}</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-sm text-slate-500">Debit (Expense + VAT)</p>
-                            <p className="font-bold text-lg">{totalDebit.toFixed(2)}</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-sm text-slate-500">Credit (WHT + Net Paid)</p>
-                            <p className={`font-bold text-lg ${!isBalanced ? 'text-red-500' : ''}`}>{(totalWHT + netPaidAmount).toFixed(2)}</p>
-                        </div>
-                         <div className="text-right">
-                            <p className="text-sm text-slate-500">Net Paid Amount</p>
-                            <p className="font-bold text-2xl text-blue-600">{pv.currency} {netPaidAmount.toFixed(2)}</p>
-                        </div>
-                    </CardHeader>
-                </Card>
             </div>
         </>
     );

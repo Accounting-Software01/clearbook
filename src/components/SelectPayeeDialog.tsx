@@ -2,84 +2,155 @@
 
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from '@/lib/api';
+import { Supplier } from '@/types/supplier';
+import { TaxAuthority } from '@/types/tax-authority';
+import { Loader2, Search } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { Supplier } from '@/types/supplier'; // Assuming you have a Supplier type
-import { Loader2 } from 'lucide-react';
+
+interface Payee {
+  id: number | string;
+  name: string;
+  meta: string;
+  raw: Supplier | TaxAuthority;
+}
 
 interface SelectPayeeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectPayee: (payee: Supplier) => void;
+  onSelectPayee: (payee: Supplier | TaxAuthority) => void;
   payeeType: 'Supplier' | 'Staff' | 'Govt' | 'Other';
 }
 
 export const SelectPayeeDialog: React.FC<SelectPayeeDialogProps> = ({ open, onOpenChange, onSelectPayee, payeeType }) => {
-    const { user } = useAuth();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [results, setResults] = useState<Supplier[]>([]);
+  const { user } = useAuth();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [payees, setPayees] = useState<Payee[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (open && user?.company_id) {
-            const fetchPayees = async () => {
-                setLoading(true);
-                try {
-                    // This will be expanded for other payee types
-                    if (payeeType === 'Supplier') {
-                        const data = await api<Supplier[]>(`suppliers.php?company_id=${user.company_id}&search=${searchTerm}`);
-                        setResults(data);
-                    }
-                    // Add else if for 'Staff', 'Govt' etc. later
-                } catch (error) {
-                    console.error("Failed to fetch payees", error);
-                    // Add toast notification for error
-                } finally {
-                    setLoading(false);
-                }
-            };
+  useEffect(() => {
+    if (open && user?.company_id) {
+      const fetchPayees = async () => {
+        setIsLoading(true);
+        setError(null);
+        setPayees([]);
+        try {
+          if (payeeType === 'Supplier') {
+            const response = await api.get(`/api/suppliers?company_id=${user.company_id}`);
+            // CORRECTED: Use response.data.map
+            if (response.data && Array.isArray(response.data)) {
+              const normalizedPayees = response.data.map((s: Supplier) => ({
+                id: s.id,
+                name: s.name,
+                meta: s.bank_name ? `${s.bank_name} - ${s.account_number}` : 'No bank details',
+                raw: s,
+              }));
+              setPayees(normalizedPayees);
+            } else {
+              setPayees([]); // API did not return a valid array
+            }
 
-            const debounceFetch = setTimeout(fetchPayees, 300); // Debounce API calls
-            return () => clearTimeout(debounceFetch);
+          } else if (payeeType === 'Govt') {
+            const response = await api.get(`/api/clearbook/get_tax_authorities.php?company_id=${user.company_id}`);
+            // CORRECTED: Use response.data.map
+            if (response.data && Array.isArray(response.data)) {
+              const normalizedPayees = response.data.map((g: TaxAuthority) => ({
+                id: g.id,
+                name: g.name,
+                meta: g.authority_type,
+                raw: g,
+              }));
+              setPayees(normalizedPayees);
+            } else {
+                setPayees([]); // API did not return a valid array
+            }
+
+          } else {
+            setPayees([]);
+          }
+        } catch (err) {
+          setError(`Failed to fetch ${payeeType}s. Please check the API and network connection.`);
+          console.error(err);
+        } finally {
+          setIsLoading(false);
         }
-    }, [open, searchTerm, payeeType, user?.company_id]);
+      };
+      fetchPayees();
+    }
+  }, [open, payeeType, user?.company_id]);
 
-    const handleSelect = (payee: Supplier) => {
-        onSelectPayee(payee);
-        onOpenChange(false);
-    };
+  const filteredPayees = payees.filter(p =>
+    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle>Select {payeeType}</DialogTitle>
-                    <DialogDescription>Search for a payee by name or code.</DialogDescription>
-                </DialogHeader>
-                <Command>
-                    <CommandInput 
-                        placeholder="Type to search..." 
-                        value={searchTerm}
-                        onValueChange={setSearchTerm}
-                    />
-                    <CommandList>
-                        {loading && <div className="flex justify-center items-center p-4"><Loader2 className="h-6 w-6 animate-spin" /></div>}
-                        {!loading && (
-                            <>
-                                <CommandEmpty>No results found.</CommandEmpty>
-                                <CommandGroup heading="Results">
-                                    {results.map((item) => (
-                                        <CommandItem key={item.id} onSelect={() => handleSelect(item)}>
-                                            {item.name}
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            </>
-                        )}
-                    </CommandList>
-                </Command>
-            </DialogContent>
-        </Dialog>
-    );
+  const handleSelect = (payee: Payee) => {
+    onSelectPayee(payee.raw);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Select a {payeeType}</DialogTitle>
+          <DialogDescription>Search for a payee by name.</DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 w-full"
+            />
+          </div>
+        </div>
+        <div className="max-h-[400px] overflow-y-auto">
+          {isLoading ? (
+            <div className="flex justify-center items-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+             <p className="text-red-500 text-center p-4">{error}</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPayees.length > 0 ? (
+                  filteredPayees.map((payee) => (
+                    <TableRow key={payee.id}>
+                      <TableCell className="font-medium">{payee.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{payee.meta}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => handleSelect(payee)}>
+                          Select
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="h-24 text-center">
+                      No {payeeType}s found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 };
