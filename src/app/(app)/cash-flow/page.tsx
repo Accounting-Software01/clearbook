@@ -93,7 +93,7 @@ const CashFlowPage = () => {
         const fromDate = format(dateRange.from, 'yyyy-MM-dd');
         const toDate = format(dateRange.to, 'yyyy-MM-dd');
         
-        const url = new URL('https://hariindustries.net/clearbook/cash-flow.php');
+        const url = new URL('https://hariindustries.net/api/clearbook/cash-flow.php');
         url.searchParams.append('company_id', user.company_id);
         url.searchParams.append('fromDate', fromDate);
         url.searchParams.append('toDate', toDate);

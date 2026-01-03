@@ -83,11 +83,11 @@ const ProfitLossPage = () => {
         const fromDate = format(dateRange.from, 'yyyy-MM-dd');
         const toDate = format(dateRange.to, 'yyyy-MM-dd');
 
-        const url = new URL('https://hariindustries.net/busa-api/database/profit-loss.php');
+        const url = new URL('https://hariindustries.net/api/clearbook/profit-loss.php');
         // The backend script is NOT currently using company_id, which is a security risk.
         url.searchParams.append('company_id', user.company_id);
-        if (user.id) {
-            url.searchParams.append('user_id', String(user.id));
+        if (user.uid) {
+            url.searchParams.append('user_id', String(user.uid));
         }
         url.searchParams.append('fromDate', fromDate);
         url.searchParams.append('toDate', toDate);

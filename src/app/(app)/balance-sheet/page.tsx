@@ -74,7 +74,7 @@ const BalanceSheetPage = () => {
 
         const toDate = format(reportDate, 'yyyy-MM-dd');
 
-        const url = new URL('https://hariindustries.net/clearbook/balance_sheet.php');
+        const url = new URL('https://hariindustries.net/api/clearbook/balance_sheet.php');
         url.searchParams.append('company_id', user.company_id);
         url.searchParams.append('toDate', toDate);
 
