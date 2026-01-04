@@ -64,7 +64,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     const canSimulatePayment = user?.role === 'admin' || user?.role === 'accountant';
 
     const fetchInvoiceDetails = useCallback(async () => {
-        if (!user || !user.id || !user.company_id || !invoiceId) {
+        if (!user || !user.uid || !user.company_id || !invoiceId) {
             setIsLoading(false); // Stop loading if we can't fetch
             return;
         }
@@ -73,7 +73,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
         setError(null);
 
         try {
-            const apiUrl = `get-sales-invoice-details.php?company_id=${user.company_id}&id=${invoiceId}&user_id=${user.id}`;
+            const apiUrl = `get-sales-invoice-details.php?company_id=${user.company_id}&id=${invoiceId}&user_id=${user.uid}`;
             const response = await api<{ invoice: InvoiceDetailsData, success: boolean, error?: string }>(apiUrl);
             
             if (response.success && response.invoice) {
@@ -97,13 +97,13 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     }, [user, fetchInvoiceDetails]);
 
     const handleSimulatePayment = async () => {
-        if (!invoice || !user?.company_id || !user.id) return;
+        if (!invoice || !user?.company_id || !user.uid) return;
         setIsSimulating(true);
         setError(null);
         try {
             await api('simulate-sales-payment.php', {
                 method: 'POST',
-                body: JSON.stringify({ company_id: user.company_id, invoice_id: invoice.id, user_id: user.id })
+                body: JSON.stringify({ company_id: user.company_id, invoice_id: invoice.id, user_id: user.uid })
             });
             alert('Payment simulated successfully!');
             onPaymentSimulated();
@@ -169,7 +169,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                     </div>
                     <div className="text-right flex-shrink-0">
                         <h2 className="text-4xl font-bold uppercase text-gray-800">Sales Invoice</h2>
-                        <p className="text-sm">Printed by: {user?.username} on {new Date().toLocaleDateString()}</p>
+                        <p className="text-sm">Printed by: {user?.full_name} on {new Date().toLocaleDateString()}</p>
                     </div>
                 </div>
             </header>
