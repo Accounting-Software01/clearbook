@@ -1,9 +1,10 @@
+
 <?php
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 // --- Environment Setup ---
-$env = "development"; 
+$env = "development";
 
 // --- CORS & headers ---
 if (isset($_SERVER['HTTP_ORIGIN'])) {
@@ -14,7 +15,7 @@ if (isset($_SERVER['HTTP_ORIGIN'])) {
         'https://hariindustries.net'
     ];
     if (in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
-        header("Access-Control-Allow-Origin: ".$_SERVER['HTTP_ORIGIN']);
+        header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
     }
 } else {
     header("Access-Control-Allow-Origin: https://hariindustries.net");
@@ -30,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// --- Includes & Utilities ---
 require_once 'db_connect.php';
 
 function respond($code, $data) {
@@ -39,9 +39,7 @@ function respond($code, $data) {
     exit;
 }
 
-// -------------------------
-// Step 1: Validate input
-// -------------------------
+// --- Step 1: Validate input ---
 $company_id = filter_input(INPUT_GET, 'company_id', FILTER_SANITIZE_STRING);
 $invoice_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 $user_id = filter_input(INPUT_GET, 'user_id', FILTER_VALIDATE_INT);
@@ -50,22 +48,14 @@ if (!$company_id || !$invoice_id || !$user_id) {
     respond(400, ["success" => false, "error" => "Missing or invalid parameters. Required: company_id, id, user_id"]);
 }
 
-// -------------------------
-// Step 2: Fetch Data
-// -------------------------
+// --- Step 2: Fetch Data ---
 try {
     // --- Main Invoice, Customer, and Company Data ---
-    // Explicitly list columns instead of using SELECT *
     $sql = "
         SELECT 
-            si.id, 
-            si.invoice_number, 
-            si.invoice_date, 
-            si.due_date, 
-            si.status, 
-            si.total_amount,
+            si.id, si.invoice_number, si.invoice_date, si.due_date, si.status, si.total_amount, si.customer_id,
             cust.customer_name AS customer_name,
-            cust.balance AS customer_balance,
+            cust.opening_balance_journal_id,
             co.name AS company_name,
             co.company_logo AS company_logo,
             co.address AS company_address,
@@ -78,7 +68,6 @@ try {
     ";
     $stmt = $conn->prepare($sql);
     if (!$stmt) throw new Exception("Prepare failed (main query): " . $conn->error);
-    
     $stmt->bind_param("is", $invoice_id, $company_id);
     $stmt->execute();
     $invoice = $stmt->get_result()->fetch_assoc();
@@ -91,17 +80,57 @@ try {
     $items_sql = "SELECT id, item_name, quantity, unit_price, total_amount FROM sales_invoice_items WHERE invoice_id = ?";
     $items_stmt = $conn->prepare($items_sql);
     if (!$items_stmt) throw new Exception("Prepare failed (items query): " . $conn->error);
-    
     $items_stmt->bind_param("i", $invoice_id);
     $items_stmt->execute();
     $invoice['items'] = $items_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    // --- Step 3: Dynamic Balance Calculation ---
+    
+    // 3a. Get Opening Balance from Journal
+    $opening_balance = 0;
+    if (!empty($invoice['opening_balance_journal_id'])) {
+        $ob_sql = "SELECT SUM(CASE WHEN type = 'DEBIT' THEN amount ELSE -amount END) as balance FROM journal_voucher_lines WHERE journal_voucher_id = ?";
+        $ob_stmt = $conn->prepare($ob_sql);
+        if (!$ob_stmt) throw new Exception("Prepare failed (opening balance query): " . $conn->error);
+        $ob_stmt->bind_param("i", $invoice['opening_balance_journal_id']);
+        $ob_stmt->execute();
+        $ob_result = $ob_stmt->get_result()->fetch_assoc();
+        if ($ob_result && $ob_result['balance']) {
+            $opening_balance = (float)$ob_result['balance'];
+        }
+        $ob_stmt->close();
+    }
+
+    // 3b. Get total of all non-cancelled invoices for the customer
+    $total_invoiced_sql = "SELECT SUM(total_amount) as total FROM sales_invoices WHERE customer_id = ? AND status != 'CANCELLED'";
+    $total_invoiced_stmt = $conn->prepare($total_invoiced_sql);
+    if (!$total_invoiced_stmt) throw new Exception("Prepare failed (total invoiced query): " . $conn->error);
+    $total_invoiced_stmt->bind_param("i", $invoice['customer_id']);
+    $total_invoiced_stmt->execute();
+    $total_invoiced_result = $total_invoiced_stmt->get_result()->fetch_assoc();
+    $total_invoiced_amount = (float)($total_invoiced_result['total'] ?? 0);
+    $total_invoiced_stmt->close();
+
+    // 3c. Calculate final balances
+    $customer_total_balance = $opening_balance + $total_invoiced_amount;
+    $current_invoice_total = (float)$invoice['total_amount'];
+    $previous_balance = $customer_total_balance;
+
+    if ($invoice['status'] !== 'DRAFT' && $invoice['status'] !== 'CANCELLED') {
+        $previous_balance = $customer_total_balance - $current_invoice_total;
+    }
+
+    $invoice['previous_balance'] = $previous_balance;
+    $invoice['current_invoice_balance'] = $current_invoice_total;
+    $invoice['total_balance'] = $customer_total_balance;
+
+    // --- Step 4: Assemble Footer and Final Response ---
 
     // --- User Roles for Footer ---
     $users = ['admin' => null, 'accountant' => null];
     $user_sql = "SELECT username, role FROM users WHERE company_id = ? AND role IN ('admin', 'accountant') LIMIT 2";
     $user_stmt = $conn->prepare($user_sql);
     if (!$user_stmt) throw new Exception("Prepare failed (users query): " . $conn->error);
-    
     $user_stmt->bind_param("s", $company_id);
     $user_stmt->execute();
     $user_result = $user_stmt->get_result();
@@ -113,28 +142,9 @@ try {
     $preparer_sql = "SELECT username FROM users WHERE id = ? AND company_id = ? LIMIT 1";
     $preparer_stmt = $conn->prepare($preparer_sql);
     if (!$preparer_stmt) throw new Exception("Prepare failed (preparer query): " . $conn->error);
-
     $preparer_stmt->bind_param("is", $user_id, $company_id);
     $preparer_stmt->execute();
     $preparer_user = $preparer_stmt->get_result()->fetch_assoc();
-
-    // -------------------------
-    // Step 3: Process & Assemble
-    // -------------------------
-
-    // --- Balance Calculations ---
-    $customer_total_balance = (float)($invoice['customer_balance'] ?? 0);
-    $current_invoice_total = (float)$invoice['total_amount'];
-    $previous_balance = $customer_total_balance;
-
-    if ($invoice['status'] !== 'DRAFT' && $invoice['status'] !== 'CANCELLED') {
-        $previous_balance = $customer_total_balance - $current_invoice_total;
-    }
-
-    // --- Assemble Response ---
-    $invoice['previous_balance'] = $previous_balance;
-    $invoice['current_invoice_balance'] = $current_invoice_total;
-    $invoice['total_balance'] = $customer_total_balance;
 
     $invoice['prepared_by'] = $preparer_user['username'] ?? 'N/A';
     $invoice['verified_by'] = $users['accountant'] ?? 'N/A';
@@ -143,9 +153,6 @@ try {
     $invoice['verified_by_signature'] = '/public/sign_accountant.png';
     $invoice['authorized_by_signature'] = '/public/sign_admin.png';
 
-    // -------------------------
-    // Step 4: Respond
-    // -------------------------
     respond(200, ["success" => true, "invoice" => $invoice]);
 
 } catch (Exception $e) {
@@ -156,7 +163,6 @@ try {
         respond(500, ["success" => false, "error" => "Internal server error"]);
     }
 } finally {
-    // Close all statement handlers and the connection
     if (isset($stmt)) $stmt->close();
     if (isset($items_stmt)) $items_stmt->close();
     if (isset($user_stmt)) $user_stmt->close();

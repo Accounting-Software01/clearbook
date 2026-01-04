@@ -65,7 +65,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
 
     const fetchInvoiceDetails = useCallback(async () => {
         if (!user || !user.uid || !user.company_id || !invoiceId) {
-            setIsLoading(false); // Stop loading if we can't fetch
+            setIsLoading(false); 
             return;
         }
 
@@ -90,7 +90,6 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     }, [user, invoiceId]);
 
     useEffect(() => {
-        // This effect correctly waits for the user object to be populated.
         if (user) {
             fetchInvoiceDetails();
         }
@@ -119,7 +118,6 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
         window.print();
     };
 
-    // --- Render logic ---
     if (isLoading) {
         return <div className="flex justify-center items-center h-60"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
     }
@@ -139,6 +137,19 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     }
 
     const totalAmountNumber = typeof invoice.total_amount === 'string' ? parseFloat(invoice.total_amount) : invoice.total_amount;
+
+    const sanitizeImagePath = (path: string) => {
+        if (!path) return '';
+        let cleanPath = path.replace('/public/', '/');
+        if (!cleanPath.startsWith('/')) {
+            cleanPath = '/' + cleanPath;
+        }
+        return cleanPath;
+    };
+
+    const verifiedSignaturePath = sanitizeImagePath(invoice.verified_by_signature);
+    const authorizedSignaturePath = sanitizeImagePath(invoice.authorized_by_signature);
+    const companyLogoPath = sanitizeImagePath(invoice.company_logo);
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl mx-auto my-10 printable-area">
@@ -160,7 +171,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
             <header className="border-b-2 border-gray-800 pb-4 mb-8">
                 <div className="flex justify-between items-start">
                     <div className="flex items-center">
-                        {invoice.company_logo && <Image src={invoice.company_logo} alt="Company Logo" width={80} height={80} className="mr-4 object-contain"/>}
+                        {companyLogoPath && <Image src={companyLogoPath} alt="Company Logo" width={80} height={80} className="mr-4 object-contain"/>}
                         <div>
                             <h1 className="text-3xl font-bold text-gray-800">{invoice.company_name}</h1>
                             <p className="text-sm">{invoice.company_address}</p>
@@ -220,7 +231,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                     </div>
                     <div>
                         <p className='font-semibold'>NARRATION:</p>
-                        <p className="text-sm">Being payment for the sale of goods.</p>
+                        <p className="text-sm">Invoice order</p>
                     </div>
                  </div>
                  <div className='col-span-2 border-l-2 border-gray-800 pl-4 space-y-2'>
@@ -238,12 +249,12 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                         <p className="border-t-2 border-gray-400 mt-1 pt-1">Prepared By</p>
                     </div>
                     <div className='h-24 flex flex-col justify-between'>
-                        <div className="h-12 relative">{invoice.verified_by_signature && <Image src={invoice.verified_by_signature} alt="Verified By Signature" layout='fill' objectFit='contain'/> }</div>
+                        <div className="h-12 relative">{verifiedSignaturePath && <Image src={verifiedSignaturePath} alt="Verified By Signature" layout='fill' objectFit='contain'/> }</div>
                         <p className="font-semibold">{invoice.verified_by}</p>
                         <p className="border-t-2 border-gray-400 mt-1 pt-1">Verified By</p>
                     </div>
                     <div className='h-24 flex flex-col justify-between'>
-                        <div className="h-12 relative">{invoice.authorized_by_signature && <Image src={invoice.authorized_by_signature} alt="Authorized By Signature" layout='fill' objectFit='contain'/> }</div>
+                        <div className="h-12 relative">{authorizedSignaturePath && <Image src={authorizedSignaturePath} alt="Authorized By Signature" layout='fill' objectFit='contain'/> }</div>
                         <p className="font-semibold">{invoice.authorized_by}</p>
                         <p className="border-t-2 border-gray-400 mt-1 pt-1">Authorised Signatory</p>
                     </div>
@@ -251,13 +262,71 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 <p className="mt-8 text-gray-500">Thank you for your business!</p>
             </footer>
             
-             <style jsx global>{`
-                @media print {
-                    .non-printable { display: none; }
-                    .printable-area { margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
-                    body { -webkit-print-color-adjust: exact; color-adjust: exact; }
-                }
-            `}</style>
+            <style jsx global>{`
+@media print {
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html, body {
+    width: 210mm;
+    height: 297mm;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: white !important;
+  }
+
+  /* Hide everything */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only printable */
+  .printable-area,
+  .printable-area * {
+    visibility: visible !important;
+  }
+
+  /* 🚨 KEY FIXES HERE */
+  .printable-area {
+    position: fixed !important;      /* NOT absolute */
+    left: 0 !important;
+    top: 0 !important;
+
+    width: 210mm !important;          /* FIXED MM WIDTH */
+    min-height: 297mm !important;
+
+    margin: 0 !important;
+    padding: 20mm !important;         /* Safe print padding */
+
+    box-sizing: border-box !important;
+    background: white !important;
+
+    transform: none !important;       /* Prevent browser scaling */
+    zoom: 1 !important;
+
+    display: block !important;
+  }
+
+  /* Kill flex/grid influence */
+  .printable-area * {
+    max-width: 100% !important;
+  }
+
+  .non-printable {
+    display: none !important;
+  }
+}
+`}</style>
+
         </div>
     );
 }
