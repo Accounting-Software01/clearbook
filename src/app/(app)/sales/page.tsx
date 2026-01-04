@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { apiEndpoints } from '@/lib/apiEndpoints';
 import { CustomersTrailTab } from '@/components/customers/CustomersTrailTab';
+import { SalesInvoiceDetails } from '@/components/sales/SalesInvoiceDetails';
 
 // Define types
 interface Customer {
@@ -51,7 +52,7 @@ interface SalesItem {
 }
 
 interface Invoice {
-  id: string; 
+  id: number; 
   invoice_number: string;
   customer_id?: string;
   customer_name: string;
@@ -59,7 +60,7 @@ interface Invoice {
   due_date: string;     
   total_amount: number;
   amount_due: number;  
-  status: 'Paid' | 'Unpaid' | 'Partially Paid' | 'Draft';
+  status: 'DRAFT' | 'ISSUED' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   previous_balance?: number;
   current_invoice_balance?: number;
   total_balance?: number;
@@ -93,6 +94,7 @@ const SalesPage = () => {
   // Invoices List State
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [isInvoiceLoading, setIsInvoiceLoading] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   
   // Dropdowns Data
   const [customerDropdown, setCustomerDropdown] = useState<Customer[]>([]);
@@ -284,6 +286,19 @@ const SalesPage = () => {
     }
   };
 
+  const handleInvoiceClick = (invoiceId: number) => {
+    setSelectedInvoiceId(invoiceId);
+  };
+
+  const handleBackToInvoices = () => {
+    setSelectedInvoiceId(null);
+  };
+
+  const handlePaymentSimulated = () => {
+    setSelectedInvoiceId(null);
+    fetchInvoices();
+  };
+
   if (isInitialLoading) {
       return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /><p className='ml-4'>Loading essential data...</p></div>
   }
@@ -411,46 +426,54 @@ const SalesPage = () => {
 
          {/* Invoices Tab */}
         <TabsContent value="invoices">
-            <Card>
-                <CardHeader className="flex flex-row justify-between items-center">
-                    <CardTitle>All Sales Invoices</CardTitle>
-                    <Button variant="outline" size="sm" onClick={fetchInvoices} disabled={isInvoiceLoading}>
-                        <RefreshCw className={`mr-2 h-4 w-4 ${isInvoiceLoading ? 'animate-spin' : ''}`}/>Refresh
-                    </Button>
-                </CardHeader>
-                <CardContent>
-                    {isInvoiceLoading ? (
-                        <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin"/></div>
-                    ) : allInvoices.length > 0 ? (
-                        <Table>
-                            <TableHeader><TableRow>
-                                <TableHead>Invoice #</TableHead>
-                                <TableHead>Customer</TableHead>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Due Date</TableHead>
-                                <TableHead className="text-right">Total</TableHead>
-                                <TableHead className="text-right">Balance Due</TableHead>
-                                <TableHead>Status</TableHead>
-                            </TableRow></TableHeader>
-                            <TableBody>
-                                {allInvoices.map(inv => (
-                                    <TableRow key={inv.id}>
-                                        <TableCell className="font-bold">{inv.invoice_number}</TableCell>
-                                        <TableCell>{inv.customer_name}</TableCell>
-                                        <TableCell>{format(new Date(inv.invoice_date), 'PPP')}</TableCell>
-                                        <TableCell>{format(new Date(inv.due_date), 'PPP')}</TableCell>
-                                        <TableCell className="text-right">{inv.total_amount.toFixed(2)}</TableCell>
-                                        <TableCell className="text-right">{inv.amount_due.toFixed(2)}</TableCell>
-                                        <TableCell><span className={`px-2 py-1 text-xs rounded-full ${inv.status === 'Paid' ? 'bg-green-100 text-green-800' : inv.status === 'Partially Paid' ? 'bg-yellow-100 text-yellow-800' : inv.status === 'Draft' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{inv.status}</span></TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    ) : (
-                        <p className="text-center text-muted-foreground py-12">No sales invoices found.</p>
-                    )}
-                </CardContent>
-            </Card>
+            {selectedInvoiceId ? (
+                <SalesInvoiceDetails 
+                    invoiceId={selectedInvoiceId} 
+                    onBack={handleBackToInvoices}
+                    onPaymentSimulated={handlePaymentSimulated}
+                />
+            ) : (
+                <Card>
+                    <CardHeader className="flex flex-row justify-between items-center">
+                        <CardTitle>All Sales Invoices</CardTitle>
+                        <Button variant="outline" size="sm" onClick={fetchInvoices} disabled={isInvoiceLoading}>
+                            <RefreshCw className={`mr-2 h-4 w-4 ${isInvoiceLoading ? 'animate-spin' : ''}`}/>Refresh
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
+                        {isInvoiceLoading ? (
+                            <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin"/></div>
+                        ) : allInvoices.length > 0 ? (
+                            <Table>
+                                <TableHeader><TableRow>
+                                    <TableHead>Invoice #</TableHead>
+                                    <TableHead>Customer</TableHead>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Due Date</TableHead>
+                                    <TableHead className="text-right">Total</TableHead>
+                                    <TableHead className="text-right">Balance Due</TableHead>
+                                    <TableHead>Status</TableHead>
+                                </TableRow></TableHeader>
+                                <TableBody>
+                                    {allInvoices.map(inv => (
+                                        <TableRow key={inv.id} onClick={() => handleInvoiceClick(inv.id)} className="cursor-pointer">
+                                            <TableCell className="font-bold">{inv.invoice_number}</TableCell>
+                                            <TableCell>{inv.customer_name}</TableCell>
+                                            <TableCell>{format(new Date(inv.invoice_date), 'PPP')}</TableCell>
+                                            <TableCell>{format(new Date(inv.due_date), 'PPP')}</TableCell>
+                                            <TableCell className="text-right">{inv.total_amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{inv.amount_due.toFixed(2)}</TableCell>
+                                            <TableCell><span className={`px-2 py-1 text-xs rounded-full ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : inv.status === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' : inv.status === 'DRAFT' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{inv.status}</span></TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        ) : (
+                            <p className="text-center text-muted-foreground py-12">No sales invoices found.</p>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
         </TabsContent>
 
 
