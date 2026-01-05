@@ -42,7 +42,7 @@ export default function DashboardPage() {
     if (!user?.company_id) return;
     setIsFinancialLoading(true);
     try {
-        const res = await fetch(`https://hariindustries.net/busa-api/database/get-sales-invoices.php?company_id=${user.company_id}`);
+        const res = await fetch(`https://hariindustries.net/api/clearbook/get-sales-invoices.php?company_id=${user.company_id}`);
         if (!res.ok) throw new Error('Could not fetch financial data.');
         const invoices: Invoice[] = await res.json();
 

@@ -3,13 +3,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, ArrowLeft, CheckCircle, Printer } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Loader2, AlertCircle, ArrowLeft, CheckCircle, Printer, DollarSign } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { numberToWords } from '@/lib/number-to-words-converter';
 import Image from 'next/image';
 
-// Interfaces define the shape of the data we expect from the API
+// Interfaces
 interface InvoiceItem {
     id: number;
     item_name: string;
@@ -25,6 +29,7 @@ interface InvoiceDetailsData {
     due_date: string;
     customer_name: string;
     total_amount: string | number;
+    amount_due: number;
     status: 'DRAFT' | 'ISSUED' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
     items: InvoiceItem[];
     previous_balance: number;
@@ -47,7 +52,13 @@ interface SalesInvoiceDetailsProps {
     onPaymentSimulated: () => void;
 }
 
-// Helper function to format currency
+interface BankAccount {
+    id: number;
+    account_name: string;
+}
+
+
+// Helper
 const formatNaira = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     if (isNaN(num)) return '₦0.00';
@@ -55,34 +66,31 @@ const formatNaira = (amount: string | number) => {
 };
 
 export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: SalesInvoiceDetailsProps) {
-    const { user } = useAuth(); // Auth hook provides user data
+    const { user } = useAuth();
     const [invoice, setInvoice] = useState<InvoiceDetailsData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSimulating, setIsSimulating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
-    const canSimulatePayment = user?.role === 'admin' || user?.role === 'accountant';
+    const canReceivePayment = user?.role === 'admin' || user?.role === 'accountant';
 
     const fetchInvoiceDetails = useCallback(async () => {
         if (!user || !user.uid || !user.company_id || !invoiceId) {
-            setIsLoading(false); 
+            setIsLoading(false);
             return;
         }
-
         setIsLoading(true);
         setError(null);
-
         try {
             const apiUrl = `get-sales-invoice-details.php?company_id=${user.company_id}&id=${invoiceId}&user_id=${user.uid}`;
             const response = await api<{ invoice: InvoiceDetailsData, success: boolean, error?: string }>(apiUrl);
-            
             if (response.success && response.invoice) {
                 setInvoice(response.invoice);
             } else {
                 throw new Error(response.error || "Invoice details not found.");
             }
         } catch (e: any) {
-            console.error("Fetch Error:", e);
             setError(`Failed to load invoice details: ${e.message}`);
         } finally {
             setIsLoading(false);
@@ -95,28 +103,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
         }
     }, [user, fetchInvoiceDetails]);
 
-    const handleSimulatePayment = async () => {
-        if (!invoice || !user?.company_id || !user.uid) return;
-        setIsSimulating(true);
-        setError(null);
-        try {
-            await api('simulate-sales-payment.php', {
-                method: 'POST',
-                body: JSON.stringify({ company_id: user.company_id, invoice_id: invoice.id, user_id: user.uid })
-            });
-            alert('Payment simulated successfully!');
-            onPaymentSimulated();
-            fetchInvoiceDetails(); // Re-fetch to update status
-        } catch (e: any) {
-            setError(e.message || 'Failed to simulate payment.');
-        } finally {
-            setIsSimulating(false);
-        }
-    };
-    
-    const handlePrint = () => {
-        window.print();
-    };
+    const handlePrint = () => window.print();
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-60"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
@@ -133,41 +120,36 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     }
     
     if (!invoice) {
-        return <div className="text-center text-gray-500 py-10">No invoice data to display. Please ensure the invoice ID is correct and you have permission to view it.</div>;
+        return <div className="text-center text-gray-500 py-10">No invoice data to display.</div>;
     }
 
     const totalAmountNumber = typeof invoice.total_amount === 'string' ? parseFloat(invoice.total_amount) : invoice.total_amount;
-
-    const sanitizeImagePath = (path: string) => {
-        if (!path) return '';
-        let cleanPath = path.replace('/public/', '/');
-        if (!cleanPath.startsWith('/')) {
-            cleanPath = '/' + cleanPath;
-        }
-        return cleanPath;
-    };
+    const sanitizeImagePath = (path: string) => path ? (path.replace('/public/', '/').startsWith('/') ? path : '/' + path) : '';
 
     const verifiedSignaturePath = sanitizeImagePath(invoice.verified_by_signature);
     const authorizedSignaturePath = sanitizeImagePath(invoice.authorized_by_signature);
     const companyLogoPath = sanitizeImagePath(invoice.company_logo);
 
     return (
-        <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl mx-auto my-10 printable-area">
-            <div className="flex justify-between items-center mb-6 non-printable">
-                 <div>
-                    <Button variant="outline" size="sm" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4"/> Back to List</Button>
-                 </div>
-                 <div className='flex space-x-2'>
-                    <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> Print</Button>
-                    {canSimulatePayment && invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
-                        <Button size="sm" onClick={handleSimulatePayment} disabled={isSimulating}>
-                            {isSimulating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
-                            Simulate Payment
-                        </Button>
-                    )}
-                 </div>
-            </div>
+        <>
+            <div className="bg-white p-8 rounded-lg shadow-lg max-w-4xl mx-auto my-10 printable-area">
+                <div className="flex justify-between items-center mb-6 non-printable">
+                    <div>
+                        <Button variant="outline" size="sm" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4"/> Back to List</Button>
+                    </div>
+                    <div className='flex space-x-2'>
+                        <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> Print</Button>
+                        {canReceivePayment && invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (
+                            <Button size="sm" onClick={() => setIsPaymentDialogOpen(true)}>
+                                <DollarSign className="mr-2 h-4 w-4" />
+                                Receive Payment
+                            </Button>
+                        )}
+                    </div>
+                </div>
 
+                {/* Invoice Content */}
+                
             <header className="border-b-2 border-gray-800 pb-4 mb-8">
                 <div className="flex justify-between items-start">
                     <div className="flex items-center">
@@ -261,72 +243,118 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 </div>
                 <p className="mt-8 text-gray-500">Thank you for your business!</p>
             </footer>
-            
-            <style jsx global>{`
-@media print {
+            </div>
 
-  @page {
-    size: A4;
-    margin: 0;
-  }
-
-  html, body {
-    width: 210mm;
-    height: 297mm;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden;
-  }
-
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    background: white !important;
-  }
-
-  /* Hide everything */
-  body * {
-    visibility: hidden !important;
-  }
-
-  /* Show only printable */
-  .printable-area,
-  .printable-area * {
-    visibility: visible !important;
-  }
-
-  /* 🚨 KEY FIXES HERE */
-  .printable-area {
-    position: fixed !important;      /* NOT absolute */
-    left: 0 !important;
-    top: 0 !important;
-
-    width: 210mm !important;          /* FIXED MM WIDTH */
-    min-height: 297mm !important;
-
-    margin: 0 !important;
-    padding: 20mm !important;         /* Safe print padding */
-
-    box-sizing: border-box !important;
-    background: white !important;
-
-    transform: none !important;       /* Prevent browser scaling */
-    zoom: 1 !important;
-
-    display: block !important;
-  }
-
-  /* Kill flex/grid influence */
-  .printable-area * {
-    max-width: 100% !important;
-  }
-
-  .non-printable {
-    display: none !important;
-  }
-}
-`}</style>
-
-        </div>
+            <ReceivePaymentDialog 
+                isOpen={isPaymentDialogOpen} 
+                onClose={() => setIsPaymentDialogOpen(false)} 
+                invoice={invoice}
+                onPaymentSuccess={() => {
+                    setIsPaymentDialogOpen(false);
+                    onPaymentSimulated();
+                    fetchInvoiceDetails();
+                }}
+            />
+        </>
     );
+}
+
+// ReceivePaymentDialog Component
+interface ReceivePaymentDialogProps {
+    isOpen: boolean;
+    onClose: () => void;
+    invoice: InvoiceDetailsData | null;
+    onPaymentSuccess: () => void;
+}
+
+function ReceivePaymentDialog({ isOpen, onClose, invoice, onPaymentSuccess }: ReceivePaymentDialogProps) {
+    const { user } = useAuth();
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [paymentAmount, setPaymentAmount] = useState<number>(0);
+    const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
+    const [bankAccountId, setBankAccountId] = useState<number | undefined>();
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (invoice) {
+            setPaymentAmount(invoice.amount_due);
+        }
+        if (user?.company_id && isOpen) {
+            api<BankAccount[]>(`get_accounts.php?company_id=${user.company_id}&type=bank`)
+                .then(setBankAccounts)
+                .catch(() => setError('Could not load bank accounts'));
+        }
+    }, [invoice, user?.company_id, isOpen]);
+
+    const handleSubmit = async () => {
+        if (!invoice || !user || !paymentDate || !bankAccountId || paymentAmount <= 0) {
+            setError('Please fill all fields correctly.');
+            return;
+        }
+        setIsProcessing(true);
+        setError('');
+        try {
+            await api('simulate-sales-payment.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    company_id: user.company_id,
+                    user_id: user.uid,
+                    invoice_id: invoice.id,
+                    amount: paymentAmount,
+                    payment_date: paymentDate.toISOString().split('T')[0],
+                    bank_account_id: bankAccountId
+                })
+            });
+            onPaymentSuccess();
+        } catch (e: any) {
+            setError(e.message || 'Payment failed.');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Receive Payment for {invoice?.invoice_number}</DialogTitle>
+                    <DialogDescription>Record a payment received from {invoice?.customer_name}.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <label>Payment Amount</label>
+                        <Input 
+                            type="number" 
+                            value={paymentAmount} 
+                            onChange={e => setPaymentAmount(parseFloat(e.target.value))} 
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label>Payment Date</label>
+                        <DatePicker date={paymentDate} onDateChange={setPaymentDate} />
+                    </div>
+                    <div className="space-y-2">
+                        <label>Deposit to Account</label>
+                        <Select onValueChange={(val) => setBankAccountId(Number(val))}>
+                            <SelectTrigger><SelectValue placeholder="Select a bank account" /></SelectTrigger>
+                            <SelectContent>
+                                {bankAccounts.map(acc => (
+                                    <SelectItem key={acc.id} value={String(acc.id)}>{acc.account_name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {error && <p className="text-destructive text-sm">{error}</p>}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={isProcessing}>Cancel</Button>
+                    <Button onClick={handleSubmit} disabled={isProcessing}>
+                        {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                        Confirm Payment
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
 }

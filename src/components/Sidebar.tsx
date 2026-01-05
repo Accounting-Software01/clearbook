@@ -20,7 +20,19 @@ import {
     LogOut,
     Settings,
     DollarSign,
-    Banknote
+    Banknote,
+    Package,
+    Warehouse,
+    Wrench,
+    Fuel,
+    Undo2,
+    Trash2,
+    Truck,
+    Sparkles,
+    ShieldCheck,
+    Ban,
+    Layers,
+    Send
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from './ui/scroll-area';
@@ -58,7 +70,28 @@ export function Sidebar() {
                 { href: '/cash-flow', label: 'Cash Flow', icon: ArrowRightLeft, permission: 'view_accounting' },
             ]
         },
-        { href: '/inventory', label: 'Inventory', icon: Boxes, permission: 'view_inventory' },
+        {
+            label: 'Inventory',
+            icon: Boxes,
+            permission: 'view_inventory',
+            subItems: [
+                { href: '/inventory/issue-material', label: 'Issue Material', icon: Send, permission: 'view_inventory' },
+                { href: '/inventory/finished-goods', label: 'Finished Goods', icon: Package, permission: 'view_inventory' },
+                { href: '/inventory/raw-materials', label: 'Raw Materials', icon: Layers, permission: 'view_inventory' },
+                { href: '/inventory/work-in-progress', label: 'Work-in-Progress', icon: Factory, permission: 'view_inventory' },
+                { href: '/inventory/packaging-materials', label: 'Packaging Materials', icon: Package, permission: 'view_inventory' },
+                { href: '/inventory/consumables-supplies', label: 'Consumables & Supplies', icon: ShoppingCart, permission: 'view_inventory' },
+                { href: '/inventory/spare-parts', label: 'Spare Parts', icon: Wrench, permission: 'view_inventory' },
+                { href: '/inventory/fuel-energy', label: 'Fuel & Energy', icon: Fuel, permission: 'view_inventory' },
+                { href: '/inventory/returned-goods', label: 'Returned Goods', icon: Undo2, permission: 'view_inventory' },
+                { href: '/inventory/obsolete-scrap', label: 'Obsolete & Scrap', icon: Trash2, permission: 'view_inventory' },
+                { href: '/inventory/goods-in-transit', label: 'Goods-in-Transit', icon: Truck, permission: 'view_inventory' },
+                { href: '/inventory/promotional-materials', label: 'Promotional Materials', icon: Sparkles, permission: 'view_inventory' },
+                { href: '/inventory/safety-stock', label: 'Safety Stock', icon: ShieldCheck, permission: 'view_inventory' },
+                { href: '/inventory/quality-hold', label: 'Quality-Hold', icon: Ban, permission: 'view_inventory' },
+                { href: '/inventory/consignment', label: 'Consignment', icon: Layers, permission: 'view_inventory' },
+            ]
+        },
         { href: '/sales', label: 'Sales', icon: ShoppingCart, permission: 'view_sales' },
         { href: '/procurement', label: 'Procurement', icon: ShoppingCart, permission: 'view_procurement' },
         { href: '/production', label: 'Production', icon: Factory, permission: 'view_production', companyType: 'manufacturing' },

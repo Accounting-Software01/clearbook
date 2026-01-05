@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { PlusCircle, RefreshCw, Loader2, Printer } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -27,12 +27,24 @@ import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDia
 import { useAuth } from '@/hooks/useAuth';
 import { apiEndpoints } from '@/lib/apiEndpoints';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+
 
 interface Customer {
   id: string;
   name: string;
   email?: string;
   phone?: string;
+  balance: number;
+}
+
+interface LedgerEntry {
+    date: string;
+    narration: string;
+    debit: number;
+    credit: number;
+    balance: number;
 }
 
 interface CustomersTrailTabProps {
@@ -50,6 +62,8 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
     const [isOpeningBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
     const [showOpeningBalancePrompt, setShowOpeningBalancePrompt] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<{id: string, name: string} | null>(null);
+    const [isPrinting, setIsPrinting] = useState<string | null>(null); // Track by customer ID
+
 
     const fetchCustomers = useCallback(async () => {
         if (!user?.company_id) return;
@@ -63,6 +77,7 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
                     name: c.customer_name,
                     email: c.email_address,
                     phone: c.primary_phone_number,
+                    balance: parseFloat(c.balance) || 0
                 }));
                 setCustomers(mappedCustomers);
             } else {
@@ -91,6 +106,50 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
         setShowOpeningBalancePrompt(false);
         setOpeningBalanceDialogOpen(true);
     };
+    
+    const generateLedgerPDF = (customer: Customer, ledgerEntries: LedgerEntry[]) => {
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`Customer Ledger: ${customer.name}`, 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Balance: ${customer.balance.toFixed(2)}`, 14, 30);
+
+        const tableColumn = ["Date", "Narration", "Debit", "Credit", "Balance"];
+        const tableRows = ledgerEntries.map(entry => [
+            entry.date,
+            entry.narration,
+            entry.debit ? entry.debit.toFixed(2) : '-',
+            entry.credit ? entry.credit.toFixed(2) : '-',
+            entry.balance.toFixed(2)
+        ]);
+
+        (doc as any).autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 35,
+        });
+
+        doc.save(`Ledger-${customer.name}.pdf`);
+    };
+    
+    const handlePrintLedger = async (customer: Customer) => {
+        if(!user?.company_id) return;
+        setIsPrinting(customer.id);
+        try {
+            const res = await fetch(`${apiEndpoints.getCustomersLedger(user.company_id)}&customer_id=${customer.id}`);
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'An unknown error occurred' }));
+                throw new Error(errorData.error || res.statusText);
+            }
+            const ledgerEntries: LedgerEntry[] = await res.json();
+            generateLedgerPDF(customer, ledgerEntries);
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Error Printing Ledger', description: error.message || 'Could not fetch ledger data.' });
+        } finally {
+            setIsPrinting(null);
+        }
+    };
+
 
   return (
     <>
@@ -121,6 +180,8 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
                     <TableHead>{`${language?.customer || 'Customer'} Name`}</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -130,6 +191,17 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.email}</TableCell>
                     <TableCell>{customer.phone}</TableCell>
+                    <TableCell className="text-right font-semibold">{customer.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            disabled={isPrinting === customer.id}
+                            onClick={() => handlePrintLedger(customer)} >
+                            {isPrinting === customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4"/>}
+                            Print Ledger
+                        </Button>
+                    </TableCell>
                 </TableRow>
                 ))}
             </TableBody>
@@ -161,6 +233,7 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
         isOpen={isOpeningBalanceDialogOpen}
         onClose={() => setOpeningBalanceDialogOpen(false)}
         customer={selectedCustomer}
+        onBalanceRecorded={fetchCustomers}
       />
     </>
   );
