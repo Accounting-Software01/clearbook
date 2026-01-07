@@ -241,7 +241,7 @@ const InventoryTable = ({ items, userRole, onRowClick }: { items: InventoryItem[
             {items.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                     <p>No raw materials registered yet.</p>
-                    {user?.role === 'admin' && <p className="mt-2 text-sm">You can add your initial inventory using the &quot;Set Opening Balances&quot; button.</p>}
+                    {userRole === 'admin' && <p className="mt-2 text-sm">You can add your initial inventory using the &quot;Set Opening Balances&quot; button.</p>}
                 </div>
             )}
         </CardContent>

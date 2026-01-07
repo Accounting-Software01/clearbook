@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { apiEndpoints } from '@/lib/apiEndpoints';
 
 interface RegisterItemDialogProps {
     open: boolean;
@@ -51,15 +52,15 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
         name: '',
         sku: '',
         unit_of_measure: '',
-        category: '', 
+        category: '',
+        cost: '0', // Added for unit cost
     });
-    const [itemType, setItemType] = useState(''); // 'raw_material' or 'finished_good'
+    const [itemType, setItemType] = useState(''); 
     const [isLoading, setIsLoading] = useState(false);
 
-    // Reset form when dialog closes
     useEffect(() => {
         if (!open) {
-            setFormData({ name: '', sku: '', unit_of_measure: '', category: '' });
+            setFormData({ name: '', sku: '', unit_of_measure: '', category: '', cost: '0' });
             setItemType('');
             setIsLoading(false);
         }
@@ -73,20 +74,22 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
 
         setIsLoading(true);
         try {
-            const response = await fetch('/api/clearbook/register-item', { // Corrected API endpoint
+            const response = await fetch(apiEndpoints.registerItem, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...formData,
                     company_id: user?.company_id,
                     item_type: itemType,
+                    opening_balance: 0, // Required by backend, not shown in UI
+                    cost: parseFloat(formData.cost) || 0,
                 }),
             });
 
             const data = await response.json();
 
             if (response.ok && data.status === 'success') {
-                toast({ title: 'Success', description: 'Item registered successfully.' });
+                toast({ title: 'Success', description: data.message || 'Item registered successfully.' });
                 onSuccess();
                 onOpenChange(false);
             } else {
@@ -108,7 +111,7 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader>
                     <DialogTitle>Register New Inventory Item</DialogTitle>
                 </DialogHeader>
@@ -128,7 +131,7 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                     
                     {itemType && (
                         <>
-                             <div className="grid grid-cols-4 items-center gap-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
                                 <Select onValueChange={value => setFormData(prev => ({ ...prev, category: value }))} value={formData.category}>
                                     <SelectTrigger id="category" className="col-span-3">
@@ -152,6 +155,10 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="unit_of_measure" className="text-right">Unit of Measure</Label>
                                 <Input id="unit_of_measure" value={formData.unit_of_measure} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 'kg', 'pcs', 'litres'"/>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="cost" className="text-right">Unit Cost</Label>
+                                <Input id="cost" type="number" value={formData.cost} onChange={handleInputChange} className="col-span-3" placeholder="Cost per unit"/>
                             </div>
                         </>
                     )}

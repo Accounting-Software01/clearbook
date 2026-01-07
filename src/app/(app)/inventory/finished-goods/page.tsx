@@ -92,7 +92,7 @@ const FinishedGoodsPage = () => {
                     total_value: (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_cost) || 0),
                 });
 
-                const finishedGoods = (data.finished_goods || []).map(processItem);
+                const finishedGoods = (data.products || []).map(processItem);
                 setItems(finishedGoods);
 
                 // Prompt for opening balance if it's the first time and no stock exists
