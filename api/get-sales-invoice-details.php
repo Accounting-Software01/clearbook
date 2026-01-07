@@ -53,7 +53,7 @@ try {
     // --- Main Invoice, Customer, and Company Data ---
     $sql = "
         SELECT 
-            si.id, si.invoice_number, si.invoice_date, si.due_date, si.status, si.total_amount, si.customer_id,
+            si.id, si.public_token, si.invoice_number, si.invoice_date, si.due_date, si.status, si.total_amount, si.customer_id,
             cust.customer_name AS customer_name,
             cust.opening_balance_journal_id,
             co.name AS company_name,

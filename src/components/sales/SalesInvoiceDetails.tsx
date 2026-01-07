@@ -7,11 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Loader2, AlertCircle, ArrowLeft, CheckCircle, Printer, DollarSign } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeft, Printer, DollarSign } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { numberToWords } from '@/lib/number-to-words-converter';
 import Image from 'next/image';
+import { QRCodeCanvas } from 'qrcode.react';
 
 // Interfaces
 interface InvoiceItem {
@@ -24,6 +25,7 @@ interface InvoiceItem {
 
 interface InvoiceDetailsData {
     id: number;
+    public_token: string;
     invoice_number: string;
     invoice_date: string;
     due_date: string;
@@ -53,8 +55,13 @@ interface SalesInvoiceDetailsProps {
 }
 
 interface BankAccount {
-    id: number;
+    bank_id: number;
+    bank_name: string;
     account_name: string;
+    account_number: string;
+    currency: string;
+    gl_account_code: string;
+    gl_account_name: string;
 }
 
 
@@ -69,7 +76,6 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     const { user } = useAuth();
     const [invoice, setInvoice] = useState<InvoiceDetailsData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSimulating, setIsSimulating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
@@ -129,6 +135,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
     const verifiedSignaturePath = sanitizeImagePath(invoice.verified_by_signature);
     const authorizedSignaturePath = sanitizeImagePath(invoice.authorized_by_signature);
     const companyLogoPath = sanitizeImagePath(invoice.company_logo);
+    const invoiceUrl = `https://hariindustries.net/invoice.php?token=${invoice.public_token}`;
 
     return (
         <>
@@ -232,8 +239,8 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                  </div>
             </section>
 
-            <footer className="border-t-2 border-gray-800 pt-8 mt-12 text-center text-sm">
-                <div className="grid grid-cols-3 gap-4">
+            <footer className="border-t-2 border-gray-800 pt-8 mt-12 text-sm">
+                 <div className="grid grid-cols-3 gap-4 mb-8">
                     <div className='h-24 flex flex-col justify-between'>
                         <div className="h-12"></div>
                         <p className="font-semibold">{invoice.prepared_by}</p>
@@ -250,7 +257,11 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                         <p className="border-t-2 border-gray-400 mt-1 pt-1">Authorised Signatory</p>
                     </div>
                 </div>
-                <p className="mt-8 text-gray-500">Thank you for your business!</p>
+                <div className="flex flex-col items-center justify-center pt-4 print-only">
+                    <QRCodeCanvas value={invoiceUrl} size={128} />
+                    <p className="mt-2 text-xs">Scan to view invoice details online</p>
+                </div>
+                <p className="mt-8 text-gray-500 text-center">Thank you for your business!</p>
             </footer>
             </div>
 
@@ -283,16 +294,30 @@ function ReceivePaymentDialog({ isOpen, onClose, invoice, onPaymentSuccess }: Re
     const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
     const [bankAccountId, setBankAccountId] = useState<number | undefined>();
     const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+    const [paymentReference, setPaymentReference] = useState('');
+    const [narration, setNarration] = useState('');
     const [error, setError] = useState('');
 
     useEffect(() => {
         if (invoice) {
             setPaymentAmount(invoice.amount_due);
+            setNarration(`Payment for invoice ${invoice.invoice_number}`);
+            setPaymentReference('');
         }
         if (user?.company_id && isOpen) {
-            api<BankAccount[]>(`get_accounts.php?company_id=${user.company_id}&type=bank`)
-                .then(setBankAccounts)
-                .catch(() => setError('Could not load bank accounts'));
+            api<{ bank_accounts: BankAccount[] }>(`get_bank_accounts_with_gl.php?company_id=${user.company_id}`)
+                .then(data => {
+                    const accounts = data?.bank_accounts || [];
+                    setBankAccounts(accounts);
+
+                    if (accounts.length > 0) {
+                        setBankAccountId(accounts[0].bank_id);
+                        setError(''); // Clear previous errors
+                    } else {
+                        setError('No bank accounts configured. Please add a bank account in settings.');
+                    }
+                })
+                .catch(() => setError('Could not load bank accounts. Check network connection.'));
         }
     }, [invoice, user?.company_id, isOpen]);
 
@@ -312,7 +337,9 @@ function ReceivePaymentDialog({ isOpen, onClose, invoice, onPaymentSuccess }: Re
                     invoice_id: invoice.id,
                     amount: paymentAmount,
                     payment_date: paymentDate.toISOString().split('T')[0],
-                    bank_account_id: bankAccountId
+                    bank_account_id: bankAccountId,
+                    reference: paymentReference,
+                    narration: narration
                 })
             });
             onPaymentSuccess();
@@ -345,20 +372,53 @@ function ReceivePaymentDialog({ isOpen, onClose, invoice, onPaymentSuccess }: Re
                     </div>
                     <div className="space-y-2">
                         <label>Deposit to Account</label>
-                        <Select onValueChange={(val) => setBankAccountId(Number(val))}>
+                        <Select 
+                            onValueChange={(val) => setBankAccountId(Number(val))}
+                            value={bankAccountId ? String(bankAccountId) : ""} 
+                            disabled={bankAccounts.length === 0}
+                        >
                             <SelectTrigger><SelectValue placeholder="Select a bank account" /></SelectTrigger>
                             <SelectContent>
-                                {bankAccounts.map(acc => (
-                                    <SelectItem key={acc.id} value={String(acc.id)}>{acc.account_name}</SelectItem>
-                                ))}
+                                {bankAccounts.length === 0 ? (
+                                    <SelectItem value="none" disabled>No accounts available</SelectItem>
+                                ) : (
+                                    bankAccounts.map(acc => (
+                                        <SelectItem key={acc.bank_id} value={String(acc.bank_id)}>
+                                            <div>
+                                                <p className='font-semibold'>{acc.bank_name} - {acc.account_name}</p>
+                                                <p className='text-xs text-gray-500'>GL: {acc.gl_account_name}</p>
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
-                    {error && <p className="text-destructive text-sm">{error}</p>}
+                    <div className="space-y-2">
+                        <label htmlFor="paymentReference">Payment Reference</label>
+                        <Input
+                            id="paymentReference"
+                            type="text"
+                            value={paymentReference}
+                            onChange={(e) => setPaymentReference(e.target.value)}
+                            placeholder="e.g., Bank transfer ID, Cheque no."
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label htmlFor="narration">Narration</label>
+                        <Input
+                            id="narration"
+                            type="text"
+                            value={narration}
+                            onChange={(e) => setNarration(e.target.value)}
+                            placeholder="e.g., Part payment for goods"
+                        />
+                    </div>
+                    {error && <p className="text-destructive text-sm font-semibold">{error}</p>}
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={onClose} disabled={isProcessing}>Cancel</Button>
-                    <Button onClick={handleSubmit} disabled={isProcessing}>
+                    <Button onClick={handleSubmit} disabled={isProcessing || bankAccounts.length === 0}>
                         {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                         Confirm Payment
                     </Button>
