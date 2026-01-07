@@ -152,7 +152,7 @@ const PaymentWorkbenchPage = () => {
                 method: 'POST',
                 body: JSON.stringify({
                     company_id: user.company_id,
-                    user_id: user.id,
+                    user_id: user.uid,
                     payment_account_id: selectedAccountId,
                     wht_rate: whtRate,
                     payments: scheduledPayments

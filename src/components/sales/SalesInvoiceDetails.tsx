@@ -152,14 +152,23 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 
             <header className="border-b-2 border-gray-800 pb-4 mb-8">
                 <div className="flex justify-between items-start">
-                    <div className="flex items-center">
-                        {companyLogoPath && <Image src={companyLogoPath} alt="Company Logo" width={80} height={80} className="mr-4 object-contain"/>}
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-800">{invoice.company_name}</h1>
-                            <p className="text-sm">{invoice.company_address}</p>
-                            <p className="text-sm">{invoice.company_phone}</p>
-                        </div>
-                    </div>
+                <div className="flex items-center">
+    {invoice.company_logo && 
+        <Image 
+            src={invoice.company_logo} 
+            alt="Company Logo" 
+            width={80} 
+            height={80} 
+            className="mr-4 object-contain"
+        />
+    }
+    <div>
+        <h1 className="text-3xl font-bold text-gray-800">{invoice.company_name}</h1>
+        <p className="text-sm">{invoice.company_address}</p>
+        <p className="text-sm">{invoice.company_phone}</p>
+    </div>
+</div>
+
                     <div className="text-right flex-shrink-0">
                         <h2 className="text-4xl font-bold uppercase text-gray-800">Sales Invoice</h2>
                         <p className="text-sm">Printed by: {user?.full_name} on {new Date().toLocaleDateString()}</p>

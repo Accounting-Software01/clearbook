@@ -1,8 +1,10 @@
 'use client';
+
 import React from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { FileText, ArrowRightCircle, CheckCircle, XCircle } from 'lucide-react';
 
 interface Activity {
     id: string;
@@ -10,87 +12,79 @@ interface Activity {
     type: string;
     reference: string;
     amount: number;
-    status?: string; // Optional status property
+    status: string;
 }
 
 interface ActivitiesTableProps {
     activities: Activity[];
 }
 
-export function ActivitiesTable({ activities }: ActivitiesTableProps) {
-    const formatNumber = (amount: number) => {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        }).format(amount);
-    };
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
+};
 
-    const getTypeBadgeVariant = (type: string): "secondary" | "default" => {
-        switch (type) {
-            case 'Purchase Invoice':
-                return 'secondary';
-            case 'Payment':
-                return 'default';
-            default:
-                return 'default';
-        }
-    };
+const getActivityIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+        case 'invoice':
+            return <FileText className="h-5 w-5 text-blue-500" />;
+        case 'payment':
+            return <ArrowRightCircle className="h-5 w-5 text-green-500" />;
+        default:
+            return <FileText className="h-5 w-5 text-gray-500" />;
+    }
+};
 
-    const getStatusBadgeVariant = (status?: string): "success" | "destructive" | "warning" | "default" => {
-        switch (status?.toLowerCase()) {
-            case 'paid':
-            case 'approved':
-                return 'success';
-            case 'unpaid':
-            case 'overdue':
-                return 'destructive';
-            case 'pending':
-                return 'warning';
-            default:
-                return 'default';
-        }
-    };
+const getStatusBadge = (status: string) => {
+    switch (status.toLowerCase()) {
+        case 'posted':
+            return <Badge variant="default" className="bg-green-100 text-green-800">Posted</Badge>;
+        case 'pending':
+            return <Badge variant="secondary">Pending</Badge>;
+        case 'cancelled':
+            return <Badge variant="destructive">Cancelled</Badge>;
+        default:
+            return <Badge variant="outline">{status}</Badge>;
+    }
+};
 
-    const capitalize = (s?: string) => s && s.charAt(0).toUpperCase() + s.slice(1) || "N/A";
+export const ActivitiesTable: React.FC<ActivitiesTableProps> = ({ activities }) => {
+    if (activities.length === 0) {
+        return <div className="text-center text-muted-foreground py-8">No activities found for this supplier.</div>;
+    }
 
     return (
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead className="w-[120px]">Date</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {activities.length > 0 ? (
-                    activities.map((activity) => (
-                        <TableRow key={`${activity.type}-${activity.id}`}>
-                            <TableCell>{format(new Date(activity.date), 'dd MMM yyyy')}</TableCell>
-                            <TableCell>{activity.reference}</TableCell>
-                            <TableCell>
-                                <Badge variant={getTypeBadgeVariant(activity.type)}>{activity.type}</Badge>
-                            </TableCell>
-                            <TableCell>
-                                {activity.status && (
-                                    <Badge variant={getStatusBadgeVariant(activity.status)}>{capitalize(activity.status)}</Badge>
-                                )}
-                            </TableCell>
-                            <TableCell className="text-right">{formatNumber(activity.amount)}</TableCell>
-                        </TableRow>
-                    ))
-                ) : (
+        <TooltipProvider>
+            <Table>
+                <TableHeader>
                     <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
-                            No activities found.
-                        </TableCell>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Reference</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                     </TableRow>
-                )}
-            </TableBody>
-        </Table>
+                </TableHeader>
+                <TableBody>
+                    {activities.map((activity) => (
+                        <TableRow key={activity.id}>
+                            <TableCell>
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        {getActivityIcon(activity.type)}
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>{activity.type}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TableCell>
+                            <TableCell>{new Date(activity.date).toLocaleDateString()}</TableCell>
+                            <TableCell>{activity.reference}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(activity.amount)}</TableCell>
+                            <TableCell className="text-center">{getStatusBadge(activity.status)}</TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </TooltipProvider>
     );
-}
+};
