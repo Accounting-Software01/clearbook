@@ -73,7 +73,36 @@ body {
   border-radius: 50%;
   top: 50%;
   left: 50%;
-  margin-top: -4px;
+  margin-top: -4px; 
   margin-left: -4px;
   animation: rotate-dot 4s linear infinite;
+}
+
+/* ===== PRINT FIX FOR INVOICE ===== */
+@media print {
+  /* Hide EVERYTHING by default */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only invoice */
+  #invoice-print,
+  #invoice-print * {
+    visibility: visible;
+  }
+
+  /* Position invoice at top-left */
+  #invoice-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 200mm;
+    padding: 8mm;
+  }
+
+  /* Kill sidebar width influence */
+  aside,
+  nav {
+    display: none !important;
+  }
 }

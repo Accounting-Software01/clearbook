@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, RefreshCw, Loader2, Printer } from 'lucide-react';
+import { PlusCircle, RefreshCw, Loader2, FileText } from 'lucide-react'; // Changed Printer to FileText
 import {
   Table,
   TableBody,
@@ -27,8 +27,11 @@ import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDia
 import { useAuth } from '@/hooks/useAuth';
 import { apiEndpoints } from '@/lib/apiEndpoints';
 import { useToast } from '@/hooks/use-toast';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+// Removed jsPDF imports
+// import jsPDF from 'jspdf';
+// import 'jspdf-autotable';
+
+import { CustomerLedgerViewDialog } from './CustomerLedgerViewDialog'; // New import for the ledger view dialog
 
 
 interface Customer {
@@ -62,7 +65,12 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
     const [isOpeningBalanceDialogOpen, setOpeningBalanceDialogOpen] = useState(false);
     const [showOpeningBalancePrompt, setShowOpeningBalancePrompt] = useState(false);
     const [selectedCustomer, setSelectedCustomer] = useState<{id: string, name: string} | null>(null);
-    const [isPrinting, setIsPrinting] = useState<string | null>(null); // Track by customer ID
+    // Removed isPrinting state
+    // const [isPrinting, setIsPrinting] = useState<string | null>(null); // Track by customer ID
+
+    // New state for ledger view dialog
+    const [isLedgerViewDialogOpen, setIsLedgerViewDialogOpen] = useState(false);
+    const [customerToViewLedger, setCustomerToViewLedger] = useState<Customer | null>(null);
 
 
     const fetchCustomers = useCallback(async () => {
@@ -107,47 +115,36 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
         setOpeningBalanceDialogOpen(true);
     };
     
-    const generateLedgerPDF = (customer: Customer, ledgerEntries: LedgerEntry[]) => {
-        const doc = new jsPDF();
-        doc.setFontSize(18);
-        doc.text(`Customer Ledger: ${customer.name}`, 14, 22);
-        doc.setFontSize(11);
-        doc.text(`Balance: ${customer.balance.toFixed(2)}`, 14, 30);
+    // Removed generateLedgerPDF function
+    // const generateLedgerPDF = (customer: Customer, ledgerEntries: LedgerEntry[]) => {
+    //     const doc = new jsPDF();
+    //     doc.setFontSize(18);
+    //     doc.text(`Customer Ledger: ${customer.name}`, 14, 22);
+    //     doc.setFontSize(11);
+    //     doc.text(`Balance: ${customer.balance.toFixed(2)}`, 14, 30);
 
-        const tableColumn = ["Date", "Narration", "Debit", "Credit", "Balance"];
-        const tableRows = ledgerEntries.map(entry => [
-            entry.date,
-            entry.narration,
-            entry.debit ? entry.debit.toFixed(2) : '-',
-            entry.credit ? entry.credit.toFixed(2) : '-',
-            entry.balance.toFixed(2)
-        ]);
+    //     const tableColumn = ["Date", "Narration", "Debit", "Credit", "Balance"];
+    //     const tableRows = ledgerEntries.map(entry => [
+    //         entry.date,
+    //         entry.narration,
+    //         entry.debit ? entry.debit.toFixed(2) : '-',
+    //         entry.credit ? entry.credit.toFixed(2) : '-',
+    //         entry.balance.toFixed(2)
+    //     ]);
 
-        (doc as any).autoTable({
-            head: [tableColumn],
-            body: tableRows,
-            startY: 35,
-        });
+    //     (doc as any).autoTable({
+    //         head: [tableColumn],
+    //         body: tableRows,
+    //         startY: 35,
+    //     });
 
-        doc.save(`Ledger-${customer.name}.pdf`);
-    };
+    //     doc.save(`Ledger-${customer.name}.pdf`);
+    // };
     
-    const handlePrintLedger = async (customer: Customer) => {
-        if(!user?.company_id) return;
-        setIsPrinting(customer.id);
-        try {
-            const res = await fetch(`${apiEndpoints.getCustomersLedger(user.company_id)}&customer_id=${customer.id}`);
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({ error: 'An unknown error occurred' }));
-                throw new Error(errorData.error || res.statusText);
-            }
-            const ledgerEntries: LedgerEntry[] = await res.json();
-            generateLedgerPDF(customer, ledgerEntries);
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Error Printing Ledger', description: error.message || 'Could not fetch ledger data.' });
-        } finally {
-            setIsPrinting(null);
-        }
+    // Renamed handlePrintLedger to handleViewLedger and updated its logic
+    const handleViewLedger = (customer: Customer) => {
+        setCustomerToViewLedger(customer);
+        setIsLedgerViewDialogOpen(true);
     };
 
 
@@ -196,10 +193,10 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
                         <Button 
                             variant="outline" 
                             size="sm"
-                            disabled={isPrinting === customer.id}
-                            onClick={() => handlePrintLedger(customer)} >
-                            {isPrinting === customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4"/>}
-                            Print Ledger
+                            disabled={isLedgerViewDialogOpen} // Disable button if ledger dialog is open
+                            onClick={() => handleViewLedger(customer)} >
+                            <FileText className="mr-2 h-4 w-4"/> {/* Changed icon */}
+                            View Ledger {/* Changed button text */}
                         </Button>
                     </TableCell>
                 </TableRow>
@@ -234,6 +231,13 @@ export const CustomersTrailTab = ({ onRefresh }: CustomersTrailTabProps) => {
         onClose={() => setOpeningBalanceDialogOpen(false)}
         customer={selectedCustomer}
         onBalanceRecorded={fetchCustomers}
+      />
+
+      {/* New CustomerLedgerViewDialog component */}
+      <CustomerLedgerViewDialog
+        isOpen={isLedgerViewDialogOpen}
+        onClose={() => setIsLedgerViewDialogOpen(false)}
+        customer={customerToViewLedger}
       />
     </>
   );

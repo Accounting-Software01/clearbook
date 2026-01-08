@@ -109,7 +109,11 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
         }
     }, [user, fetchInvoiceDetails]);
 
-    const handlePrint = () => window.print();
+    
+    const handlePrint = () => {
+        window.print();
+      };
+      
 
     if (isLoading) {
         return <div className="flex justify-center items-center h-60"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
@@ -156,7 +160,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 </div>
 
                 {/* Invoice Content */}
-                
+                <div id="invoice-print" className="bg-white">
             <header className="border-b-2 border-gray-800 pb-4 mb-8">
                 <div className="flex justify-between items-start">
                 <div className="flex items-center">
@@ -183,7 +187,8 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 </div>
             </header>
 
-            <section className="grid grid-cols-2 gap-x-12 mb-8">
+            <section className="grid grid-cols-2 gap-x-12 mb-8 overflow-x-hidden print:block">
+
                 <div className="border border-gray-300 rounded p-4">
                     <h3 className="font-semibold text-gray-600 mb-2">BUYER:</h3>
                     <p className="font-bold text-lg">{invoice.customer_name}</p>
@@ -221,7 +226,9 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 </Table>
             </section>
             
-             <section className="grid grid-cols-5 gap-8 mb-8">
+             
+             <section className="grid grid-cols-5 gap-8 mb-8 overflow-x-hidden print:block">
+
                  <div className='col-span-3 space-y-4'>
                      <div>
                         <p className='font-semibold'>AMOUNT IN WORDS:</p>
@@ -263,6 +270,7 @@ export function SalesInvoiceDetails({ invoiceId, onBack, onPaymentSimulated }: S
                 </div>
                 <p className="mt-8 text-gray-500 text-center">Thank you for your business!</p>
             </footer>
+            </div>
             </div>
 
             <ReceivePaymentDialog 
@@ -329,7 +337,8 @@ function ReceivePaymentDialog({ isOpen, onClose, invoice, onPaymentSuccess }: Re
         setIsProcessing(true);
         setError('');
         try {
-            await api('simulate-sales-payment.php', {
+   await api('simulate-sales-payment.php', {
+
                 method: 'POST',
                 body: JSON.stringify({
                     company_id: user.company_id,
