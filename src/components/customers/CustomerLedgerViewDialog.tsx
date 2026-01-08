@@ -23,6 +23,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiEndpoints } from '@/lib/apiEndpoints';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Printer } from 'lucide-react'; // Import Printer
+import jsPDF from 'jspdf'; // Import jsPDF
+import 'jspdf-autotable'; // Import jspdf-autotable
 
 interface Customer {
   id: string;
@@ -58,6 +60,7 @@ export const CustomerLedgerViewDialog: React.FC<CustomerLedgerViewDialogProps> =
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // Renamed from isPrinting
 
   const fetchLedger = useCallback(async () => {
     if (!user?.company_id || !customer?.id) {
@@ -107,7 +110,33 @@ export const CustomerLedgerViewDialog: React.FC<CustomerLedgerViewDialogProps> =
     }
   }, [isOpen, customer?.id, fetchLedger]);
 
-  const handlePrint = () => {
+  // New function to generate PDF and open in new tab
+  const generateLedgerPDF = (customerData: Customer, ledgerData: LedgerEntry[]) => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text(`Customer Ledger: ${customerData.name}`, 14, 22);
+    doc.setFontSize(11);
+    doc.text(`Balance: ${customerData.balance.toFixed(2)}`, 14, 30);
+
+    const tableColumn = ["Date", "Narration", "Debit", "Credit", "Balance"];
+    const tableRows = ledgerData.map(entry => [
+      entry.date,
+      entry.narration,
+      entry.debit > 0 ? entry.debit.toFixed(2) : '-',
+      entry.credit > 0 ? entry.credit.toFixed(2) : '-',
+      entry.balance.toFixed(2)
+    ]);
+
+    (doc as any).autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 35,
+    });
+
+    doc.output('dataurlnewwindow', { filename: `Ledger-${customerData.name}.pdf` });
+  };
+
+  const handleGenerateAndOpenPdf = async () => {
     if (!customer?.id) {
       toast({
         variant: 'destructive',
@@ -117,27 +146,28 @@ export const CustomerLedgerViewDialog: React.FC<CustomerLedgerViewDialogProps> =
       return;
     }
 
-    // Construct the URL to the new print-friendly page
-    const printUrl = `/public/customer-ledger/${customer.id}`;
-    
-    // Open a new window
-    const newWindow = window.open(printUrl, '_blank', 'width=900,height=600,left=100,top=100,noopener,noreferrer');
-    
-    if (newWindow) {
-      // Wait for the new window to load before printing
-      newWindow.onload = () => {
-        newWindow.print();
-        // Optionally close the window after printing (user might cancel print)
-        // setTimeout(() => {
-        //   newWindow.close();
-        // }, 1000); 
-      };
-    } else {
+    setIsGeneratingPdf(true);
+    try {
+      // Re-fetch data if needed, or use already fetched `ledgerEntries`
+      // For simplicity, we'll use the already fetched `ledgerEntries` if available and not loading.
+      // If `ledgerEntries` could be stale or this button should always trigger a fresh fetch,
+      // you would re-call `fetchLedger()` here and wait for it.
+      
+      // If you want to ensure the latest data is used, you'd add:
+      // await fetchLedger(); // This would update ledgerEntries state
+      // Then use the state: generateLedgerPDF(customer, ledgerEntries);
+
+      // Using current state:
+      generateLedgerPDF(customer, ledgerEntries);
+
+    } catch (error: any) {
       toast({
         variant: 'destructive',
-        title: 'Print Error',
-        description: 'Failed to open new window for printing. Please check your browser settings (e.g., pop-up blockers).',
+        title: 'Error Printing Ledger',
+        description: error.message || 'Could not generate PDF for ledger.',
       });
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -196,10 +226,10 @@ export const CustomerLedgerViewDialog: React.FC<CustomerLedgerViewDialogProps> =
         <DialogFooter className="mt-4">
           <Button
             variant="outline"
-            onClick={handlePrint}
-            disabled={!customer || ledgerEntries.length === 0} // Disable print if no customer or no entries
+            onClick={handleGenerateAndOpenPdf} // Call the new PDF generation function
+            disabled={!customer || ledgerEntries.length === 0 || isGeneratingPdf || isLoading} // Disable button while loading or generating PDF
           >
-            <Printer className="mr-2 h-4 w-4" />
+            {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Printer className="mr-2 h-4 w-4" />}
             Print Ledger
           </Button>
           <DialogClose asChild>

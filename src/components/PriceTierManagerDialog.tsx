@@ -91,7 +91,7 @@ export function PriceTierManagerDialog({ open, onOpenChange, product }: PriceTie
     const handleUpdateTier = async (tier: PriceTier, newPrice: string) => {
         if (!user?.company_id) return;
         try {
-            const response = await fetch('https://hariindustries.net/api/clearbook/inventory/manage-price-tiers.php', {
+            const response = await fetch('https://hariindustries.net/api/clearbook/manage-price-tiers.php', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -113,7 +113,7 @@ export function PriceTierManagerDialog({ open, onOpenChange, product }: PriceTie
     const handleDeleteTier = async (tierId: number) => {
         if (!user?.company_id) return;
         try {
-            const response = await fetch(`https://hariindustries.net/api/clearbook/inventory/manage-price-tiers.php?id=${tierId}&company_id=${user.company_id}`, {
+            const response = await fetch(`https://hariindustries.net/api/clearbook/manage-price-tiers.php?id=${tierId}&company_id=${user.company_id}`, {
                 method: 'DELETE',
             });
             const result = await response.json();
