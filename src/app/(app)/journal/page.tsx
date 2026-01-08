@@ -18,7 +18,7 @@ import {
 import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { chartOfAccounts } from '@/lib/chart-of-accounts';
+import { fetchChartOfAccounts, type Account } from '@/lib/chart-of-accounts';
 import type { Payee } from '@/types/payee';
 import { useAuth } from '@/hooks/useAuth'; // Import useAuth from your hooks folder
 
@@ -50,14 +50,27 @@ const JournalPage = () => {
         { id: 2, accountId: '', debit: 0, credit: 0 },
     ]);
     const [isLoading, setIsLoading] = useState(false);
+    const [accounts, setAccounts] = useState<Account[]>([]);
     const [allPayees, setAllPayees] = useState<Payee[]>([]);
     const [isOpeningEntry, setIsOpeningEntry] = useState(false); // New state for opening entry
+
+     useEffect(() => {
+        if (user?.company_id) {
+            fetchChartOfAccounts(user.company_id)
+                .then(setAccounts)
+                .catch(error => {
+                    console.error("Failed to fetch accounts", error);
+                    toast({ variant: 'destructive', title: 'Failed to load Chart of Accounts' });
+                });
+        }
+    }, [user, toast]);
 
     // Fetch all payees once when the component mounts
     useEffect(() => {
         const fetchPayees = async () => {
+            if (!user?.company_id) return;
             try {
-                const response = await fetch('https://hariindustries.net/busa-api/database/get-payees.php');
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-payees.php?company_id=${user.company_id}`);
                 if (!response.ok) {
                     throw new Error('Failed to fetch payees list.');
                 }
@@ -73,7 +86,7 @@ const JournalPage = () => {
             }
         };
         fetchPayees();
-    }, [toast]);
+    }, [user, toast]);
 
     const handleAddLine = () => {
         setLines([...lines, { id: Date.now(), accountId: '', debit: 0, credit: 0 }]);
@@ -178,8 +191,8 @@ const JournalPage = () => {
 
         // Determine the API endpoint based on isOpeningEntry
         const apiEndpoint = isOpeningEntry 
-            ? 'https://hariindustries.net/busa-api/database/opening-entry.php'
-            : 'https://hariindustries.net/clearbook/journal-entry.php';
+            ? 'https://hariindustries.net/api/clearbook/opening-entry.php'
+            : 'https://hariindustries.net/api/clearbook/journal-entry.php';
 
         const payload = {
             entryDate: format(entryDate, 'yyyy-MM-dd'),
@@ -280,7 +293,7 @@ const JournalPage = () => {
                                                     <SelectValue placeholder="Select an account..." />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {chartOfAccounts.map(account => (
+                                                    {accounts.map(account => (
                                                         <SelectItem key={account.code} value={account.code}>
                                                             {account.code} - {account.name}
                                                         </SelectItem>

@@ -308,6 +308,14 @@ const SalesPage = () => {
   const isAccountant = user?.role === 'accountant';
   const isStaff = user?.role === 'staff';
   
+  if(isStaff){
+      return (
+        <div className="flex items-center justify-center h-64">
+            <p className='ml-4 text-destructive-foreground'>You do not have access to this page</p>
+        </div>
+      )
+  }
+  
 
   return (
     <>
@@ -315,17 +323,17 @@ const SalesPage = () => {
          Manage sales activities and generate all related documents including sales forms, invoices, customer transaction trails, sales audit trails, and delivery waybills.
        </p>
 
-      <Tabs defaultValue="sale_form" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="sale_form"><ShoppingCart className="h-4 w-4 mr-2" /> Sale Form</TabsTrigger>
-          <TabsTrigger value="invoices"><FileText className="h-4 w-4 mr-2" /> Invoices</TabsTrigger>
-          <TabsTrigger value="customers_trail"><Users className="h-4 w-4 mr-2" /> Customers Trail</TabsTrigger>
-          <TabsTrigger value="payment_trail"><ListOrdered className="h-4 w-4 mr-2" /> Payment Trail</TabsTrigger>
-          <TabsTrigger value="waybills"><Waypoints className="h-4 w-4 mr-2" /> Waybills</TabsTrigger>
+      <Tabs defaultValue={isAccountant ? "payment_trail" : "sale_form"} className="w-full">
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : isAccountant ? 'grid-cols-1' : 'grid-cols-1'}`}>
+          {isAdmin && <TabsTrigger value="sale_form"><ShoppingCart className="h-4 w-4 mr-2" /> Sale Form</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="invoices"><FileText className="h-4 w-4 mr-2" /> Invoices</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="customers_trail"><Users className="h-4 w-4 mr-2" /> Customers Trail</TabsTrigger>}
+          {(isAdmin || isAccountant) && <TabsTrigger value="payment_trail"><ListOrdered className="h-4 w-4 mr-2" /> Payment Trail</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="waybills"><Waypoints className="h-4 w-4 mr-2" /> Waybills</TabsTrigger>}
         </TabsList>
 
         {/* Sale Form Tab */}
-        <TabsContent value="sale_form">
+        {isAdmin && <TabsContent value="sale_form">
           <Card>
             <CardHeader><CardTitle>Create Sales Invoice</CardTitle></CardHeader>
             <CardContent>
@@ -428,10 +436,10 @@ const SalesPage = () => {
               {generatedInvoice && <Button variant="outline" onClick={resetForm}>New Sale</Button>}
             </CardFooter>
           </Card>
-        </TabsContent>
+        </TabsContent>}
 
          {/* Invoices Tab */}
-        <TabsContent value="invoices">
+        {isAdmin && <TabsContent value="invoices">
             {selectedInvoiceId ? (
                 <SalesInvoiceDetails 
                     invoiceId={selectedInvoiceId} 
@@ -480,11 +488,11 @@ const SalesPage = () => {
                     </CardContent>
                 </Card>
             )}
-        </TabsContent>
+        </TabsContent>}
 
 
         {/* Customers Trail Tab */}
-        <TabsContent value="customers_trail">
+        {isAdmin && <TabsContent value="customers_trail">
             <Card>
                 <CardHeader>
                     <CardTitle>Customer Trail</CardTitle>
@@ -493,13 +501,13 @@ const SalesPage = () => {
                     <CustomersTrailTab onRefresh={fetchInitialData} />
                 </CardContent>
             </Card>
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="payment_trail">
+        {(isAdmin || isAccountant) && <TabsContent value="payment_trail">
           <PaymentTrail />
-        </TabsContent>
+        </TabsContent>}
 
-        <TabsContent value="waybills">
+        {isAdmin && <TabsContent value="waybills">
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center"><Waypoints className="h-5 w-5 mr-2" /> Waybills</CardTitle>
@@ -515,7 +523,7 @@ const SalesPage = () => {
                     </div>
                 </CardContent>
             </Card>
-        </TabsContent>
+        </TabsContent>}
 
       </Tabs>
     </>
