@@ -9,19 +9,90 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, PlusCircle, Search, Trash2, ShieldCheck } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2, ShieldCheck } from 'lucide-react';
 import { PaymentVoucher, PaymentVoucherLineItem } from '@/types/payment-voucher';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SelectPayeeDialog } from '@/components/SelectPayeeDialog';
 import { SelectGLAccountDialog } from '@/components/SelectGLAccountDialog';
 import { Account } from '@/lib/chart-of-accounts';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from "@/hooks/use-toast";
-import { api } from '@/lib/api';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Supplier } from '@/types/supplier';
 import { TaxAuthority } from '@/types/tax-authority';
-import { SupplierInvoice } from '@/types/supplier-invoice'; // Assuming this type exists
+import { UnpaidInvoice } from '@/types/unpaid-invoice';
+import { PayeeCombobox } from '@/components/PayeeCombobox';
+
+
+// Define the Dialog component before it is used
+interface UnpaidInvoicesDialogProps {
+    invoices: UnpaidInvoice[];
+    onSelectInvoices: (invoices: UnpaidInvoice[]) => void;
+    isFetchingInvoices: boolean;
+}
+
+const UnpaidInvoicesDialog: React.FC<UnpaidInvoicesDialogProps> = ({ invoices, onSelectInvoices, isFetchingInvoices }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [selected, setSelected] = useState<UnpaidInvoice[]>([]);
+
+    const handleSelect = (invoice: UnpaidInvoice) => {
+        setSelected(prev => 
+            prev.some(i => i.supplier_invoice_id === invoice.supplier_invoice_id) 
+                ? prev.filter(i => i.supplier_invoice_id !== invoice.supplier_invoice_id)
+                : [...prev, invoice]
+        );
+    }
+
+    const handleAddInvoices = () => {
+        onSelectInvoices(selected);
+        setIsOpen(false);
+    }
+
+    return (
+        <>
+            <Button onClick={() => setIsOpen(true)} disabled={isFetchingInvoices || invoices.length === 0}>
+                {isFetchingInvoices ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Select Unpaid Invoices
+            </Button>
+            {isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl">
+                        <h2 className="text-2xl font-bold mb-4">Select Invoices to Pay</h2>
+                        <div className="max-h-[60vh] overflow-y-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Select</TableHead>
+                                        <TableHead>Invoice #</TableHead>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead className="text-right">Invoice Total</TableHead>
+                                        <TableHead className="text-right">VAT</TableHead>
+                                        <TableHead className="text-right">Amount Due</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {invoices.map(invoice => (
+                                        <TableRow key={invoice.supplier_invoice_id}>
+                                            <TableCell><Checkbox checked={selected.some(i => i.supplier_invoice_id === invoice.supplier_invoice_id)} onCheckedChange={() => handleSelect(invoice)} /></TableCell>
+                                            <TableCell>{invoice.invoice_number}</TableCell>
+                                            <TableCell>{invoice.invoice_date}</TableCell>
+                                            <TableCell className="text-right">{parseFloat(invoice.invoice_total).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{parseFloat(invoice.expected_vat).toFixed(2)}</TableCell>
+                                            <TableCell className="text-right">{(parseFloat(invoice.invoice_total) + parseFloat(invoice.expected_vat)).toFixed(2)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-4">
+                            <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
+                            <Button onClick={handleAddInvoices}>Add Selected Invoices</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    )
+}
 
 
 const NewPaymentVoucherPage = () => {
@@ -38,33 +109,77 @@ const NewPaymentVoucherPage = () => {
         sourceModule: 'AP',
         lineItems: [],
     });
-    const [isPayeeDialogOpen, setIsPayeeDialogOpen] = useState(false);
+    const [selectedPayee, setSelectedPayee] = useState<Supplier | TaxAuthority | null>(null);
     const [isGLDialogOpen, setIsGLDialogOpen] = useState(false);
     const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [unpaidInvoices, setUnpaidInvoices] = useState<SupplierInvoice[]>([]);
+    const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
     const [isFetchingInvoices, setIsFetchingInvoices] = useState(false);
+    const [selectedInvoices, setSelectedInvoices] = useState<UnpaidInvoice[]>([]);
 
     const handleInputChange = (field: keyof PaymentVoucher | keyof PaymentVoucherLineItem, value: any, index?: number) => {
         if (index !== undefined && Array.isArray(pv.lineItems)) {
             const updatedLineItems = [...pv.lineItems];
-            const lineItem = { ...updatedLineItems[index], [field]: value };
+            const lineItem = { ...updatedLineItems[index] };
 
-            if (field === 'debitAmount' || field === 'vatApplicable' || field === 'whtApplicable') {
-                const baseAmount = parseFloat(lineItem.debitAmount) || 0;
+            // Treat debitAmount as VAT-inclusive
+            if (field === 'debitAmount') {
+                const debitAmount = parseFloat(value) || 0;
+                lineItem.debitAmount = debitAmount;
+
                 if (lineItem.vatApplicable) {
-                    lineItem.vatRate = 7.5; 
-                    lineItem.vatAmount = baseAmount * (lineItem.vatRate / 100);
+                    const vatRate = lineItem.vatRate || 7.5; // Default to 7.5% if not set
+                    const grossAmount = debitAmount / (1 + vatRate / 100);
+                    lineItem.vatAmount = debitAmount - grossAmount;
                 } else {
                     lineItem.vatAmount = 0;
                 }
-                if (lineItem.whtApplicable) {
-                    lineItem.whtRate = 5; 
-                    lineItem.whtAmount = baseAmount * (lineItem.whtRate / 100);
+                
+                // Recalculate WHT on the gross amount (debitAmount - vatAmount)
+                 if (lineItem.whtApplicable) {
+                    const whtRate = lineItem.whtRate || 5; // Default to 5% if not set
+                    const grossAmount = lineItem.debitAmount - lineItem.vatAmount;
+                    lineItem.whtAmount = grossAmount * (whtRate / 100);
                 } else {
                     lineItem.whtAmount = 0;
                 }
+
+
+            } else if (field === 'vatApplicable') {
+                lineItem.vatApplicable = !!value;
+                const debitAmount = lineItem.debitAmount || 0;
+                if (lineItem.vatApplicable) {
+                    const vatRate = lineItem.vatRate || 7.5;
+                    const grossAmount = debitAmount / (1 + vatRate / 100);
+                    lineItem.vatAmount = debitAmount - grossAmount;
+                    lineItem.vatRate = vatRate;
+                } else {
+                    lineItem.vatAmount = 0;
+                    lineItem.vatRate = 0;
+                }
+                 // Recalculate WHT
+                if (lineItem.whtApplicable) {
+                    const whtRate = lineItem.whtRate || 5;
+                    const grossAmount = lineItem.debitAmount - lineItem.vatAmount;
+                    lineItem.whtAmount = grossAmount * (whtRate / 100);
+                }
+
+            } else if (field === 'whtApplicable') {
+                lineItem.whtApplicable = !!value;
+                if (lineItem.whtApplicable) {
+                    const whtRate = lineItem.whtRate || 5; // Default to 5%
+                    const grossAmount = lineItem.debitAmount - lineItem.vatAmount;
+                    lineItem.whtAmount = grossAmount * (whtRate / 100);
+                    lineItem.whtRate = whtRate;
+                } else {
+                    lineItem.whtAmount = 0;
+                    lineItem.whtRate = 0;
+                }
+            } else if (field in lineItem) {
+                // @ts-ignore
+                lineItem[field] = value;
             }
+
             updatedLineItems[index] = lineItem;
             setPv(prev => ({ ...prev, lineItems: updatedLineItems }));
         } else if (field in pv) {
@@ -72,46 +187,84 @@ const NewPaymentVoucherPage = () => {
         }
     };
 
+
     const handleSelectPayee = (payee: Supplier | TaxAuthority) => {
-        const isSupplier = 'account_number' in payee; // Differentiate supplier from tax authority
+        setSelectedPayee(payee);
+        const isSupplier = 'account_number' in payee;
         setPv(prev => ({
             ...prev,
             payeeCode: payee.id.toString(),
             payeeName: payee.name,
             payeeBankName: isSupplier ? payee.bank_name : '',
             payeeBankAccountNo: isSupplier ? payee.account_number : '',
-            payeeTaxId: payee.tax_id || '',
+            payeeTaxId: payee.vat_number || '',
+            lineItems: [],
         }));
 
         if (isSupplier) {
-            fetchUnpaidInvoices(payee.id);
+            fetchUnpaidInvoices(payee.id.toString());
+        } else {
+            setUnpaidInvoices([]);
         }
     };
 
-    const fetchUnpaidInvoices = async (supplierId: number) => {
+    const fetchUnpaidInvoices = async (supplierId: string) => {
         if (!user?.company_id) return;
         setIsFetchingInvoices(true);
         try {
-            const invoices = await api.get<SupplierInvoice[]>(
-                `/api/get-supplier-invoices.php?company_id=${user.company_id}&supplier_id=${supplierId}&status=unpaid`
-            );
-            setUnpaidInvoices(invoices);
-        } catch (error) {
-            console.error("Failed to fetch unpaid invoices", error);
-            toast({ variant: "destructive", title: "Failed to fetch invoices" });
+            const baseUrl = 'https://hariindustries.net/api/clearbook';
+            const url = `${baseUrl}/get_unpaid_invoices.php?company_id=${user.company_id}&supplier_id=${supplierId}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                 let errorText = `HTTP error! status: ${response.status}`;
+                 try { const errorData = await response.json(); errorText = errorData.message || errorData.error || JSON.stringify(errorData); } catch (e) { errorText = response.statusText; }
+                 throw new Error(errorText);
+            }
+            const result = await response.json();
+            if (result.success) {
+                setUnpaidInvoices(result.invoices);
+            } else {
+                throw new Error(result.message || 'Failed to fetch invoices from API.');
+            }
+        } catch (error: any) {
+            console.error("Failed to fetch unpaid invoices:", error.message);
+            toast({ variant: "destructive", title: "Failed to fetch invoices", description: "Check console for details." });
+            setUnpaidInvoices([]);
+        } finally {
+            setIsFetchingInvoices(false);
         }
-        setIsFetchingInvoices(false);
     };
 
-    const handleSelectInvoice = (invoiceNumber: string) => {
-        const selectedInvoice = unpaidInvoices.find(inv => inv.invoice_number === invoiceNumber);
-        if (selectedInvoice) {
-            handleInputChange('sourceDocumentNo', selectedInvoice.invoice_number);
-            if (pv.lineItems?.length) {
-                handleInputChange('debitAmount', selectedInvoice.total_amount, 0);
-            }
-        }
-    }
+    const handleSelectInvoices = (invoices: UnpaidInvoice[]) => {
+        setSelectedInvoices(invoices);
+    };
+
+    useEffect(() => {
+        const newLines: PaymentVoucherLineItem[] = selectedInvoices.map((invoice, index) => {
+            const invoiceTotal = parseFloat(invoice.invoice_total);
+            const expectedVat = parseFloat(invoice.expected_vat);
+            const debitAmount = invoiceTotal + expectedVat; // Debit is VAT-inclusive
+            const hasVat = expectedVat > 0;
+
+            return {
+                lineNo: index + 1,
+                accountType: 'Expense',
+                glAccountCode: '', // Should be set by the user
+                accountName: '', // Should be set by the user
+                lineDescription: `Payment for Invoice ${invoice.invoice_number}`,
+                costCenter: '',
+                debitAmount: debitAmount,
+                creditAmount: 0,
+                vatApplicable: hasVat,
+                vatRate: hasVat ? 7.5 : 0,
+                vatAmount: expectedVat,
+                whtApplicable: false, // Default to false
+                whtRate: 0,
+                whtAmount: 0,
+            };
+        });
+        setPv(prev => ({ ...prev, lineItems: newLines }));
+    }, [selectedInvoices]);
 
     const addLineItem = () => {
         const newLine: PaymentVoucherLineItem = {
@@ -141,14 +294,25 @@ const NewPaymentVoucherPage = () => {
 
     const { grossAmount, totalVAT, totalWHT, netPayable, totalDebit, isBalanced } = useMemo(() => {
       const lineItems = pv.lineItems || [];
-      const gross = lineItems.reduce((sum, item) => sum + (Number(item.debitAmount) || 0), 0);
+      // totalDebit is the sum of all line item debitAmounts (which are VAT-inclusive)
+      const debit = lineItems.reduce((sum, item) => sum + (Number(item.debitAmount) || 0), 0);
+      // totalVAT is the sum of all calculated vatAmounts
       const vat = lineItems.reduce((sum, item) => sum + (Number(item.vatAmount) || 0), 0);
+      // grossAmount is the total debit less the total VAT
+      const gross = debit - vat;
+      // totalWHT is the sum of all calculated whtAmounts
       const wht = lineItems.reduce((sum, item) => sum + (Number(item.whtAmount) || 0), 0);
-      const debit = gross + vat;
-      return {
-          grossAmount: gross, totalVAT: vat, totalWHT: wht, netPayable: debit - wht, totalDebit: debit,
-          isBalanced: Math.abs(debit - (wht + (gross + vat - wht))) < 0.01
-      };
+      
+      const net = debit - wht;
+
+      return { 
+          grossAmount: gross, 
+          totalVAT: vat, 
+          totalWHT: wht, 
+          netPayable: net, // Net payable to supplier is the total debit less withholding tax
+          totalDebit: debit, 
+          isBalanced: Math.abs(debit - (net + wht)) < 0.01 // Total Debit = Net Paid + WHT
+        };
     }, [pv.lineItems]);
 
     const handleSubmit = async () => {
@@ -158,28 +322,39 @@ const NewPaymentVoucherPage = () => {
         }
         setIsSubmitting(true);
         try {
-            const finalPayload = { ...pv, preparedBy: user?.email, grossAmount, totalVAT, totalWHT, netPayable, companyId: user?.company_id };
-            const response = await api<{ status: string; message: string; created_voucher_id?: string; errors?: string[] }>('/api/payment-voucher/create', {
-                method: 'POST', body: JSON.stringify(finalPayload),
+            const finalPayload = { ...pv, preparedBy: user?.email, companyId: user?.company_id, grossAmount, totalVAT, totalWHT, netPayable };
+            const baseUrl = 'https://hariindustries.net/api/clearbook';
+            const url = `${baseUrl}/create_payment_voucher.php`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalPayload)
             });
-            if (response.status === 'success') {
-                toast({ title: "Voucher Submitted!", description: response.message });
-                router.push(`/payment-voucher/${response.created_voucher_id}`); 
+
+            if (!response.ok) {
+                 let errorText = `HTTP error! status: ${response.status}`;
+                 try { const errorData = await response.json(); errorText = errorData.message || errorData.error || JSON.stringify(errorData); } catch (e) { errorText = response.statusText; }
+                 throw new Error(errorText);
+            }
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                toast({ title: "Voucher Submitted!", description: result.message });
+                router.push(`/payment-voucher/${result.created_voucher_id}`); 
             } else {
-                throw new Error(response.message + (response.errors ? `: ${response.errors.join(', ')}` : ''));
+                throw new Error(result.message || 'An unknown error occurred');
             }
         } catch (error: any) {
+            console.error("Voucher Submission Failed:", error.message);
             toast({ variant: "destructive", title: "Submission Failed", description: error.message });
         } finally {
             setIsSubmitting(false);
         }
     };
     
-    const netPaidAmount = totalDebit - totalWHT;
-
     return (
         <>
-            <SelectPayeeDialog open={isPayeeDialogOpen} onOpenChange={setIsPayeeDialogOpen} onSelectPayee={handleSelectPayee} payeeType={pv.payeeType || 'Supplier'} />
             <SelectGLAccountDialog open={isGLDialogOpen} onOpenChange={setIsGLDialogOpen} onSelectAccount={handleSelectGLAccount} />
 
             <div className="p-4 sm:p-6 lg:p-8 space-y-6">
@@ -204,8 +379,14 @@ const NewPaymentVoucherPage = () => {
                         <Card>
                             <CardHeader><CardTitle>B. Payee Information</CardTitle></CardHeader>
                             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div className="space-y-2"><Label>Payee Type</Label><Select value={pv.payeeType} onValueChange={(v) => handleInputChange('payeeType', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Supplier">Supplier</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Govt">Govt. Authority</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div>
-                                <div className="space-y-2 md:col-span-2"><Label>Payee</Label><Button variant="outline" className="w-full justify-start" onClick={() => setIsPayeeDialogOpen(true)}><Search className="mr-2 h-4 w-4"/>{pv.payeeName || `Select a ${pv.payeeType}...`}</Button></div>
+                                <div className="space-y-2"><Label>Payee Type</Label><Select value={pv.payeeType} onValueChange={(v) => {handleInputChange('payeeType', v); setSelectedPayee(null);}}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Supplier">Supplier</SelectItem><SelectItem value="Staff">Staff</SelectItem><SelectItem value="Govt">Govt. Authority</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div>
+                                <div className="space-y-2 md:col-span-2"><Label>Payee</Label>
+                                    <PayeeCombobox 
+                                        payeeType={pv.payeeType as 'Supplier' | 'Govt'}
+                                        onSelectPayee={handleSelectPayee}
+                                        selectedPayee={selectedPayee}
+                                    />
+                                </div>
                                 <div className="space-y-2"><Label>Bank Name</Label><Input disabled value={pv.payeeBankName || ''} /></div>
                                 <div className="space-y-2"><Label>Bank Account No</Label><Input disabled value={pv.payeeBankAccountNo || ''} /></div>
                                 <div className="space-y-2"><Label>Tax ID (TIN)</Label><Input disabled value={pv.payeeTaxId || ''} /></div>
@@ -217,21 +398,11 @@ const NewPaymentVoucherPage = () => {
                             <CardHeader><CardTitle>C. Source Document Reference</CardTitle></CardHeader>
                             <CardContent className="space-y-4">
                                {pv.payeeType === 'Supplier' && (
-                                    <div className="space-y-2">
-                                        <Label>Unpaid Invoices</Label>
-                                        <Select onValueChange={handleSelectInvoice} disabled={isFetchingInvoices || unpaidInvoices.length === 0}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder={isFetchingInvoices ? "Fetching invoices..." : "Select an invoice"} />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {unpaidInvoices.map(invoice => (
-                                                    <SelectItem key={invoice.id} value={invoice.invoice_number}>
-                                                        {invoice.invoice_number} - {invoice.total_amount}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                    <UnpaidInvoicesDialog 
+                                        invoices={unpaidInvoices} 
+                                        onSelectInvoices={handleSelectInvoices}
+                                        isFetchingInvoices={isFetchingInvoices} 
+                                    />
                                 )}
                                 <div className="space-y-2"><Label>Source Document No</Label><Input placeholder="e.g., INV-2024-582" value={pv.sourceDocumentNo || ''} onChange={(e) => handleInputChange('sourceDocumentNo', e.target.value)} /></div>
                                 <div className="space-y-2"><Label>Description / Narration</Label><Textarea placeholder="Payment for..." value={pv.narration || ''} onChange={(e) => handleInputChange('narration', e.target.value)} /></div>
@@ -246,7 +417,7 @@ const NewPaymentVoucherPage = () => {
                             <TableHeader><TableRow>
                                 <TableHead className="w-2/5">GL Account</TableHead>
                                 <TableHead>Line Description</TableHead>
-                                <TableHead className="text-right">Debit</TableHead>
+                                <TableHead className="text-right">Debit (VAT-inclusive)</TableHead>
                                 <TableHead className="text-center">VAT?</TableHead>
                                 <TableHead className="text-center">WHT?</TableHead>
                                 <TableHead className="w-12"></TableHead>
@@ -262,7 +433,7 @@ const NewPaymentVoucherPage = () => {
                                         <TableCell><Button variant="ghost" size="icon" onClick={() => removeLineItem(index)}><Trash2 className="h-4 w-4 text-red-500" /></Button></TableCell>
                                     </TableRow>
                                 )) : (
-                                    <TableRow><TableCell colSpan={6} className="h-24 text-center">No line items yet. Click "Add Line" to begin.</TableCell></TableRow>
+                                    <TableRow><TableCell colSpan={6} className="h-24 text-center">No line items yet. Click "Add Line" or select an invoice to begin.</TableCell></TableRow>
                                 )}
                             </TableBody>
                         </Table>
@@ -275,11 +446,13 @@ const NewPaymentVoucherPage = () => {
                     <Card>
                         <CardHeader><CardTitle>E. Tax Summary</CardTitle></CardHeader>
                         <CardContent className="space-y-2 font-mono text-sm">
-                            <div className="flex justify-between"><span>Total Gross (Expense):</span><span>{grossAmount.toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Total Gross (Excl. VAT):</span><span>{grossAmount.toFixed(2)}</span></div>
                             <div className="flex justify-between"><span>Total Input VAT:</span><span>{totalVAT.toFixed(2)}</span></div>
+                            <hr className="my-1"/>
+                            <div className="flex justify-between font-bold"><span>Total Debit (Incl. VAT):</span><span>{totalDebit.toFixed(2)}</span></div>
                             <div className="flex justify-between text-red-600"><span>Total WHT Payable:</span><span>({totalWHT.toFixed(2)})</span></div>
                             <hr className="my-1"/>
-                            <div className="flex justify-between font-bold"><span>Net Amount Payable:</span><span>{netPayable.toFixed(2)}</span></div>
+                            <div className="flex justify-between font-bold text-blue-600"><span>Net Amount Payable:</span><span>{netPayable.toFixed(2)}</span></div>
                         </CardContent>
                     </Card>
                      <Card className="bg-slate-50 sticky bottom-0">
@@ -293,8 +466,8 @@ const NewPaymentVoucherPage = () => {
                                  <p className="font-bold text-lg">{totalDebit.toFixed(2)}</p>
                              </div>
                              <div className="text-right">
-                                 <p className="text-sm text-slate-500">Net Paid Amount</p>
-                                 <p className="font-bold text-2xl text-blue-600">{pv.currency} {netPaidAmount.toFixed(2)}</p>
+                                 <p className="text-sm text-slate-500">Net Paid (Bank/Cash)</p>
+                                 <p className="font-bold text-2xl text-blue-600">{pv.currency} {netPayable.toFixed(2)}</p>
                              </div>
                          </CardHeader>
                      </Card>
@@ -303,5 +476,6 @@ const NewPaymentVoucherPage = () => {
         </>
     );
 };
+
 
 export default NewPaymentVoucherPage;

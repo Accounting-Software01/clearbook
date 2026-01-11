@@ -6,6 +6,15 @@ import { AlertTriangle, UserCircle, Loader2, TrendingUp, DollarSign, Info } from
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import {
+    ResponsiveContainer,
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    Tooltip,
+  } from 'recharts';
+  
 
 const userRoles = [
     "admin",
@@ -37,6 +46,16 @@ export default function DashboardPage() {
   const [lastLogin, setLastLogin] = useState<string | null>(null);
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
   const [isFinancialLoading, setIsFinancialLoading] = useState(true);
+
+
+  const financialChartData = financialData
+  ? [
+      { name: 'Revenue', value: financialData.totalRevenue },
+      { name: 'Outstanding', value: financialData.outstandingBalance },
+      { name: 'Overdue', value: financialData.overdueInvoices },
+    ]
+  : [];
+
 
   const fetchFinancialData = useCallback(async () => {
     if (!user?.company_id) return;
@@ -133,7 +152,37 @@ export default function DashboardPage() {
         </div>
         <ScrollArea className="h-full pr-4">
             <div className="space-y-6">
+                    
 
+            <div  className=" w-full min-h-[320px] p-6 rounded-xl  bg-no-repeat bg-center bg-contain"
+  style={{ backgroundImage: "url('/chart.png')" }}>
+
+                 {/* Financial Chart */}
+<div className="mt-6 w-full h-[260px] rounded-xl bg-white">
+  <ResponsiveContainer width="100%" height="100%">
+    <LineChart
+      data={financialChartData}
+      margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
+    >
+      <XAxis dataKey="name" />
+      <YAxis />
+      <Tooltip />
+      <Line
+        type="monotone"
+        dataKey="value"
+        stroke="#16A34A"     // ✅ ClearBook green
+        strokeWidth={3}
+        dot={{ r: 5, fill: '#16A34A' }}
+        activeDot={{ r: 7 }}
+      />
+    </LineChart>
+  </ResponsiveContainer>
+</div>
+   
+                    
+                    
+                   
+                </div>
                 {/* Financial Snapshot */}
                 <div className="pt-4">
                     <h3 className="text-xl font-semibold mb-4">Financial Snapshot</h3>
@@ -163,9 +212,11 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Quick Reminders - Kept as is */}
+               
                 <div className="p-4 rounded-lg bg-yellow-100/30">
                     <h3 className="font-semibold text-base flex items-center"><AlertTriangle className="w-5 h-5 mr-2 text-yellow-500"/>Quick Reminders</h3>
                     <ul className="list-disc list-inside text-sm mt-2 ml-2">
+                        
                         <li>3 failed invoices require attention.</li>
                         <li>2 payment vouchers pending approval.</li>
                     </ul>

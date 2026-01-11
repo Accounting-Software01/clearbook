@@ -26,6 +26,12 @@ import {
     DialogFooter,
     DialogClose,
 } from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -34,7 +40,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, MoreHorizontal, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/hooks/useAuth';
-import RolesAndPermissions from './RolesAndPermissions'; // Import the new component
+import RolesAndPermissions from './RolesAndPermissions';
+import ManageUserPermissionsDialog from './ManageUserPermissionsDialog';
 
 interface User {
     user_id: string;
@@ -60,6 +67,9 @@ const UsersAndAccessControl = () => {
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('');
     const { toast } = useToast();
+
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [isPermissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -210,9 +220,21 @@ const UsersAndAccessControl = () => {
                                             <Badge variant={statusVariant[user.status] || 'default'}>{user.status}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon">
-                                                <MoreHorizontal className="h-4 w-4" />
-                                            </Button>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => {
+                                                        setSelectedUser(user);
+                                                        setPermissionsDialogOpen(true);
+                                                    }}>
+                                                        Manage Permissions
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -225,6 +247,12 @@ const UsersAndAccessControl = () => {
             <div className="mt-8">
                 <RolesAndPermissions />
             </div>
+
+            <ManageUserPermissionsDialog
+                user={selectedUser}
+                open={isPermissionsDialogOpen}
+                onOpenChange={setPermissionsDialogOpen}
+            />
         </>
     );
 };

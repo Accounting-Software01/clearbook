@@ -12,7 +12,7 @@ interface User {
     user_type: string;
     company_type: string;
     company_id: string;
-    permissions?: string[]; // <-- ADDED: To store user's module permissions
+    permissions?: string[]; // <-- This will now store combined permissions
 }
 
 // Define the shape of the authentication context
@@ -32,20 +32,20 @@ interface AuthProviderProps {
 }
 
 /**
- * Fetches permissions for a given role and company type.
+ * Fetches combined permissions (role-based and user-specific) for a given user.
  */
-const fetchPermissions = async (role: string, company_type: string): Promise<string[]> => {
+const fetchCombinedPermissions = async (userId: string, companyId: string): Promise<string[]> => {
     try {
-        const response = await fetch(`https://hariindustries.net/api/clearbook/get_role_permissions.php?role=${role}&company_type=${company_type}`);
+        const response = await fetch(`https://hariindustries.net/api/clearbook/get_user_permissions.php?user_id=${userId}&company_id=${companyId}`);
         if (!response.ok) return [];
         const data = await response.json();
-        if (data.success && Array.isArray(data.permissions)) {
-            // Extract the permission string from each object
-            return data.permissions.map((p: { permission: string }) => p.permission);
+        if (data.success) {
+            // Combine role and user permissions, ensuring no duplicates
+            return [...new Set([...(data.role_permissions || []), ...(data.user_permissions || [])])];
         }
         return [];
     } catch (error) {
-        console.error("Failed to fetch permissions:", error);
+        console.error("Failed to fetch combined permissions:", error);
         return [];
     }
 };
@@ -62,8 +62,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const checkUser = async () => {
             let sessionUser = await getCurrentUser();
             if (sessionUser) {
-                // Fetch permissions and add them to the user object
-                const permissions = await fetchPermissions(sessionUser.role, sessionUser.company_type);
+                // Fetch combined permissions and add them to the user object
+                const permissions = await fetchCombinedPermissions(sessionUser.uid, sessionUser.company_id);
                 sessionUser = { ...sessionUser, permissions };
                 setUser(sessionUser);
             }
@@ -76,8 +76,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const login = async (email: string, pass: string) => {
         let loggedInUser = await apiLogin(email, pass);
         if (loggedInUser) {
-            // Fetch permissions and add them to the user object before setting the state
-            const permissions = await fetchPermissions(loggedInUser.role, loggedInUser.company_type);
+            // Fetch combined permissions and add them to the user object before setting the state
+            const permissions = await fetchCombinedPermissions(loggedInUser.uid, loggedInUser.company_id);
             loggedInUser = { ...loggedInUser, permissions };
             setUser(loggedInUser);
         }
