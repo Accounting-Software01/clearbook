@@ -6,15 +6,6 @@ import { AlertTriangle, UserCircle, Loader2, TrendingUp, DollarSign, Info } from
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import {
-    ResponsiveContainer,
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    Tooltip,
-  } from 'recharts';
-  
 
 const userRoles = [
     "admin",
@@ -157,28 +148,7 @@ export default function DashboardPage() {
             <div  className=" w-full min-h-[320px] p-6 rounded-xl  bg-no-repeat bg-center bg-contain"
   style={{ backgroundImage: "url('/chart.png')" }}>
 
-                 {/* Financial Chart */}
-<div className="mt-6 w-full h-[260px] rounded-xl bg-white">
-  <ResponsiveContainer width="100%" height="100%">
-    <LineChart
-      data={financialChartData}
-      margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
-    >
-      <XAxis dataKey="name" />
-      <YAxis />
-      <Tooltip />
-      <Line
-        type="monotone"
-        dataKey="value"
-        stroke="#16A34A"     // ✅ ClearBook green
-        strokeWidth={3}
-        dot={{ r: 5, fill: '#16A34A' }}
-        activeDot={{ r: 7 }}
-      />
-    </LineChart>
-  </ResponsiveContainer>
-</div>
-   
+                    
                     
                     
                    
