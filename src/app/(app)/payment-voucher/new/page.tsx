@@ -240,27 +240,29 @@ const NewPaymentVoucherPage = () => {
     };
 
     useEffect(() => {
+        // This logic is now corrected to align with the backend requirements
         const newLines: PaymentVoucherLineItem[] = selectedInvoices.map((invoice, index) => {
             const invoiceTotal = parseFloat(invoice.invoice_total);
             const expectedVat = parseFloat(invoice.expected_vat);
-            const debitAmount = invoiceTotal + expectedVat; // Debit is VAT-inclusive
-            const hasVat = expectedVat > 0;
+            // The full liability to be settled, which is VAT-inclusive for AP.
+            const debitAmount = invoiceTotal + expectedVat; 
 
             return {
                 lineNo: index + 1,
-                accountType: 'Expense',
-                glAccountCode: '', // Should be set by the user
-                accountName: '', // Should be set by the user
+                accountType: 'AP', // Correctly set to AP for supplier payments
+                glAccountCode: '', // Ignored by backend for AP, but good practice to clear
+                accountName: '', // Ignored by backend for AP
                 lineDescription: `Payment for Invoice ${invoice.invoice_number}`,
                 costCenter: '',
-                debitAmount: debitAmount,
+                debitAmount: debitAmount, // The full VAT-inclusive amount
                 creditAmount: 0,
-                vatApplicable: hasVat,
-                vatRate: hasVat ? 7.5 : 0,
-                vatAmount: expectedVat,
-                whtApplicable: false, // Default to false
+                vatApplicable: false, // Explicitly false as VAT is not re-posted
+                vatRate: 0,
+                vatAmount: 0, // Explicitly zero
+                whtApplicable: false, // Default to false, can be changed by user
                 whtRate: 0,
                 whtAmount: 0,
+                supplierInvoiceId: invoice.supplier_invoice_id, // CRITICAL: Include the invoice ID
             };
         });
         setPv(prev => ({ ...prev, lineItems: newLines }));

@@ -73,7 +73,7 @@ const Taxes = () => {
             setIsLoading(true);
             try {
                 // This endpoint needs to be created.
-                const response = await fetch(`https://hariindustries.net/api/get_tax_configs.php?company_id=${user.company_id}`);
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get_tax_configs.php?company_id=${user.company_id}`);
                 if (!response.ok) throw new Error('Failed to fetch tax configurations.');
                 const data = await response.json();
                 setConfigs(data);
@@ -125,7 +125,7 @@ const Taxes = () => {
 
         try {
             // This endpoint needs to be created for create/update
-            const response = await fetch('https://hariindustries.net/api/save_tax_config.php', {
+            const response = await fetch('https://hariindustries.net/api/clearbook/save_tax_config.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(configData),

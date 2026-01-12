@@ -31,7 +31,7 @@ const ViewPaymentVoucherPage = () => {
         try {
             setIsLoading(true);
             const response = await api<{ status: string; voucher: PaymentVoucher; message?: string }>(
-                `/api/payment-voucher/get.php?id=${id}`
+                `api/payment-voucher/get.php?id=${id}`
             );
             if (response.status === 'success') {
                 setVoucher(response.voucher);
@@ -59,7 +59,7 @@ const ViewPaymentVoucherPage = () => {
                 body: JSON.stringify({
                     voucher_id: voucher.id,
                     status: newStatus,
-                    user_id: user?.id
+                    user_id: user?.uid
                 }),
             });
             if (response.status === 'success') {
@@ -84,7 +84,7 @@ const ViewPaymentVoucherPage = () => {
             <AlertTriangle className="h-16 w-16 text-red-500"/>
             <h1 className="text-2xl font-bold mt-4">Voucher Not Found</h1>
             <p className="text-slate-500">The payment voucher you are looking for does not exist.</p>
-            <Button onClick={() => router.push('/payment-vouchers')} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/>Back to List</Button>
+            <Button onClick={() => router.push('/payment-voucher/new')} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/>Back to List</Button>
         </div>;
     }
 

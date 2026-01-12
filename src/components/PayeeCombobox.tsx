@@ -51,7 +51,7 @@ export const PayeeCombobox: React.FC<PayeeComboboxProps> = ({ payeeType, onSelec
                 const result = await response.json();
 
                 if (result.success) {
-                    const data = payeeType === 'Supplier' ? result.suppliers : result.authorities;
+                    const data = payeeType === 'Supplier' ? result.suppliers : result.tax_authorities;
                     if (Array.isArray(data)) {
                         setPayees(data);
                     } else {
