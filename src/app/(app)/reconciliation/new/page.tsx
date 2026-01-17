@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
@@ -11,27 +11,91 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Info, ArrowLeft } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Info, ArrowLeft, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface BankAccount {
+    id: string;
+    account_code: string;
+    account_name: string;
+}
 
 const NewReconciliationPage = () => {
     const router = useRouter();
     const { toast } = useToast();
+    const { user } = useAuth();
+    
+    const [accounts, setAccounts] = useState<BankAccount[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
     const [accountId, setAccountId] = useState<string>('');
-    const [statementDate, setStatementDate] = useState<Date | undefined>(new Date("2026-01-13"));
+    const [statementDate, setStatementDate] = useState<Date | undefined>(new Date());
     const [statementBalance, setStatementBalance] = useState<string>('');
     const [notes, setNotes] = useState('');
 
-    const handleStart = () => {
-        if (!accountId || !statementDate || !statementBalance) {
+    useEffect(() => {
+        const fetchAccounts = async () => {
+            if (!user?.company_id) return;
+            setIsLoading(true);
+            try {
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-accounts.php?company_id=${user.company_id}`);
+                const data = await response.json();
+                if (response.ok) {
+                    setAccounts(data);
+                } else {
+                    throw new Error(data.error || 'Failed to fetch accounts.');
+                }
+            } catch (error: any) {
+                toast({ variant: 'destructive', title: 'Failed to load accounts', description: error.message });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchAccounts();
+    }, [user?.company_id, toast]);
+
+    const handleStart = async () => {
+        if (!accountId || !statementDate || statementBalance === '') {
             toast({ variant: 'destructive', title: 'Missing Information', description: 'Please select an account, date, and enter the statement balance.' });
             return;
         }
-        // In a real app, you would save this initial setup and then navigate
-        // to the detailed reconciliation page, e.g., /reconciliation/[id]
+         if (!user?.company_id || !user?.uid) {
+            toast({ variant: 'destructive', title: 'Authentication Error', description: 'User information is missing.' });
+            return;
+        }
+
+        setIsSubmitting(true);
         toast({ title: 'Starting Reconciliation...' });
-        // Mock navigation to a dynamic route
-        const newReconciliationId = `rec_${Date.now()}`;
-        router.push(`/reconciliation/${newReconciliationId}`);
+
+        try {
+            const response = await fetch('https://hariindustries.net/api/clearbook/reconciliation.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    company_id: user.company_id,
+                    user_id: user.uid,
+                    account_id: accountId,
+                    statement_date: format(statementDate, 'yyyy-MM-dd'),
+                    statement_balance: statementBalance,
+                    notes: notes,
+                }),
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || 'An unknown error occurred.');
+            }
+
+            toast({ variant: 'success', title: 'Success!', description: 'Draft reconciliation created.' });
+            router.push(`/reconciliation/${result.reconciliation_id}`);
+
+        } catch (error: any) {
+             toast({ variant: 'destructive', title: 'Submission Failed', description: error.message });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -62,11 +126,16 @@ const NewReconciliationPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label className="font-semibold text-sm">Bank/Cash Account *</label>
-                            <Select value={accountId} onValueChange={setAccountId}>
-                                <SelectTrigger><SelectValue placeholder="Select an option..." /></SelectTrigger>
+                            <Select value={accountId} onValueChange={setAccountId} disabled={isLoading || accounts.length === 0}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder={isLoading ? 'Loading accounts...' : 'Select an account'} />
+                                </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="A10-1010">A10-1010 - Main Bank Account</SelectItem>
-                                    <SelectItem value="A10-1020">A10-1020 - Savings Account</SelectItem>
+                                    {accounts.map(acc => (
+                                        <SelectItem key={acc.id} value={acc.id}>
+                                            {acc.account_code} - {acc.account_name}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">Select the account to reconcile.</p>
@@ -101,8 +170,11 @@ const NewReconciliationPage = () => {
                     </div>
                  </CardContent>
                  <CardFooter className="justify-end space-x-2 bg-muted/30 py-4 px-6 rounded-b-lg">
-                     <Link href="/reconciliation" passHref><Button variant="outline">Cancel</Button></Link>
-                    <Button onClick={handleStart}>Start Reconciliation</Button>
+                     <Link href="/reconciliation" passHref><Button variant="outline" disabled={isSubmitting}>Cancel</Button></Link>
+                    <Button onClick={handleStart} disabled={isSubmitting || isLoading}>
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                        Start Reconciliation
+                    </Button>
                  </CardFooter>
             </Card>
         </div>

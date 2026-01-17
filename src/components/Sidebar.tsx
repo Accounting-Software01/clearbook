@@ -226,6 +226,95 @@ export function Sidebar() {
             isTitle: true,
         },
         {
+            label: 'Ware House',
+            icon: Package,
+            subItems: [
+               
+                    {
+                      href: '/inventory/issue-material',
+                      label: 'Issue Material',
+                      icon: Send, // paper-plane style icon
+                    },
+                    {
+                      href: '/inventory/finished-goods',
+                      label: 'Finished Goods',
+                      icon: Package, // cube icon
+                    },
+                    {
+                      href: '/inventory/raw-materials',
+                      label: 'Raw Materials',
+                      icon: Layers, // stacked layers
+                    },
+                    {
+                      href: '/inventory/work-in-progress',
+                      label: 'Work-in-Progress',
+                      icon: Factory, // factory icon
+                    },
+                    {
+                      href: '/inventory/packaging-materials',
+                      label: 'Packaging Materials',
+                      icon: Package,
+                    },
+                    {
+                      href: '/inventory/consumables',
+                      label: 'Consumables & Supplies',
+                      icon: ShoppingCart, // cart icon
+                    },
+                    {
+                      href: '/inventory/spare-parts',
+                      label: 'Spare Parts',
+                      icon: Wrench,
+                    },
+                    {
+                      href: '/inventory/fuel-energy',
+                      label: 'Fuel & Energy',
+                      icon: Fuel,
+                    },
+                    {
+                      href: '/inventory/returned-goods',
+                      label: 'Returned Goods',
+                      icon: Undo2, // curved return arrow
+                    },
+                    {
+                      href: '/inventory/obsolete-scrap',
+                      label: 'Obsolete & Scrap',
+                      icon: Trash2,
+                    },
+                    {
+                      href: '/inventory/goods-in-transit',
+                      label: 'Goods-in-Transit',
+                      icon: Truck,
+                    },
+                    {
+                      href: '/inventory/promotional-materials',
+                      label: 'Promotional Materials',
+                      icon: Sparkles,
+                    },
+                    {
+                      href: '/inventory/safety-stock',
+                      label: 'Safety Stock',
+                      icon: ShieldCheck,
+                    },
+                    {
+                      href: '/inventory/quality-hold',
+                      label: 'Quality-Hold',
+                      icon: Ban, // prohibited / hold icon
+                    },
+                    {
+                      href: '/inventory/consignment',
+                      label: 'Consignment',
+                      icon: Archive, // stacked box look
+                    },
+            
+                  
+
+
+
+
+
+            ]
+        },
+        {
             label: 'Sales',
             icon: ShoppingCart,
             subItems: [
@@ -242,10 +331,7 @@ export function Sidebar() {
             label: 'Purchases',
             icon: ShoppingCart,
             subItems: [
-                { href: '/purchases/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, permission: 'view_purchases' },
-                { href: '/purchases/grns', label: 'GRNs', icon: ClipboardList, permission: 'view_purchases' },
-                { href: '/purchases/purchase-invoices', label: 'Purchase Invoices', icon: FileText, permission: 'view_purchases' },
-                { href: '/purchases/return-debit-notes', label: 'Return / Debit Notes', icon: Undo2, permission: 'view_purchases' },
+                { href: '/purchases/procurement', label: 'Purchase Orders', icon: ShoppingCart, permission: 'view_purchases' },
             ]
         },
         {
@@ -257,35 +343,10 @@ export function Sidebar() {
                 { href: '/products/brands', label: 'Brands', icon: Tags, permission: 'view_products' },
             ]
         },
-        {
-            label: 'Stock Management',
-            icon: Boxes,
-            subItems: [
-                { href: '/stock/warehouses', label: 'Warehouses', icon: Warehouse, permission: 'view_stock' },
-                { href: '/stock/user-warehouses', label: 'User Warehouses', icon: UserSquare, permission: 'view_stock' },
-                { href: '/stock/stock-adjustments', label: 'Stock Adjustments', icon: FolderSync, permission: 'view_stock' },
-                { href: '/stock/stock-transfers', label: 'Stock Transfers', icon: ArrowRightLeft, permission: 'view_stock' },
-            ]
-        },
-        {
-            label: 'Inventory Reports',
-            icon: FileBarChart2,
-            subItems: [
-                { href: '/inventory-reports/stock-report', label: 'Stock Report', icon: FileText, permission: 'view_inventory_reports' },
-                { href: '/inventory-reports/sales-report', label: 'Sales Report', icon: LineChart, permission: 'view_inventory_reports' },
-                { href: '/inventory-reports/pending-pos-invoices', label: 'Pending POS Invoices', icon: FileClock, permission: 'view_inventory_reports' },
-            ]
-        },
-        {
-            label: 'Inventory Settings',
-            icon: Cog,
-            subItems: [
-                { href: '/inventory-settings/general', label: 'General Settings', icon: Cog, permission: 'manage_inventory_settings' },
-                { href: '/inventory-settings/pricing-rules', label: 'Pricing Rules', icon: BadgeDollarSign, permission: 'manage_inventory_settings' },
-                { href: '/inventory-settings/units-of-measure', label: 'Units of Measure', icon: Ruler, permission: 'manage_inventory_settings' },
-                { href: '/inventory-settings/account-mappings', label: 'Account Mappings', icon: LinkIcon, permission: 'manage_inventory_settings' },
-            ]
-        },
+      
+        { href: '/production', label: 'Production', icon: Factory, permission: 'manage_bomsettings' },
+        { href: '/production/boms/new', label: 'BOM Settings', icon: Users, permission: 'manage_bomsettings' },
+        
         { href: '/admin/register-user', label: 'Users', icon: Users, permission: 'manage_users' },
         { href: '/admin/settings', label: 'Settings', icon: Settings, permission: 'manage_settings' },
     ];

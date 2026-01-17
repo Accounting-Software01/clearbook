@@ -1,80 +1,61 @@
 'use client';
 
-import { useState, Fragment, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth';
+import { useState, Fragment, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth hook provides company_id
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, PlusCircle, MinusCircle, ArrowLeft, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { format } from 'date-fns';
+import { Loader2, PlusCircle, MinusCircle, ArrowLeft, Edit, Trash2, CheckCircle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { format, parseISO } from 'date-fns';
 
-// Define the type for an income for better type-checking
+// Matches the backend structure
 interface Income {
   id: number;
   date: string;
   reference: string;
-  received_from: string;
+  received_from: string | null;
   income_account: string;
-  income_account_code?: string;
+  income_account_code: string | null;
   payment_account: string;
-  payment_account_code?: string;
+  payment_account_code: string | null;
   amount: number;
-  payment_method: string;
-  status: 'Draft' | 'Posted';
+  payment_method: string | null;
+  status: 'draft' | 'posted';
   description?: string;
   createdBy?: string;
   createdAt?: string;
-  fiscalYear?: number;
-  period?: string;
 }
 
-const IncomeDetailView = ({ income, onEdit, onPost, onBack, onDelete }: { income: Income; onEdit: (income: Income) => void; onPost: (id: number) => void; onBack: () => void; onDelete: (id: number) => void; }) => {
+interface Account {
+    id: number;
+    account_code: string;
+    account_name: string;
+    account_type: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+}
+
+const IncomeDetailView = ({ income, onEdit, onPost, onBack, onDelete, isPosting }: { income: Income; onEdit: (income: Income) => void; onPost: (id: number) => void; onBack: () => void; onDelete: (id: number) => void; isPosting: boolean; }) => {
     if (!income) return null;
+    const isDraft = income.status === 'draft';
 
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <h2 className="text-2xl font-bold">Income - {income.reference}</h2>
-                    <Badge variant={income.status === 'Draft' ? 'outline' : 'default'} className={income.status === 'Posted' ? 'bg-green-500 text-white' : ''}>{income.status}</Badge>
+                    <Badge variant={isDraft ? 'outline' : 'default'} className={income.status === 'posted' ? 'bg-green-500 text-white capitalize' : 'capitalize'}>{income.status}</Badge>
                 </div>
                 <div className="flex items-center gap-2">
-                    {income.status === 'Draft' && <Button onClick={() => onPost(income.id)} className="bg-green-600 hover:bg-green-700"><CheckCircle className="mr-2 h-4 w-4" /> Post Income</Button>}
-                    {income.status === 'Draft' && <Button onClick={() => onEdit(income)}><Edit className="mr-2 h-4 w-4" /> Edit</Button>}
+                    {isDraft && <Button onClick={() => onPost(income.id)} className="bg-green-600 hover:bg-green-700" disabled={isPosting}>
+                        {isPosting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} Post Income
+                    </Button>}
+                    {isDraft && <Button onClick={() => onEdit(income)}><Edit className="mr-2 h-4 w-4" /> Edit</Button>}
                     <Button variant="outline" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back to List</Button>
                 </div>
             </div>
@@ -82,28 +63,15 @@ const IncomeDetailView = ({ income, onEdit, onPost, onBack, onDelete }: { income
             <Card>
                 <CardContent className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* LEFT COLUMN */}
                         <div className="space-y-6">
                             <div>
                                 <h3 className="text-lg font-semibold mb-2">Income Information</h3>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                    <p className="font-medium text-muted-foreground">Reference:</p>
-                                    <p>{income.reference}</p>
-                                    
-                                    <p className="font-medium text-muted-foreground">Date:</p>
-                                    <p>{format(new Date(income.date), 'dd MMM yyyy')}</p>
-
-                                    <p className="font-medium text-muted-foreground">Amount:</p>
-                                    <p className="font-bold text-blue-600">{new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(income.amount)}</p>
-
-                                    <p className="font-medium text-muted-foreground">Payment Method:</p>
-                                    <p><Badge variant="secondary">{income.payment_method}</Badge></p>
-
-                                    <p className="font-medium text-muted-foreground">Received From:</p>
-                                    <p>{income.received_from || '-'}</p>
-                                    
-                                    <p className="font-medium text-muted-foreground">Status:</p>
-                                    <p><Badge variant={income.status === 'Draft' ? 'outline' : 'default'}  className={income.status === 'Posted' ? 'bg-green-500 text-white' : ''}>{income.status}</Badge></p>
+                                    <p className="font-medium text-muted-foreground">Reference:</p><p>{income.reference}</p>
+                                    <p className="font-medium text-muted-foreground">Date:</p><p>{format(parseISO(income.date), 'dd MMM yyyy')}</p>
+                                    <p className="font-medium text-muted-foreground">Amount:</p><p className="font-bold text-blue-600">{new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(income.amount)}</p>
+                                    <p className="font-medium text-muted-foreground">Payment Method:</p><p><Badge variant="secondary">{income.payment_method || 'N/A'}</Badge></p>
+                                    <p className="font-medium text-muted-foreground">Received From:</p><p>{income.received_from || '-'}</p>
                                 </div>
                             </div>
                             <div>
@@ -112,86 +80,107 @@ const IncomeDetailView = ({ income, onEdit, onPost, onBack, onDelete }: { income
                             </div>
                         </div>
 
-                        {/* RIGHT COLUMN */}
                         <div className="space-y-6">
                             <div>
                                 <h3 className="text-lg font-semibold mb-2">Accounting Details</h3>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    {/* CORRECTED: Payment Account (Asset) is DEBITED */}
+                                    <p className="font-medium text-muted-foreground">Payment Account:</p>
+                                    <div>
+                                        <p className="font-bold">{income.payment_account_code}</p>
+                                        <p>{income.payment_account}</p>
+                                        <p className="text-xs text-green-600 font-semibold">DEBIT</p>
+                                    </div>
+
+                                    {/* CORRECTED: Income Account (Revenue) is CREDITED */}
                                     <p className="font-medium text-muted-foreground">Income Account:</p>
                                     <div>
                                         <p className="font-bold">{income.income_account_code}</p>
                                         <p>{income.income_account}</p>
-                                        <p className="text-xs text-muted-foreground">DEBIT</p>
+                                        <p className="text-xs text-orange-600 font-semibold">CREDIT</p>
                                     </div>
-
-                                    <p className="font-medium text-muted-foreground">Payment Account:</p>
-                                     <div>
-                                        <p className="font-bold">{income.payment_account_code}</p>
-                                        <p>{income.payment_account}</p>
-                                        <p className="text-xs text-muted-foreground">CREDIT</p>
-                                    </div>
-
-                                    <p className="font-medium text-muted-foreground">Fiscal Year:</p>
-                                    <p>{income.fiscalYear}</p>
-                                    
-                                    <p className="font-medium text-muted-foreground">Period:</p>
-                                    <p>{income.period}</p>
                                 </div>
                             </div>
                              <div>
-                                <h3 className="text-lg font-semibold mb-2">User Information</h3>
+                                <h3 className="text-lg font-semibold mb-2">Audit Trail</h3>
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                                    <p className="font-medium text-muted-foreground">Created By:</p>
-                                    <p>{income.createdBy || '-'}</p>
-                                    
-                                    <p className="font-medium text-muted-foreground">Created At:</p>
-                                    <p>{income.createdAt ? format(new Date(income.createdAt), 'dd MMM yyyy, hh:mm a') : '-'}</p>
+                                    <p className="font-medium text-muted-foreground">Created By:</p><p>{income.createdBy || '-'}</p>
+                                    <p className="font-medium text-muted-foreground">Created At:</p><p>{income.createdAt ? format(parseISO(income.createdAt), 'dd MMM yyyy, hh:mm a') : '-'}</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </CardContent>
                 <CardFooter className="flex justify-end p-6">
-                   {income.status === 'Draft' && <Button variant="destructive" onClick={() => onDelete(income.id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>}
+                   {isDraft && <Button variant="destructive" onClick={() => onDelete(income.id)}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>}
                 </CardFooter>
             </Card>
         </div>
     );
 };
 
-
 const IncomesPage = () => {
+  const { user } = useAuth(); // Use the auth hook
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [incomesData, setIncomesData] = useState<Income[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedIncome, setSelectedIncome] = useState<Income | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | 'view'>('create');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
   const { toast } = useToast();
 
-  // Mock fetching data
+  const companyId = user?.company_id;
+  const userId = user?.uid; // <-- Add this line
+
+  const fetchIncomes = useCallback(async () => {
+    // Depend on both companyId and userId
+    if (!companyId || !userId) return;
+    setIsLoading(true);
+    try {
+        // Add userId to the fetch URL
+        const response = await fetch(`https://hariindustries.net/api/clearbook/incomes.php?company_id=${companyId}&user_id=${userId}`);
+        const data = await response.json();
+        if (response.ok) {
+            setIncomesData(data);
+        } else {
+            throw new Error(data.error || 'Failed to fetch incomes');
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Error', description: error.message });
+    } finally {
+        setIsLoading(false);
+    }
+    // Add userId to the dependency array
+}, [companyId, userId, toast]);
+
+
+  
+
+const fetchAccounts = useCallback(async () => {
+    // Depend on both companyId and userId
+    if (!companyId || !userId) return;
+    try {
+        // Add userId to the fetch URL
+        const response = await fetch(`https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}&user_id=${userId}`);
+        const data = await response.json();
+        if (response.ok) {
+            setAccounts(data);
+        } else {
+            throw new Error(data.error || 'Failed to fetch accounts');
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Error', description: error.message });
+    }
+    // Add userId to the dependency array
+}, [companyId, userId, toast]);
+
   useEffect(() => {
-    const mockIncomes: Income[] = [
-      {
-        id: 1,
-        date: "2026-01-12",
-        reference: "INC-20260112-0001",
-        received_from: "Client A",
-        income_account_code: "I10-4000",
-        income_account: "Sales Revenue",
-        payment_account_code: "A10-1000",
-        payment_account: "Cash on Hand",
-        amount: 44444.00,
-        payment_method: "Cash",
-        status: "Draft",
-        description: "Payment for services rendered on invoice #INV-0034.",
-        createdAt: "2026-01-12T10:49:00Z",
-        createdBy: "admin@example.com",
-        fiscalYear: 2026,
-        period: "January (1)"
-      }
-    ];
-    setIncomesData(mockIncomes);
-  }, []);
+    fetchIncomes();
+    fetchAccounts();
+  }, [fetchIncomes, fetchAccounts]);
 
   const handleAddNew = () => {
     setFormMode('create');
@@ -212,194 +201,243 @@ const IncomesPage = () => {
   };
 
   const handlePost = async (incomeId: number) => {
+    // Add a check for companyId and userId
+    if (!companyId || !userId) {
+        toast({ variant: "destructive", title: "Authentication Error", description: "User or company not found." });
+        return;
+    }
+    setIsPosting(true);
     toast({ title: "Posting Income...", description: "Creating ledger entries..." });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIncomesData(incomesData.map(inc => 
-      inc.id === incomeId ? { ...inc, status: 'Posted' } : inc
-    ));
-    // Also update the selected income if it's the one being posted
-    if (selectedIncome && selectedIncome.id === incomeId) {
-        setSelectedIncome({ ...selectedIncome, status: 'Posted' });
+    try {
+        // Add userId to the fetch URL
+        const response = await fetch(`https://hariindustries.net/api/clearbook/incomes.php?action=post&id=${incomeId}&company_id=${companyId}&user_id=${userId}`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            toast({ title: "Success!", description: "Income has been posted to the ledger." });
+            fetchIncomes();
+            setIsFormOpen(false);
+        } else {
+            throw new Error(data.error || 'Failed to post income');
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Posting Failed', description: error.message });
+    } finally {
+        setIsPosting(false);
     }
-    toast({ title: "Success!", description: "Income has been posted to the ledger." });
-  };
-  
-  const handleDelete = async (incomeId: number) => {
-    if (confirm("Are you sure you want to delete this income record? This action cannot be undone.")) {
-        toast({ title: "Deleting Income...", description: "Removing record permanently." });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setIncomesData(incomesData.filter(inc => inc.id !== incomeId));
-        setIsFormOpen(false); // Go back to list after delete
-        toast({ title: "Success!", description: "Income has been deleted." });
-    }
-  };
+};
 
-  const handleSave = (event: React.FormEvent<HTMLFormElement>) => {
+const handleDelete = async (incomeId: number) => {
+    // Add a check for companyId and userId
+    if (!companyId || !userId) {
+        toast({ variant: "destructive", title: "Authentication Error", description: "User or company not found." });
+        return;
+    }
+    if (confirm("Are you sure you want to delete this DRAFT income? This action cannot be undone.")) {
+        try {
+            // Add userId to the fetch URL
+            const response = await fetch(`https://hariindustries.net/api/clearbook/incomes.php?id=${incomeId}&company_id=${companyId}&user_id=${userId}`, { method: 'DELETE' });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                toast({ title: "Success!", description: "Draft income has been deleted." });
+                fetchIncomes();
+                setIsFormOpen(false);
+            } else {
+                throw new Error(data.error || 'Failed to delete income');
+            }
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message });
+        }
+    }
+};
+
+  const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    toast({ title: "Success!", description: `Income has been ${formMode === 'create' ? 'created' : 'updated'}.` });
-    setIsFormOpen(false);
-  };
-  
-  const toggleRow = (id: number) => {
-    setExpandedRow(expandedRow === id ? null : id);
+    setIsSaving(true);
+
+    if (!companyId || !user?.uid) {
+        toast({
+            variant: "destructive",
+            title: "Authentication Error",
+            description: "Could not identify user or company. Please try logging in again.",
+        });
+        setIsSaving(false);
+        return;
+    }
+
+    const formData = new FormData(event.currentTarget);
+    const payload = {
+        date: formData.get('date'),
+        amount: Number(formData.get('amount')),
+        income_account_id: formData.get('income_account_id'),
+        payment_account_id: formData.get('payment_account_id'),
+        payment_method: formData.get('payment_method'),
+        received_from: formData.get('received_from'),
+        description: formData.get('description'),
+        company_id: companyId,
+        user_id: user.uid,
+    };
+
+    const isEdit = formMode === 'edit';
+    const url = isEdit
+        ? `https://hariindustries.net/api/clearbook/incomes.php?id=${selectedIncome?.id}&company_id=${companyId}`
+        : `https://hariindustries.net/api/clearbook/incomes.php?company_id=${companyId}`;
+    const method = isEdit ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (response.ok) {
+            toast({ title: "Success!", description: `Draft income has been ${isEdit ? 'updated' : 'created'}.` });
+            fetchIncomes();
+            setIsFormOpen(false);
+        } else {
+            throw new Error(data.error || 'Save operation failed');
+        }
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Save Failed', description: error.message });
+    } finally {
+        setIsSaving(false);
+    }
   };
 
-  const getFormTitle = () => {
-      if (formMode === 'create') return 'Create New Income';
-      if (formMode === 'edit') return 'Edit Income';
-      return 'View Income Details';
-  }
+  
+  const toggleRow = (id: number) => setExpandedRow(expandedRow === id ? null : id);
+  const getFormTitle = () => (formMode === 'create' ? 'Create New Income' : 'Edit Income');
 
   const renderContent = () => {
+    if (isLoading) {
+        return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    }
+
     if (!isFormOpen) {
         return (
-            <div>
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-2xl font-bold">Incomes</h3>
-                </div>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>All Incomes</CardTitle>
-                        <Button onClick={handleAddNew}><PlusCircle className="mr-2 h-4 w-4" /> Add New Income</Button>
-                    </CardHeader>
-                    <CardContent>
-                        {/* Search and filter can go here */}
-                        <div className="border rounded-md">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[50px]"></TableHead>
-                                        <TableHead>Action</TableHead>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Reference</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Income Account</TableHead>
-                                        <TableHead>Payment Account</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {incomesData.length > 0 ? incomesData.map(income => (
-                                        <Fragment key={income.id}>
-                                            <TableRow>
-                                                <TableCell><Button variant="ghost" size="icon" onClick={() => toggleRow(income.id)}>{expandedRow === income.id ? <MinusCircle /> : <PlusCircle />}</Button></TableCell>
-                                                <TableCell>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild><Button variant="outline">Actions</Button></DropdownMenuTrigger>
-                                                        <DropdownMenuContent>
-                                                            <DropdownMenuItem onClick={() => handleView(income)}>View Details</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handleEdit(income)} disabled={income.status === 'Posted'}>Edit</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => handlePost(income.id)} disabled={income.status === 'Posted'}>Post Income</DropdownMenuItem>
-                                                            <DropdownMenuItem className="text-red-500" onClick={() => handleDelete(income.id)} disabled={income.status === 'Posted'}>Delete</DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </TableCell>
-                                                <TableCell>{new Date(income.date).toLocaleDateString()}</TableCell>
-                                                <TableCell>{income.reference}</TableCell>
-                                                <TableCell><Badge variant={income.status === 'Draft' ? 'outline' : 'default'} className={income.status === 'Posted' ? 'bg-green-500 text-white' : ''}>{income.status}</Badge></TableCell>
-                                                <TableCell className="text-blue-600">{income.income_account}</TableCell>
-                                                <TableCell className="text-blue-600">{income.payment_account}</TableCell>
-                                            </TableRow>
-                                            {expandedRow === income.id && (
-                                                <TableRow>
-                                                    <TableCell colSpan={7} className="p-4 bg-muted/50">
-                                                        <div className="grid grid-cols-3 gap-4 text-sm">
-                                                            <div><strong>Amount:</strong> {income.amount.toFixed(2)}</div>
-                                                            <div><strong>Payment Method:</strong> {income.payment_method}</div>
-                                                            <div><strong>Received From:</strong> {income.received_from}</div>
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            )}
-                                        </Fragment>
-                                    )) : <TableRow><TableCell colSpan={7} className="h-24 text-center">No incomes found.</TableCell></TableRow>}
-                                </TableBody>
-                            </Table>
-                        </div>
-                        <div className="flex items-center justify-between mt-4">
-                            <p className="text-sm text-muted-foreground">Showing 1 to {incomesData.length} of {incomesData.length} entries</p>
-                            <Pagination>
-                                <PaginationContent>
-                                    <PaginationItem><PaginationPrevious href="#" /></PaginationItem>
-                                    <PaginationItem><PaginationLink href="#">1</PaginationLink></PaginationItem>
-                                    <PaginationItem><PaginationNext href="#" /></PaginationItem>
-                                </PaginationContent>
-                            </Pagination>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Incomes</CardTitle>
+                    <Button onClick={handleAddNew}><PlusCircle className="mr-2 h-4 w-4" /> Add New Income</Button>
+                </CardHeader>
+                <CardContent>
+                    <div className="border rounded-md">
+                        <Table>
+                            <TableHeader><TableRow>
+                                <TableHead className="w-[50px]"></TableHead>
+                                <TableHead>Action</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Reference</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Received From</TableHead>
+                            </TableRow></TableHeader>
+                            <TableBody>
+                                {incomesData.length > 0 ? incomesData.map(income => (
+                                    <Fragment key={income.id}>
+                                        <TableRow>
+                                            <TableCell><Button variant="ghost" size="icon" onClick={() => toggleRow(income.id)}>{expandedRow === income.id ? <MinusCircle /> : <PlusCircle />}</Button></TableCell>
+                                            <TableCell><DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="outline">Actions</Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent>
+                                                    <DropdownMenuItem onClick={() => handleView(income)}>View Details</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleEdit(income)} disabled={income.status === 'posted'}>Edit</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handlePost(income.id)} disabled={income.status === 'posted'}>Post Income</DropdownMenuItem>
+                                                    <DropdownMenuItem className="text-red-500" onClick={() => handleDelete(income.id)} disabled={income.status === 'posted'}>Delete Draft</DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu></TableCell>
+                                            <TableCell>{format(parseISO(income.date), 'dd MMM yyyy')}</TableCell>
+                                            <TableCell>{income.reference}</TableCell>
+                                            <TableCell><Badge variant={income.status === 'draft' ? 'outline' : 'default'} className={`capitalize ${income.status === 'posted' ? 'bg-green-500 text-white' : ''}`}>{income.status}</Badge></TableCell>
+                                            <TableCell>{new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(income.amount)}</TableCell>
+                                            <TableCell>{income.received_from || '-'}</TableCell>
+                                        </TableRow>
+                                        {expandedRow === income.id && (
+                                            <TableRow><TableCell colSpan={7} className="p-4 bg-muted/50">
+                                                <div className="grid grid-cols-3 gap-4 text-sm">
+                                                    <div><strong>Income Account:</strong> {income.income_account} ({income.income_account_code})</div>
+                                                    <div><strong>Payment Account:</strong> {income.payment_account} ({income.payment_account_code})</div>
+                                                    <div><strong>Payment Method:</strong> {income.payment_method}</div>
+                                                </div>
+                                            </TableCell></TableRow>
+                                        )}
+                                    </Fragment>
+                                )) : <TableRow><TableCell colSpan={7} className="h-24 text-center">No incomes found.</TableCell></TableRow>}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    {/* Pagination can be added here */}
+                </CardContent>
+            </Card>
         );
     }
     
     if (formMode === 'view') {
-        return <IncomeDetailView income={selectedIncome!} onEdit={handleEdit} onPost={handlePost} onBack={() => setIsFormOpen(false)} onDelete={handleDelete} />;
+        return <IncomeDetailView income={selectedIncome!} onEdit={handleEdit} onPost={handlePost} onBack={() => setIsFormOpen(false)} onDelete={handleDelete} isPosting={isPosting} />;
     }
 
     // Render Create/Edit Form
+    const revenueAccounts = accounts.filter(acc => acc.account_type === 'Revenue');
+    const assetAccounts = accounts.filter(acc => acc.account_type === 'Asset');
+
     return (
         <div>
-          <Button variant="outline" onClick={() => setIsFormOpen(false)} className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to List
-          </Button>
+          <Button variant="outline" onClick={() => setIsFormOpen(false)} className="mb-4"><ArrowLeft className="mr-2 h-4 w-4" />Back to List</Button>
           <Card>
             <CardHeader>
               <CardTitle>{getFormTitle()}</CardTitle>
-              <CardDescription>View, create, or edit an income record. Posting an income will create corresponding ledger entries.</CardDescription>
+              <CardDescription>Create or edit a DRAFT income. It must be posted to affect the ledger.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label htmlFor="date">Date *</Label>
-                        <Input id="date" type="date" defaultValue={selectedIncome?.date} />
+                        <Input id="date" name="date" type="date" defaultValue={selectedIncome?.date.substring(0, 10)} required />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="amount">Amount *</Label>
-                        <Input id="amount" type="number" placeholder="0.00" defaultValue={selectedIncome?.amount} />
+                        <Input id="amount" name="amount" type="number" placeholder="0.00" step="0.01" defaultValue={selectedIncome?.amount} required />
                     </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="income-account">Income Account *</Label>
-                  <Select defaultValue={selectedIncome?.income_account}>
-                    <SelectTrigger id="income-account"><SelectValue placeholder="Select Income Account" /></SelectTrigger>
-                    <SelectContent>{/* TODO: Populate with accounts from API */}</SelectContent>
+                  <Label htmlFor="payment_account_id">Receiving Account (Asset) *</Label>
+                  <Select name="payment_account_id" defaultValue={selectedIncome?.payment_account_code} required>
+                    <SelectTrigger><SelectValue placeholder="Select Cash/Bank Account" /></SelectTrigger>
+                    <SelectContent>{assetAccounts.map(acc => <SelectItem key={acc.account_code} value={acc.account_code}>{acc.account_name} ({acc.account_code})</SelectItem>)}</SelectContent>
                   </Select>
-                  <p className="text-sm text-muted-foreground">This account will be debited.</p>
+                  <p className="text-sm text-muted-foreground">This account will be DEBITED.</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="receiving-account">Receiving Account *</Label>
-                  <Select defaultValue={selectedIncome?.payment_account}>
-                    <SelectTrigger id="receiving-account"><SelectValue placeholder="Select Cash/Bank Account" /></SelectTrigger>
-                    <SelectContent>{/* TODO: Populate with accounts from API */}</SelectContent>
+                  <Label htmlFor="income_account_id">Income Account (Revenue) *</Label>
+                  <Select name="income_account_id" defaultValue={selectedIncome?.income_account_code} required>
+                    <SelectTrigger><SelectValue placeholder="Select Income Account" /></SelectTrigger>
+                    <SelectContent>{revenueAccounts.map(acc => <SelectItem key={acc.account_code} value={acc.account_code}>{acc.account_name} ({acc.account_code})</SelectItem>)}</SelectContent>
                   </Select>
-                  <p className="text-sm text-muted-foreground">This account will be credited.</p>
+                  <p className="text-sm text-muted-foreground">This account will be CREDITED.</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="payment-method">Payment Method *</Label>
-                  <Select defaultValue={selectedIncome?.payment_method}>
-                    <SelectTrigger id="payment-method"><SelectValue placeholder="Select Payment Method" /></SelectTrigger>
+                  <Label htmlFor="payment_method">Payment Method *</Label>
+                  <Select name="payment_method" defaultValue={selectedIncome?.payment_method || 'Cash'} required>
+                    <SelectTrigger><SelectValue placeholder="Select Payment Method" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Cash">Cash</SelectItem>
-                      <SelectItem value="Card">Card</SelectItem>
-                      <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                      <SelectItem value="Cheque">Cheque</SelectItem>
-                      <SelectItem value="Mobile Money">Mobile Money</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Cash">Cash</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Bank Transfer">Bank Transfer</SelectItem><SelectItem value="Cheque">Cheque</SelectItem><SelectItem value="Mobile Money">Mobile Money</SelectItem><SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="received-from">Received From (Optional)</Label>
-                  <Input id="received-from" placeholder="Person or entity paid to" defaultValue={selectedIncome?.received_from} />
+                  <Label htmlFor="received_from">Received From (Optional)</Label>
+                  <Input id="received_from" name="received_from" placeholder="e.g., Client Name or reason" defaultValue={selectedIncome?.received_from || ''} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">Description (Optional)</Label>
-                  <Input id="description" placeholder="Additional notes or description" defaultValue={selectedIncome?.description}/>
+                  <Input id="description" name="description" placeholder="Additional notes" defaultValue={selectedIncome?.description || ''}/>
                 </div>
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
-                    <Button type="submit">{formMode === 'create' ? 'Save Income' : 'Save Changes'}</Button>
+                    <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancel</Button>
+                    <Button type="submit" disabled={isSaving}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (formMode === 'create' ? 'Save Draft' : 'Save Changes')}
+                    </Button>
                 </div>
               </form>
             </CardContent>

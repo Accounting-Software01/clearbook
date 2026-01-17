@@ -71,7 +71,7 @@ export default function ProductionPage() {
     // Form state
     const [selectedProduct, setSelectedProduct] = useState<string>("");
     const [quantityToProduce, setQuantityToProduce] = useState<string>("1");
-    const [notes, setNotes] = useState(""); // New state for notes
+    const [notes, setNotes] = useState("");
     const [materialsToConsume, setMaterialsToConsume] = useState<MaterialConsumption[]>([]);
     const [plannedLaborCost, setPlannedLaborCost] = useState("0");
     const [directExpenses, setDirectExpenses] = useState<AdditionalCost[]>([]);
@@ -117,7 +117,59 @@ export default function ProductionPage() {
         }
     }, [user?.company_id, fetchData]);
 
-    // --- FORM HANDLERS ---
+    useEffect(() => {
+        const fetchBom = async () => {
+            if (!selectedProduct || !user?.company_id) {
+                setMaterialsToConsume([]);
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-bom.php?company_id=${user.company_id}&product_id=${selectedProduct}`);
+                
+                if (response.status === 404) {
+                    toast({
+                        title: "No Bill of Materials Found",
+                        description: "You can add materials manually for this product.",
+                        variant: "default"
+                    });
+                    setMaterialsToConsume([]);
+                    return;
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to fetch BOM');
+                }
+
+                const bomData: { id: number; name: string; quantity: number }[] = await response.json();
+                
+                const materials = bomData.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    quantity: item.quantity.toString()
+                }));
+                
+                setMaterialsToConsume(materials);
+                toast({
+                    title: "BOM Loaded",
+                    description: `Successfully loaded ${materials.length} material(s) for the selected product.`,
+                });
+
+            } catch (error: any) {
+                toast({
+                    title: "BOM Fetch Failed",
+                    description: error.message,
+                    variant: "destructive",
+                });
+                setMaterialsToConsume([]);
+            }
+        };
+
+        fetchBom();
+    }, [selectedProduct, user?.company_id, toast]);
+
+
     const handleAddMaterial = () => setMaterialsToConsume([...materialsToConsume, { id: 0, name: '', quantity: '1' }]);
     const handleRemoveMaterial = (index: number) => setMaterialsToConsume(materialsToConsume.filter((_, i) => i !== index));
 
@@ -153,7 +205,6 @@ export default function ProductionPage() {
         setMiscCosts(updatedCosts);
     };
 
-    // --- API HANDLERS ---
     const handleCreateOrder = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !selectedProduct) {
@@ -165,11 +216,11 @@ export default function ProductionPage() {
         try {
             const payload = {
                 company_id: user.company_id,
-                user_id: user.uid, // Correctly include the user_id
+                user_id: user.uid,
                 product_id: parseInt(selectedProduct),
                 quantity_to_produce: parseInt(quantityToProduce),
                 notes: notes,
-                materials: materialsToConsume.map(m => ({ id: m.id, quantity: parseInt(m.quantity) })),
+                materials: materialsToConsume.map(m => ({ id: m.id, quantity: parseFloat(m.quantity) })),
                 planned_labor_cost: parseFloat(plannedLaborCost),
                 direct_expenses: directExpenses.filter(d => d.amount && d.description).map(d => ({ ...d, amount: parseFloat(d.amount) })),
                 misc_costs: miscCosts.filter(m => m.amount && m.description).map(m => ({ ...m, amount: parseFloat(m.amount) })),
@@ -249,7 +300,6 @@ export default function ProductionPage() {
                     <TabsContent value="wip" className="mt-4"><OrderList orders={wipOrders} onStart={(id) => updateOrderStatus(id, 'In Progress')} onComplete={(id) => updateOrderStatus(id, 'Completed')} /></TabsContent>
                     <TabsContent value="finished" className="mt-4"><OrderList orders={finishedOrders} onStart={(id) => {}} onComplete={(id) => {}} /></TabsContent>
 
-                    {/* CREATE NEW ORDER FORM */}
                     <TabsContent value="new" className="mt-4">
                         <form onSubmit={handleCreateOrder} className="space-y-6 max-w-4xl mx-auto">
                              <Card>

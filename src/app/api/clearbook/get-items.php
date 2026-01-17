@@ -53,7 +53,7 @@ $response = [
 // Function to fetch data from a table
 function fetchData($conn, $tableName, $company_id, $itemType, $user_role) {
     try {
-        $select_fields = "id, name, sku, category, unit_of_measure, quantity_on_hand AS quantity, '{$itemType}' as item_type";
+        $select_fields = "id, name, sku, category, unit_of_measure, unit_of_measure AS uom, quantity_on_hand AS quantity, '{$itemType}' as item_type";
         if($user_role !== 'staff') {
             $select_fields .= ", average_unit_cost AS unit_cost";
         }

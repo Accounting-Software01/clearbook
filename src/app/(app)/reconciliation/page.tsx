@@ -1,48 +1,53 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
 interface Reconciliation {
   id: string;
-  reconciliationDate: string;
-  statementDate: string;
-  accountName: string;
-  accountCode: string;
+  reconciliation_date: string;
+  statement_date: string;
+  account_name: string;
+  account_code: string;
   status: 'Draft' | 'Completed';
   difference: number;
 }
 
-const mockReconciliations: Reconciliation[] = [
-  {
-    id: 'rec_1',
-    reconciliationDate: '2026-01-20',
-    statementDate: '2025-12-31',
-    accountName: 'Main Bank Account',
-    accountCode: 'A10-1010',
-    status: 'Completed',
-    difference: 0.00,
-  },
-  {
-    id: 'rec_2',
-    reconciliationDate: '2026-02-05',
-    statementDate: '2026-01-31',
-    accountName: 'Main Bank Account',
-    accountCode: 'A10-1010',
-    status: 'Draft',
-    difference: -150.75,
-  },
-];
-
 const ReconciliationListPage = () => {
-  const [reconciliations, setReconciliations] = useState(mockReconciliations);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchReconciliations = async () => {
+      if (!user?.company_id) return;
+      setIsLoading(true);
+      try {
+        const response = await fetch(`https://hariindustries.net/api/clearbook/reconciliation.php?company_id=${user.company_id}`);
+        const data = await response.json();
+        if (response.ok) {
+          setReconciliations(data);
+        } else {
+          throw new Error(data.error || 'Failed to fetch reconciliations.');
+        }
+      } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Failed to load data', description: error.message });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchReconciliations();
+  }, [user?.company_id, toast]);
 
   return (
     <Card>
@@ -72,18 +77,24 @@ const ReconciliationListPage = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reconciliations.length > 0 ? reconciliations.map((rec) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : reconciliations.length > 0 ? reconciliations.map((rec) => (
                 <TableRow key={rec.id}>
-                  <TableCell>{format(new Date(rec.reconciliationDate), 'dd MMM yyyy')}</TableCell>
-                  <TableCell>{rec.accountName} ({rec.accountCode})</TableCell>
-                  <TableCell>{format(new Date(rec.statementDate), 'dd MMM yyyy')}</TableCell>
+                  <TableCell>{format(new Date(rec.reconciliation_date), 'dd MMM yyyy')}</TableCell>
+                  <TableCell>{rec.account_name} ({rec.account_code})</TableCell>
+                  <TableCell>{format(new Date(rec.statement_date), 'dd MMM yyyy')}</TableCell>
                   <TableCell>
-                    <Badge variant={rec.status === 'Draft' ? 'outline' : 'default'} className={rec.status === 'Completed' ? 'bg-green-500 text-white' : ''}>
+                    <Badge variant={rec.status.toLowerCase() === 'draft' ? 'outline' : 'default'} className={rec.status.toLowerCase() === 'completed' ? 'bg-green-500 text-white' : ''}>
                       {rec.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className={`text-right font-mono ${rec.difference !== 0 ? 'text-red-600' : ''}`}>
-                    {rec.difference.toFixed(2)}
+                  <TableCell className={`text-right font-mono ${rec.difference != 0 ? 'text-red-600' : ''}`}>
+                    {Number(rec.difference).toFixed(2)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -95,9 +106,9 @@ const ReconciliationListPage = () => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <Link href={`/reconciliation/${rec.id}`} passHref>
-                           <DropdownMenuItem>{rec.status === 'Draft' ? 'Continue Reconciliation' : 'View Details'}</DropdownMenuItem>
+                           <DropdownMenuItem>{rec.status.toLowerCase() === 'draft' ? 'Continue Reconciliation' : 'View Details'}</DropdownMenuItem>
                         </Link>
-                        <DropdownMenuItem className="text-red-500" disabled={rec.status === 'Completed'}>Delete Draft</DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-500" disabled={rec.status.toLowerCase() === 'completed'}>Delete Draft</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -105,7 +116,7 @@ const ReconciliationListPage = () => {
               )) : (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
-                    No reconciliations found.
+                    No reconciliations found. Start by creating a new one.
                   </TableCell>
                 </TableRow>
               )}
