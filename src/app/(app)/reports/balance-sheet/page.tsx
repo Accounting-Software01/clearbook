@@ -12,17 +12,21 @@ import {
 } from "@/components/ui/table";
 import { DatePicker } from '@/components/ui/date-picker';
 import { format } from 'date-fns';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { Loader2, AlertCircle, CheckCircle, Scale, PiggyBank, Receipt, Landmark, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
 // Interfaces
 interface Account {
-    id: string; // Corresponds to account_code in the report
+    id: number;
+    account_code: string;
     account_name: string;
     account_type: string;
-    sub_type: string;
 }
+
 
 // Interfaces for the new Trial Balance Report data structure
 interface TrialBalanceAccount {
@@ -87,7 +91,8 @@ const BalanceSheetPage = () => {
     const { toast } = useToast();
     const [chartOfAccounts, setChartOfAccounts] = useState<Account[]>([]);
     const [processedData, setProcessedData] = useState<ProcessedData | null>(null);
-    const [reportDate, setReportDate] = useState<Date | undefined>(new Date('2026-01-13'));
+    const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -95,11 +100,15 @@ const BalanceSheetPage = () => {
         const fetchChartOfAccounts = async () => {
             if (!user?.company_id) return;
             try {
-                const response = await fetch(`/api/gl/get-chart-of-accounts.php?company_id=${user.company_id}`);
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${user.company_id}`);
                 const data = await response.json();
-                if (data.success && Array.isArray(data.accounts)) {
-                    setChartOfAccounts(data.accounts);
-                } else {
+
+
+                    if (Array.isArray(data)) {
+                        setChartOfAccounts(data);
+                    } else {
+                    
+
                     throw new Error(data.message || "Failed to fetch chart of accounts.");
                 }
             } catch (e: any) {
@@ -109,8 +118,12 @@ const BalanceSheetPage = () => {
         fetchChartOfAccounts();
     }, [user, toast]);
 
+
+
+
     const processRawData = useCallback((report: TrialBalanceReport, accounts: Account[]): ProcessedData => {
-        const accountMap = new Map(accounts.map(acc => [acc.id, acc]));
+        const accountMap = new Map(accounts.map(acc => [acc.account_code, acc]));
+
         const result: ProcessedData = {
             assets: { subGroups: {}, total: 0 },
             liabilities: { subGroups: {}, total: 0 },
@@ -118,25 +131,34 @@ const BalanceSheetPage = () => {
             totalLiabilitiesAndEquity: 0
         };
 
-        // 1. Calculate Net Income
+        // 1. Calculate Net Income from report sections
         const revenueTotal = report.Revenue.total_credit - report.Revenue.total_debit;
         const cogsTotal = report.COGS.total_debit - report.COGS.total_credit;
         const expenseTotal = report.Expense.total_debit - report.Expense.total_credit;
         const netIncome = revenueTotal - cogsTotal - expenseTotal;
 
-        // 2. Process Asset, Liability, and Equity sections
+        // 2. Process Asset, Liability, and Equity sections from the report
         const processSection = (
             sectionName: 'Asset' | 'Liability' | 'Equity',
             reportSection: TrialBalanceSectionData,
             targetSection: ReportSection
         ) => {
             reportSection.accounts.forEach(acc => {
+                // Ignore the placeholder for current earnings, we calculate it ourselves
+                if (acc.account_code === '303000') return;
+
                 const balance = sectionName === 'Asset' ? acc.debit - acc.credit : acc.credit - acc.debit;
                 
+                // Only include accounts with a non-zero balance
                 if (Math.abs(balance) < 0.01) return;
 
                 const accountInfo = accountMap.get(acc.account_code);
-                const subType = accountInfo?.sub_type || 'General';
+// Derives sub-type from name (e.g., "Cash at Bank - Main" becomes "Cash at Bank")
+// Falls back to the main account type (e.g., "Asset") if no separator is found.
+const subType = accountInfo 
+    ? (accountInfo.account_name.includes(' - ') ? accountInfo.account_name.split(' - ')[0] : accountInfo.account_type)
+    : 'General';
+
 
                 if (!targetSection.subGroups[subType]) {
                     targetSection.subGroups[subType] = { accounts: [], total: 0 };
@@ -154,26 +176,29 @@ const BalanceSheetPage = () => {
         processSection('Liability', report.Liability, result.liabilities);
         processSection('Equity', report.Equity, result.equity);
 
-        // 3. Add Net Income to Equity
-        const equitySubType = 'Retained Earnings';
-        if (!result.equity.subGroups[equitySubType]) {
-            result.equity.subGroups[equitySubType] = { accounts: [], total: 0 };
+        // 3. Add calculated Net Income to the Equity section under its own sub-group
+        const netIncomeSubType = 'Current Period Earnings';
+        if (!result.equity.subGroups[netIncomeSubType]) {
+            result.equity.subGroups[netIncomeSubType] = { accounts: [], total: 0 };
         }
-        result.equity.subGroups[equitySubType].accounts.push({
+        // We add it as a single account within its own sub-group for display purposes
+        result.equity.subGroups[netIncomeSubType].accounts.push({
             id: 'net-income',
-            name: 'Current Period Earnings',
+            name: 'Net Income for the Period', // More descriptive name
             balance: netIncome
         });
         
-        // 4. Calculate all totals
+        // 4. Calculate totals for all sections and sub-groups
         for (const section of [result.assets, result.liabilities, result.equity]) {
             section.total = 0;
-            for (const subGroup of Object.values(section.subGroups)) {
+            for (const subGroupKey in section.subGroups) {
+                const subGroup = section.subGroups[subGroupKey];
                 subGroup.total = subGroup.accounts.reduce((sum, acc) => sum + acc.balance, 0);
                 section.total += subGroup.total;
             }
         }
         
+        // 5. Calculate Total Liabilities & Equity
         result.totalLiabilitiesAndEquity = result.liabilities.total + result.equity.total;
 
         return result;
@@ -194,10 +219,18 @@ const BalanceSheetPage = () => {
         setError(null);
         setProcessedData(null);
         
-        const formattedDate = format(reportDate, 'yyyy-MM-dd');
-        const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
-        url.searchParams.append('company_id', user.company_id);
-        url.searchParams.append('end_date', formattedDate);
+// The date selected by the user will be our 'toDate'
+const toDate = format(reportDate, 'yyyy-MM-dd');
+
+// For a balance sheet, the 'fromDate' is the beginning of the financial period. 
+// We'll use the first day of the selected year.
+const fromDate = format(new Date(reportDate.getFullYear(), 0, 1), 'yyyy-MM-dd');
+
+const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
+url.searchParams.append('company_id', user.company_id);
+url.searchParams.append('fromDate', fromDate);
+url.searchParams.append('toDate', toDate);
+
 
         try {
             const response = await fetch(url.toString());
@@ -225,6 +258,79 @@ const BalanceSheetPage = () => {
         return Math.abs(processedData.assets.total - processedData.totalLiabilitiesAndEquity) < 0.01;
     }, [processedData]);
 
+    const getExportableData = (data: ProcessedData | null): any[] => {
+        if (!data) return [];
+        const rows: { Account: string; Balance: string; }[] = [];
+        const formatForExport = (amount: number) => {
+            if (typeof amount !== 'number' || isNaN(amount)) return '';
+            return amount.toFixed(2);
+        };
+        const processExportSection = (title: string, section: ReportSection) => {
+            rows.push({ Account: title, Balance: '' });
+            Object.entries(section.subGroups).forEach(([subTypeName, subGroup]) => {
+                rows.push({ Account: `  ${subTypeName}`, Balance: '' });
+                subGroup.accounts.forEach(acc => {
+                    rows.push({ Account: `    ${acc.name}`, Balance: formatForExport(acc.balance) });
+                });
+                rows.push({ Account: `  Total ${subTypeName}`, Balance: formatForExport(subGroup.total) });
+            });
+            rows.push({ Account: `TOTAL ${title}`, Balance: formatForExport(section.total) });
+            rows.push({ Account: '', Balance: '' });
+        };
+        processExportSection('ASSETS', data.assets);
+        processExportSection('LIABILITIES', data.liabilities);
+        processExportSection('EQUITY', data.equity);
+        rows.push({ Account: 'TOTAL LIABILITIES AND EQUITY', Balance: formatForExport(data.totalLiabilitiesAndEquity) });
+        return rows;
+    };
+    
+    const handleExportPDF = useCallback(() => {
+        if (!processedData) {
+            toast({ title: "No data to export", description: "Please generate a report first.", variant: "destructive" });
+            return;
+        }
+        const doc = new jsPDF();
+        const exportData = getExportableData(processedData);
+        doc.setFontSize(18);
+        doc.text('Balance Sheet', 14, 22);
+        doc.setFontSize(11);
+        doc.text(`As of: ${format(reportDate!, 'PPP')}`, 14, 30);
+        autoTable(doc, {
+            startY: 36,
+            head: [['Account', 'Balance']],
+            body: exportData.map(row => [row.Account, row.Balance]),
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 47] },
+            didParseCell: function (data) {
+                if (data.column.dataKey === 1) { // Align 'Balance' column to the right
+                    data.cell.styles.halign = 'right';
+                }
+            }
+        });
+        doc.save(`Balance-Sheet-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    }, [processedData, reportDate, toast]);
+    
+    useEffect(() => {
+        // Auto-generate report when the page loads and the necessary data is available.
+        if (user?.company_id && chartOfAccounts.length > 0) {
+            generateReport();
+        }
+    }, [user, chartOfAccounts, generateReport]);
+    
+
+    const handleExportExcel = useCallback(() => {
+        if (!processedData) {
+            toast({ title: "No data to export", description: "Please generate a report first.", variant: "destructive" });
+            return;
+        }
+        const exportData = getExportableData(processedData);
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        worksheet['!cols'] = [{ wch: 60 }, { wch: 20 }]; // Set column widths
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Balance Sheet");
+        XLSX.writeFile(workbook, `Balance-Sheet-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    }, [processedData, toast]);
+    
     const renderSection = (title: string, section: ReportSection, icon: React.ReactNode, bgColor: string) => (
         <React.Fragment>
             <TableRow className={`${bgColor} font-bold text-lg hover:${bgColor}`}>
@@ -267,9 +373,9 @@ const BalanceSheetPage = () => {
                         {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Generate Report
                     </Button>
-                    <Button variant="outline">Export Excel</Button>
-                    <Button variant="destructive">Export PDF</Button>
-                    <Button variant="outline">Print</Button>
+                    <Button variant="outline" onClick={handleExportExcel}>Export Excel</Button>
+<Button variant="destructive" onClick={handleExportPDF}>Export PDF</Button>
+
                 </CardContent>
             </Card>
 
