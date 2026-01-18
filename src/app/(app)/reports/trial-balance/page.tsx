@@ -1,194 +1,181 @@
 'use client';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter
+  Table, TableBody, TableCell,
+  TableHead, TableHeader,
+  TableRow, TableFooter
 } from "@/components/ui/table";
 import { DatePicker } from '@/components/ui/date-picker';
 import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
-import { Loader2, AlertCircle, CheckCircle, FileDown, Briefcase, Landmark, Users, TrendingUp, ShoppingCart, TrendingDown } from 'lucide-react';
+import {
+  Loader2, CheckCircle, AlertCircle,
+  RefreshCcw, FileSpreadsheet,
+  FileText, Printer
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
-// --- INTERFACES ---
-interface BalanceEntry {
-    accountId: string;
-    accountName: string;
-    debit: number;
-    credit: number;
-    type: string;
-    subType: string;
-}
+/* ================= HELPERS ================= */
 
-// --- HELPER FUNCTIONS ---
-const formatCurrency = (amount: number | null | undefined) => {
-    if (amount === null || amount === undefined || isNaN(amount) || amount === 0) return '-';
-    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
-};
+const money = (v?: number) =>
+  !v ? '-' : v.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
-const TrialBalancePage = () => {
-    const { user } = useAuth();
-    
-    // --- STATE MANAGEMENT ---
-    const [reportData, setReportData] = useState<any[]>([]); // Data direct from API
-    const [startDate, setStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 0, 1));
-    const [endDate, setEndDate] = useState<Date | undefined>(new Date());
-    const [hideZeroBalances, setHideZeroBalances] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isGenerated, setIsGenerated] = useState(false);
+/* ================= COMPONENT ================= */
 
-    // --- API CALL --- 
-    const generateReport = useCallback(async () => {
-        if (!startDate || !endDate || !user?.company_id) {
-            setError("Please select a valid date range and ensure you are logged in.");
-            return;
-        }
+export default function TrialBalancePage() {
+  const { user } = useAuth();
 
-        setIsLoading(true);
-        setError(null);
-        setReportData([]);
+  const [report, setReport] = useState<any>(null);
+  const [startDate, setStartDate] = useState(new Date(2026, 0, 1));
+  const [endDate, setEndDate] = useState(new Date());
+  const [hideZero, setHideZero] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-        const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
-        url.searchParams.append('company_id', user.company_id);
-        url.searchParams.append('fromDate', format(startDate, 'yyyy-MM-dd'));
-        url.searchParams.append('toDate', format(endDate, 'yyyy-MM-dd'));
+  /* -------- FETCH -------- */
 
-        try {
-            const response = await fetch(url.toString());
-            if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-            const data = await response.json();
-            if (data.success === false) throw new Error(data.message || "Backend returned an error.");
-            setReportData(Array.isArray(data) ? data : []);
-            setIsGenerated(true);
-        } catch (e: any) {
-            setError(`Failed to load data: ${e.message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [startDate, endDate, user]);
+  const loadReport = async () => {
+    if (!user?.company_id) return;
+    setLoading(true);
+    try {
+      const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
+      url.searchParams.set('company_id', user.company_id);
+      url.searchParams.set('fromDate', format(startDate, 'yyyy-MM-dd'));
+      url.searchParams.set('toDate', format(endDate, 'yyyy-MM-dd'));
 
-    // --- DATA PROCESSING & GROUPING ---
-    const { groupedData, totals } = useMemo(() => {
-        if (!reportData) return { groupedData: {}, totals: {} };
-        
-        const groups = {
-            Assets: { icon: <Briefcase className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-            Liabilities: { icon: <Landmark className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-            Equity: { icon: <Users className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-            Revenue: { icon: <TrendingUp className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-            'Cost of Goods Sold': { icon: <ShoppingCart className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-            Expenses: { icon: <TrendingDown className="h-4 w-4 mr-2"/>, accounts: [] as any[] },
-        };
-        
-        // This logic can be simplified if the API provides the type
-        // For now, we deduce from account code prefix
-        reportData.forEach(acc => {
-             if (acc.account_type === 'Asset') groups.Assets.accounts.push(acc);
-             else if (acc.account_type === 'Liability') groups.Liabilities.accounts.push(acc);
-             else if (acc.account_type === 'Equity') groups.Equity.accounts.push(acc);
-             else if (acc.account_type === 'Revenue') groups.Revenue.accounts.push(acc);
-             else if (acc.account_type === 'Cost of Goods Sold') groups['Cost of Goods Sold'].accounts.push(acc);
-             else if (acc.account_type === 'Expense') groups.Expenses.accounts.push(acc);
-        });
+      const res = await fetch(url.toString());
+      const json = await res.json();
 
-        let grandTotalDebit = 0;
-        let grandTotalCredit = 0;
-        const groupTotals: Record<string, { debit: number, credit: number }> = {};
+      if (!json.success) throw new Error(json.message);
 
-        for (const groupName in groups) {
-            const currentGroup = (groups as any)[groupName];
-            const groupTotal = currentGroup.accounts.reduce((acc: any, cur: any) => ({debit: acc.debit + cur.debit, credit: acc.credit + cur.credit}), {debit: 0, credit: 0});
-            groupTotals[groupName] = groupTotal;
-            grandTotalDebit += groupTotal.debit;
-            grandTotalCredit += groupTotal.credit;
-        }
+      setReport(json);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        return { 
-            groupedData: groups,
-            totals: { grandTotalDebit, grandTotalCredit, groupTotals }
-        };
-    }, [reportData]);
+  useEffect(() => { loadReport(); }, [user, startDate, endDate]);
 
-    const isBalanced = Math.abs(totals.grandTotalDebit - totals.grandTotalCredit) < 0.01;
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin" /></div>;
+  if (error) return <div className="text-red-600 text-center">{error}</div>;
+
+  const { report: sections, grand_totals } = report;
+  const balanced = Math.abs(grand_totals.debit - grand_totals.credit) < 0.01;
+
+  /* ================= RENDER ================= */
+
+  return (
+    <div className="space-y-4">
+
+      <h1 className="text-xl font-bold">⚖ Trial Balance Report</h1>
+
+      {/* FILTER BAR */}
+      <Card>
+        <CardContent className="flex flex-wrap gap-3 items-end">
+          <DatePicker date={startDate} setDate={setStartDate} />
+          <DatePicker date={endDate} setDate={setEndDate} />
+          <Checkbox checked={hideZero} onCheckedChange={v => setHideZero(Boolean(v))} />
+          <span className="text-sm">Hide Zero Balances</span>
+
+          <Button onClick={loadReport}><RefreshCcw className="mr-2" />Generate</Button>
+          <Button className="bg-green-600"><FileSpreadsheet className="mr-2" />Export Excel</Button>
+          <Button className="bg-orange-600"><FileText className="mr-2" />Export PDF</Button>
+          <Button variant="outline"><Printer className="mr-2" />Print</Button>
+        </CardContent>
+      </Card>
+
+      {/* PERIOD */}
+      <div className="bg-cyan-100 p-3 rounded">
+        Period: {format(startDate, 'MMMM dd, yyyy')} to {format(endDate, 'MMMM dd, yyyy')}
+      </div>
+
+      {/* STATUS */}
+      <div className={`p-3 flex justify-between rounded ${balanced ? 'bg-green-100' : 'bg-red-100'}`}>
+        <span className="flex items-center gap-2">
+          {balanced ? <CheckCircle /> : <AlertCircle />}
+          Status: {balanced ? 'Balanced' : 'Not Balanced'}
+        </span>
+        <span>
+          Total Debit: {money(grand_totals.debit)} | Total Credit: {money(grand_totals.credit)}
+        </span>
+      </div>
+
+      {/* TABLE */}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Account Number</TableHead>
+            <TableHead>Account Name</TableHead>
+            <TableHead className="text-right">Debit Balance</TableHead>
+            <TableHead className="text-right">Credit Balance</TableHead>
+          </TableRow>
+        </TableHeader>
+
+        <TableBody>
+  {Object.entries(sections).map(([sectionName, section]: any) => {
+    const accounts = hideZero
+      ? section.accounts.filter((a: any) => a.debit !== 0 || a.credit !== 0)
+      : section.accounts;
 
     return (
-        <div className="space-y-6">
-            <h1 className="text-2xl font-bold">Trial Balance Report</h1>
-            <Card>
-                 <CardContent className="pt-6">
-                    <div className="flex flex-wrap items-end gap-4">
-                        <div className="space-y-2"><label className="text-sm font-medium">Start Date</label><DatePicker date={startDate} setDate={setStartDate} /></div>
-                        <div className="space-y-2"><label className="text-sm font-medium">End Date</label><DatePicker date={endDate} setDate={setEndDate} /></div>
-                        <div className="flex items-center space-x-2"><Checkbox id="hide-zero" checked={hideZeroBalances} onCheckedChange={(c) => setHideZeroBalances(c as boolean)} /><label htmlFor="hide-zero" className="text-sm font-medium">Hide Zero Balances</label></div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-4">
-                        <Button onClick={generateReport} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Generate Report</Button>
-                        <Button variant="outline" disabled={!isGenerated}>Export Excel</Button>
-                        <Button variant="destructive" disabled={!isGenerated}>Export PDF</Button>
-                        <Button variant="outline" disabled={!isGenerated}>Print</Button>
-                    </div>
-                </CardContent>
-            </Card>
+      <React.Fragment key={sectionName}>
+        {/* SECTION HEADER – ALWAYS VISIBLE */}
+        <TableRow className={
+          sectionName === 'Asset' ? 'bg-blue-200 font-bold' :
+          sectionName === 'Liability' ? 'bg-yellow-200 font-bold' :
+          sectionName === 'Equity' ? 'bg-green-200 font-bold' :
+          sectionName === 'Revenue' ? 'bg-cyan-200 font-bold' :
+          sectionName === 'COGS' ? 'bg-gray-200 font-bold' :
+          'bg-red-200 font-bold'
+        }>
+          <TableCell colSpan={4}>
+            {sectionName === 'COGS'
+              ? 'COST OF GOODS SOLD'
+              : sectionName.toUpperCase()}
+          </TableCell>
+        </TableRow>
 
-            {isGenerated && (
-                <>
-                    <Card className="bg-blue-50 border-blue-200"><CardContent className="pt-6 text-blue-800">Period: {startDate && format(startDate, 'MMMM dd, yyyy')} to {endDate && format(endDate, 'MMMM dd, yyyy')}</CardContent></Card>
-                    <Card className={`border-2 ${isBalanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}>
-                        <CardContent className="pt-6 flex justify-between items-center">
-                            <div className={`flex items-center font-semibold ${isBalanced ? 'text-green-700' : 'text-red-700'}`}><CheckCircle className="h-5 w-5 mr-2"/> Status: {isBalanced ? 'Balanced' : 'Not Balanced'}</div>
-                            <div className="text-sm font-semibold">Total Debit Balances: {formatCurrency(totals.grandTotalDebit)} | Total Credit Balances: {formatCurrency(totals.grandTotalCredit)}</div>
-                        </CardContent>
-                    </Card>
-                </>
-            )}
-
-            {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
-            {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
-            
-            {isGenerated && !isLoading && !error && (
-                <Card>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader><TableRow><TableHead>Account Number</TableHead><TableHead>Account Name</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Credit</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                {Object.entries(groupedData).map(([groupName, groupData]) => {
-                                     const groupTotal = totals.groupTotals[groupName];
-                                     if (hideZeroBalances && groupTotal.debit === 0 && groupTotal.credit === 0) return null;
-                                     return (
-                                        <React.Fragment key={groupName}>
-                                            <TableRow className="bg-gray-100 font-bold"><TableCell colSpan={4} className="flex items-center">{groupData.icon} {groupName.toUpperCase()}</TableCell></TableRow>
-                                            {groupData.accounts.map((acc: any) => (
-                                                <TableRow key={acc.accountId}>
-                                                    <TableCell className="pl-12">{acc.accountId}</TableCell>
-                                                    <TableCell>{acc.accountName}</TableCell>
-                                                    <TableCell className="text-right font-mono text-green-600">{formatCurrency(acc.debit)}</TableCell>
-                                                    <TableCell className="text-right font-mono text-red-600">{formatCurrency(acc.credit)}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                            <TableRow className="bg-blue-100 font-bold"><TableCell colSpan={2}>TOTAL {groupName.toUpperCase()}</TableCell><TableCell className="text-right font-mono">{formatCurrency(groupTotal.debit)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(groupTotal.credit)}</TableCell></TableRow>
-                                        </React.Fragment>
-                                     )
-                                })}
-                            </TableBody>
-                            <TableFooter>
-                                <TableRow className="bg-gray-800 text-white font-bold"><TableCell colSpan={2}>GRAND TOTAL</TableCell><TableCell className="text-right font-mono">{formatCurrency(totals.grandTotalDebit)}</TableCell><TableCell className="text-right font-mono">{formatCurrency(totals.grandTotalCredit)}</TableCell></TableRow>
-                            </TableFooter>
-                        </Table>
-                    </CardContent>
-                </Card>
-            )}
-        </div>
+        {/* ACCOUNT ROWS */}
+        {accounts.length > 0 ? (
+          accounts.map((a: any) => (
+            <TableRow key={a.account_code}>
+              <TableCell>{a.account_code}</TableCell>
+              <TableCell>{a.account_name}</TableCell>
+              <TableCell className="text-right text-green-700">
+                {money(a.debit)}
+              </TableCell>
+              <TableCell className="text-right text-red-600">
+                {money(a.credit)}
+              </TableCell>
+            </TableRow>
+          ))
+        ) : (
+          /* PLACEHOLDER ROW (IMPORTANT) */
+          <TableRow>
+            <TableCell colSpan={4} className="text-center text-gray-400 italic">
+              No transactions for this period
+            </TableCell>
+          </TableRow>
+        )}
+      </React.Fragment>
     );
-};
+  })}
+</TableBody>
 
-export default TrialBalancePage;
+
+        <TableFooter>
+          <TableRow className="bg-black text-white font-bold">
+            <TableCell colSpan={2}>GRAND TOTAL</TableCell>
+            <TableCell className="text-right">{money(grand_totals.debit)}</TableCell>
+            <TableCell className="text-right">{money(grand_totals.credit)}</TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </div>
+  );
+}

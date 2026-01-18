@@ -18,15 +18,33 @@ import { useToast } from '@/hooks/use-toast';
 
 // Interfaces
 interface Account {
-    id: string;
+    id: string; // Corresponds to account_code in the report
     account_name: string;
     account_type: string;
     sub_type: string;
 }
 
-interface BackendBalance {
-    accountId: string;
-    balance: number; // Net balance from the backend (debit-credit)
+// Interfaces for the new Trial Balance Report data structure
+interface TrialBalanceAccount {
+    account_code: string;
+    account_name: string;
+    debit: number;
+    credit: number;
+}
+
+interface TrialBalanceSectionData {
+    accounts: TrialBalanceAccount[];
+    total_debit: number;
+    total_credit: number;
+}
+
+interface TrialBalanceReport {
+    Asset: TrialBalanceSectionData;
+    Liability: TrialBalanceSectionData;
+    Equity: TrialBalanceSectionData;
+    Revenue: TrialBalanceSectionData;
+    COGS: TrialBalanceSectionData;
+    Expense: TrialBalanceSectionData;
 }
 
 interface ReportAccount {
@@ -91,7 +109,7 @@ const BalanceSheetPage = () => {
         fetchChartOfAccounts();
     }, [user, toast]);
 
-    const processRawData = useCallback((rawData: BackendBalance[], accounts: Account[]): ProcessedData => {
+    const processRawData = useCallback((report: TrialBalanceReport, accounts: Account[]): ProcessedData => {
         const accountMap = new Map(accounts.map(acc => [acc.id, acc]));
         const result: ProcessedData = {
             assets: { subGroups: {}, total: 0 },
@@ -100,29 +118,54 @@ const BalanceSheetPage = () => {
             totalLiabilitiesAndEquity: 0
         };
 
-        rawData.forEach(item => {
-            const account = accountMap.get(item.accountId);
-            if (!account || item.balance === 0) return;
-            
-            const balance = account.account_type.includes('Asset') ? item.balance : -item.balance;
-            if (balance === 0) return;
+        // 1. Calculate Net Income
+        const revenueTotal = report.Revenue.total_credit - report.Revenue.total_debit;
+        const cogsTotal = report.COGS.total_debit - report.COGS.total_credit;
+        const expenseTotal = report.Expense.total_debit - report.Expense.total_credit;
+        const netIncome = revenueTotal - cogsTotal - expenseTotal;
 
-            const newAccount: ReportAccount = { id: account.id, name: account.account_name, balance };
+        // 2. Process Asset, Liability, and Equity sections
+        const processSection = (
+            sectionName: 'Asset' | 'Liability' | 'Equity',
+            reportSection: TrialBalanceSectionData,
+            targetSection: ReportSection
+        ) => {
+            reportSection.accounts.forEach(acc => {
+                const balance = sectionName === 'Asset' ? acc.debit - acc.credit : acc.credit - acc.debit;
+                
+                if (Math.abs(balance) < 0.01) return;
 
-            let section: ReportSection | undefined;
-            if (account.account_type.includes('Asset')) section = result.assets;
-            else if (account.account_type.includes('Liabilit')) section = result.liabilities;
-            else if (account.account_type === 'Equity') section = result.equity;
+                const accountInfo = accountMap.get(acc.account_code);
+                const subType = accountInfo?.sub_type || 'General';
 
-            if (section) {
-                const subType = account.sub_type || 'General';
-                if (!section.subGroups[subType]) {
-                    section.subGroups[subType] = { accounts: [], total: 0 };
+                if (!targetSection.subGroups[subType]) {
+                    targetSection.subGroups[subType] = { accounts: [], total: 0 };
                 }
-                section.subGroups[subType].accounts.push(newAccount);
-            }
-        });
 
+                targetSection.subGroups[subType].accounts.push({
+                    id: acc.account_code,
+                    name: acc.account_name,
+                    balance: balance
+                });
+            });
+        };
+
+        processSection('Asset', report.Asset, result.assets);
+        processSection('Liability', report.Liability, result.liabilities);
+        processSection('Equity', report.Equity, result.equity);
+
+        // 3. Add Net Income to Equity
+        const equitySubType = 'Retained Earnings';
+        if (!result.equity.subGroups[equitySubType]) {
+            result.equity.subGroups[equitySubType] = { accounts: [], total: 0 };
+        }
+        result.equity.subGroups[equitySubType].accounts.push({
+            id: 'net-income',
+            name: 'Current Period Earnings',
+            balance: netIncome
+        });
+        
+        // 4. Calculate all totals
         for (const section of [result.assets, result.liabilities, result.equity]) {
             section.total = 0;
             for (const subGroup of Object.values(section.subGroups)) {
@@ -142,7 +185,8 @@ const BalanceSheetPage = () => {
             return;
         }
         if (!user?.company_id || chartOfAccounts.length === 0) {
-            setError("Company or accounts not loaded.");
+            setError("Company or accounts not loaded. Please wait a moment and try again.");
+            toast({ title: "Prerequisites Missing", description: "Company or Chart of Accounts not loaded yet." });
             return;
         }
 
@@ -151,22 +195,26 @@ const BalanceSheetPage = () => {
         setProcessedData(null);
         
         const formattedDate = format(reportDate, 'yyyy-MM-dd');
-        const url = new URL('https://hariindustries.net/api/clearbook/balance-sheet.php');
+        const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
         url.searchParams.append('company_id', user.company_id);
-        url.searchParams.append('reportDate', formattedDate);
+        url.searchParams.append('end_date', formattedDate);
 
         try {
             const response = await fetch(url.toString());
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
-            if (Array.isArray(data)) {
-                if(data.length === 0) toast({title: "No Data", description: "Report is empty for the selected date.", variant: 'default'});
-                setProcessedData(processRawData(data, chartOfAccounts));
+
+            if (data.success && data.report) {
+                if (Object.keys(data.report).length === 0) {
+                    toast({title: "No Data", description: "Report is empty for the selected date.", variant: 'default'});
+                }
+                setProcessedData(processRawData(data.report, chartOfAccounts));
             } else {
-                throw new Error("Invalid data format received.");
+                throw new Error(data.message || "Invalid data format received.");
             }
         } catch (e: any) {
             setError(`Failed to load data: ${e.message}`);
+            toast({ title: "Error Generating Report", description: e.message, variant: "destructive" });
         } finally {
             setIsLoading(false);
         }
@@ -229,10 +277,11 @@ const BalanceSheetPage = () => {
                 <Card className={`border-2 ${isBalanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}>
                     <CardContent className="pt-6 flex justify-between items-center">
                          <div className={`flex items-center font-semibold ${isBalanced ? 'text-green-700' : 'text-red-700'}`}>
-                            <CheckCircle className="h-5 w-5 mr-2"/> Status: {isBalanced ? 'Balanced' : 'Not Balanced'}
+                            {isBalanced ? <CheckCircle className="h-5 w-5 mr-2"/> : <AlertCircle className="h-5 w-5 mr-2"/>}
+                             Status: {isBalanced ? 'Balanced' : 'Not Balanced'}
                         </div>
-                        <div className="text-sm font-semibold">
-                            Total Assets: {formatCurrency(processedData.assets.total)} | Total Liabilities & Equity: {formatCurrency(processedData.totalLiabilitiesAndEquity)}
+                        <div className="text-sm font-mono">
+                            Assets: {formatCurrency(processedData.assets.total)} | Liab. & Equity: {formatCurrency(processedData.totalLiabilitiesAndEquity)}
                         </div>
                     </CardContent>
                 </Card>

@@ -24,29 +24,24 @@ import type { Payee } from '@/types/payee';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 
-// Control account constants
-const CUSTOMER_CONTROL_ACCOUNT = '101200'; // Trade Receivables - Customers
-const SUPPLIER_CONTROL_ACCOUNT = '201020'; // Trade Creditors - Suppliers
-
-// UPDATE: Added description to the line interface
+// Journal line interface
 interface JournalEntryLine {
     id: number;
     accountId: string;
     debit: number;
     credit: number;
-    description?: string; 
+    description?: string;
     payeeId?: string;
-    payees?: Payee[]; 
+    payees?: Payee[];
 }
 
 const NewJournalEntryPage = () => {
     const { toast } = useToast();
-    const { user } = useAuth(); 
+    const { user } = useAuth();
     const router = useRouter();
 
     const [entryDate, setEntryDate] = useState<Date | undefined>(new Date());
     const [narration, setNarration] = useState('');
-    // UPDATE: Initialize lines with the description field
     const [lines, setLines] = useState<JournalEntryLine[]>([
         { id: 1, accountId: '', debit: 0, credit: 0, description: '' },
         { id: 2, accountId: '', debit: 0, credit: 0, description: '' },
@@ -56,7 +51,8 @@ const NewJournalEntryPage = () => {
     const [allPayees, setAllPayees] = useState<Payee[]>([]);
     const [isOpeningEntry, setIsOpeningEntry] = useState(false);
 
-     useEffect(() => {
+    // Fetch chart of accounts
+    useEffect(() => {
         if (user?.company_id) {
             fetchChartOfAccounts(user.company_id)
                 .then(setAccounts)
@@ -67,6 +63,7 @@ const NewJournalEntryPage = () => {
         }
     }, [user, toast]);
 
+    // Fetch payees
     useEffect(() => {
         const fetchPayees = async () => {
             if (!user?.company_id) return;
@@ -83,11 +80,18 @@ const NewJournalEntryPage = () => {
         fetchPayees();
     }, [user, toast]);
 
-    // UPDATE: Add description to new lines
+    // Memoized control accounts (dynamic per company)
+    const controlAccounts = useMemo(() => ({
+        customer: accounts.find(a => a.is_control_account && a.type === 'Customer')?.code,
+        supplier: accounts.find(a => a.is_control_account && a.type === 'Supplier')?.code,
+    }), [accounts]);
+
+    // Add a new line
     const handleAddLine = () => {
         setLines([...lines, { id: Date.now(), accountId: '', debit: 0, credit: 0, description: '' }]);
     };
 
+    // Remove a line
     const handleRemoveLine = (id: number) => {
         if (lines.length > 2) {
             setLines(lines.filter(line => line.id !== id));
@@ -96,6 +100,45 @@ const NewJournalEntryPage = () => {
         }
     };
 
+    // Handle line changes
+    const handleLineChange = (id: number, field: keyof JournalEntryLine, value: string | number) => {
+        setLines(lines.map(line => {
+            if (line.id === id) {
+                const updatedLine = { ...line, [field]: value };
+
+                if (field === 'accountId') {
+                    updatedLine.payeeId = undefined;
+                    updatedLine.payees = [];
+
+                    if (value === controlAccounts.customer) {
+                        updatedLine.payees = allPayees.filter(p => p.type === 'Customer');
+                    } else if (value === controlAccounts.supplier) {
+                        updatedLine.payees = allPayees.filter(p => p.type === 'Supplier');
+                    }
+                } else if (field === 'debit') {
+                    updatedLine.credit = 0;
+                } else if (field === 'credit') {
+                    updatedLine.debit = 0;
+                }
+
+                return updatedLine;
+            }
+            return line;
+        }));
+    };
+
+    // Totals and balance check
+    const { totalDebits, totalCredits, isBalanced } = useMemo(() => {
+        const debits = lines.reduce((acc, line) => acc + (parseFloat(String(line.debit)) || 0), 0);
+        const credits = lines.reduce((acc, line) => acc + (parseFloat(String(line.credit)) || 0), 0);
+        return {
+            totalDebits: debits,
+            totalCredits: credits,
+            isBalanced: Math.abs(debits - credits) < 0.01 && debits > 0,
+        };
+    }, [lines]);
+
+    // Save as draft
     const handleSaveAsDraft = async () => {
         if (!entryDate || !narration) {
             toast({ variant: 'destructive', title: 'Missing Information', description: 'Please provide a date and main narration.' });
@@ -105,15 +148,13 @@ const NewJournalEntryPage = () => {
             toast({ variant: 'destructive', title: 'Unbalanced Entry', description: 'Debits and credits must be equal.' });
             return;
         }
-        
+
         setIsLoading(true);
         const apiEndpoint = 'https://hariindustries.net/api/clearbook/journal-entry.php';
-
         const payload = {
             entryDate: format(entryDate, 'yyyy-MM-dd'),
             narration,
-            // The 'description' field is now automatically included here
-            lines: lines.map(({id, payees, ...rest}) => rest),
+            lines: lines.map(({ id, payees, ...rest }) => rest),
             totalDebits,
             totalCredits,
             user_id: user?.uid,
@@ -126,7 +167,7 @@ const NewJournalEntryPage = () => {
             const response = await fetch(apiEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) throw new Error('Server error');
             const result = await response.json();
-            
+
             if (result.success) {
                 toast({ title: "Draft Saved!", description: `Voucher #${result.journalVoucherId} has been saved.` });
                 router.push('/journal');
@@ -140,49 +181,16 @@ const NewJournalEntryPage = () => {
         }
     };
 
-    const handleLineChange = (id: number, field: keyof JournalEntryLine, value: string | number) => {
-        setLines(lines.map(line => {
-            if (line.id === id) {
-                const updatedLine = { ...line, [field]: value };
-
-                if (field === 'accountId') {
-                    updatedLine.payeeId = undefined;
-                    updatedLine.payees = [];
-                    if (value === CUSTOMER_CONTROL_ACCOUNT) {
-                        updatedLine.payees = allPayees.filter(p => p.type === 'Customer');
-                    } else if (value === SUPPLIER_CONTROL_ACCOUNT) {
-                        updatedLine.payees = allPayees.filter(p => p.type === 'Supplier');
-                    }
-                } else if (field === 'debit') {
-                    updatedLine.credit = 0;
-                } else if (field === 'credit') {
-                    updatedLine.debit = 0;
-                }
-                return updatedLine;
-            }
-            return line;
-        }));
-    };
-
-    const { totalDebits, totalCredits, isBalanced } = useMemo(() => {
-        const debits = lines.reduce((acc, line) => acc + (parseFloat(String(line.debit)) || 0), 0);
-        const credits = lines.reduce((acc, line) => acc + (parseFloat(String(line.credit)) || 0), 0);
-        return {
-            totalDebits: debits,
-            totalCredits: credits,
-            isBalanced: Math.abs(debits - credits) < 0.01 && debits > 0,
-        };
-    }, [lines]);
-    
     return (
         <>
             <div className="flex items-center justify-between mb-6">
-                 <h1 className="text-2xl font-bold">Create New Journal Entry</h1>
-                 <Link href="/journal" passHref>
+                <h1 className="text-2xl font-bold">Create New Journal Entry</h1>
+                <Link href="/journal" passHref>
                     <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Go back to list</Button>
-                 </Link>
+                </Link>
             </div>
-             <Card>
+
+            <Card>
                 <CardHeader>
                     <CardTitle>Journal Voucher Details</CardTitle>
                 </CardHeader>
@@ -194,20 +202,17 @@ const NewJournalEntryPage = () => {
                         </div>
                         <div className="md:col-span-2 space-y-2">
                             <label className="font-semibold text-sm">Main Narration / Description</label>
-                            <Textarea 
-                                placeholder="e.g., To record office supply expenses for July (this is the main description for the whole entry)"
+                            <Textarea
+                                placeholder="e.g., To record office supply expenses for July (main entry description)"
                                 value={narration}
                                 onChange={(e) => setNarration(e.target.value)}
                             />
                         </div>
                     </div>
-                    
-                    <div className="mb-6 flex items-center space-x-2">
-                                           </div>
 
                     <div className="overflow-x-auto">
                         <Table>
-                           <TableHeader>
+                            <TableHeader>
                                 <TableRow>
                                     <TableHead className="w-1/2">Account & Line Description</TableHead>
                                     <TableHead className="text-right">Debit</TableHead>
@@ -227,17 +232,23 @@ const NewJournalEntryPage = () => {
                                                     ))}
                                                 </SelectContent>
                                             </Select>
+
                                             {line.payees && line.payees.length > 0 && (
                                                 <div className="pl-2 border-l-2 border-primary">
                                                     <Select value={line.payeeId} onValueChange={(value) => handleLineChange(line.id, 'payeeId', value)}>
-                                                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={`Select a ${line.accountId === CUSTOMER_CONTROL_ACCOUNT ? 'Customer' : 'Supplier'}...`} /></SelectTrigger>
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue placeholder={`Select a ${
+                                                                line.accountId === controlAccounts.customer ? 'Customer' :
+                                                                line.accountId === controlAccounts.supplier ? 'Supplier' : ''
+                                                            }...`} />
+                                                        </SelectTrigger>
                                                         <SelectContent>
                                                             {line.payees.map(payee => <SelectItem key={payee.id} value={payee.id}>{payee.name}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
                                             )}
-                                            {/* UPDATE: Added Textarea for line description */}
+
                                             <Textarea
                                                 placeholder="Optional: add a specific description for this line"
                                                 className="text-xs"
@@ -246,18 +257,22 @@ const NewJournalEntryPage = () => {
                                                 onChange={(e) => handleLineChange(line.id, 'description', e.target.value)}
                                             />
                                         </TableCell>
+
                                         <TableCell className="align-top">
                                             <Input type="number" className="text-right font-mono" placeholder="0.00" value={line.debit || ''} onChange={(e) => handleLineChange(line.id, 'debit', e.target.value)} onFocus={(e) => e.target.select()} />
                                         </TableCell>
+
                                         <TableCell className="align-top">
                                             <Input type="number" className="text-right font-mono" placeholder="0.00" value={line.credit || ''} onChange={(e) => handleLineChange(line.id, 'credit', e.target.value)} onFocus={(e) => e.target.select()} />
                                         </TableCell>
+
                                         <TableCell className="text-right align-top">
                                             <Button variant="ghost" size="icon" onClick={() => handleRemoveLine(line.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
+
                             <TableFooter>
                                 <TableRow>
                                     <TableCell>
@@ -271,7 +286,7 @@ const NewJournalEntryPage = () => {
                         </Table>
                     </div>
 
-                     <div className="mt-4 flex justify-end">
+                    <div className="mt-4 flex justify-end">
                         {isBalanced ? (
                             <div className="flex items-center gap-2 text-green-600"><CheckCircle className="h-5 w-5" /><span>Totals are balanced</span></div>
                         ) : (
@@ -279,6 +294,7 @@ const NewJournalEntryPage = () => {
                         )}
                     </div>
                 </CardContent>
+
                 <CardFooter className="justify-end">
                     <Button size="lg" onClick={handleSaveAsDraft} disabled={!isBalanced || isLoading}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

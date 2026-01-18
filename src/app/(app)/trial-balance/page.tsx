@@ -1,316 +1,184 @@
 'use client';
 import React, { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter
-} from "@/components/ui/table";
-import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
+import { DatePicker } from '@/components/ui/date-picker';
+import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
-import { Loader2, AlertCircle, AlertTriangle, CheckCircle, FileDown } from 'lucide-react';
-import { chartOfAccounts, Account } from '@/lib/chart-of-accounts';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { DateRange } from 'react-day-picker';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { Loader2, AlertCircle, CheckCircle, Briefcase, Landmark, Users, TrendingUp, ShoppingCart, TrendingDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-interface BackendBalance {
+// --- INTERFACES ---
+interface BalanceEntry {
     accountId: string;
     accountName: string;
+    account_type: string;
     debit: number;
     credit: number;
 }
 
-interface TrialBalanceEntry {
-    accountId: string;
-    accountName: string;
-    debit: number | null;
-    credit: number | null;
-}
-
+// --- HELPER FUNCTIONS ---
 const formatCurrency = (amount: number | null | undefined) => {
-    if (amount === null || amount === undefined || isNaN(amount)) {
-        return '-';
-    }
-    return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(amount);
+    if (amount === null || amount === undefined || isNaN(amount) || amount === 0) return '-';
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 };
 
 const TrialBalancePage = () => {
-    const { language } = useLanguage();
     const { user } = useAuth();
-    const [reportData, setReportData] = useState<TrialBalanceEntry[]>([]);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-        from: new Date(new Date().getFullYear(), 0, 1),
-        to: new Date(),
-    });
+    
+    // --- STATE MANAGEMENT ---
+    const [reportData, setReportData] = useState<BalanceEntry[]>([]);
+    const [startDate, setStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 0, 1));
+    const [endDate, setEndDate] = useState<Date | undefined>(new Date());
+    const [hideZeroBalances, setHideZeroBalances] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isGenerated, setIsGenerated] = useState(false);
 
+    // --- API CALL --- 
     const generateReport = useCallback(async () => {
-        if (!dateRange?.from || !dateRange?.to) {
-            setError("Please select a valid date range for the report.");
-            return;
-        }
-        
-        if (!user?.company_id) {
-            setError("Could not determine your company. Please ensure you are logged in correctly.");
+        if (!startDate || !endDate || !user?.company_id) {
+            setError("Please select a valid date range and ensure you are logged in.");
             return;
         }
 
         setIsLoading(true);
         setError(null);
-        
-        const fromDate = format(dateRange.from, 'yyyy-MM-dd');
-        const toDate = format(dateRange.to, 'yyyy-MM-dd');
-        
+        setReportData([]);
+
         const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
         url.searchParams.append('company_id', user.company_id);
-        if (user.id) {
-             url.searchParams.append('user_id', String(user.uid));
-        }
-        url.searchParams.append('fromDate', fromDate);
-        url.searchParams.append('toDate', toDate);
+        url.searchParams.append('fromDate', format(startDate, 'yyyy-MM-dd'));
+        url.searchParams.append('toDate', format(endDate, 'yyyy-MM-dd'));
 
         try {
             const response = await fetch(url.toString());
-            if (!response.ok) {
-                const errorJson = await response.json().catch(() => ({}));
-                throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
-            }
-            const data: BackendBalance[] = await response.json();
-
-            if (Array.isArray(data)) {
-                const accountNameMap = new Map(chartOfAccounts.map(account => [account.code, account.name]));
-                const formattedData = data.map(entry => ({
-                    accountId: entry.accountId,
-                    accountName: accountNameMap.get(entry.accountId) || entry.accountName,
-                    debit: entry.debit > 0 ? entry.debit : null,
-                    credit: entry.credit > 0 ? entry.credit : null,
-                }));
-                setReportData(formattedData);
-            } else {
-                 throw new Error("Invalid data format received from server.");
-            }
-
+            if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+            const data = await response.json();
+            if (data.success === false) throw new Error(data.message || "Backend returned an error.");
+            setReportData(Array.isArray(data) ? data : []);
+            setIsGenerated(true);
         } catch (e: any) {
             setError(`Failed to load data: ${e.message}`);
-            setReportData([]);
         } finally {
             setIsLoading(false);
         }
-    }, [dateRange, user]);
-    
-    const { totalDebits, totalCredits, isBalanced } = React.useMemo(() => {
-        const debits = reportData.reduce((acc, entry) => acc + (entry.debit || 0), 0);
-        const credits = reportData.reduce((acc, entry) => acc + (entry.credit || 0), 0);
-        return {
-            totalDebits: debits,
-            totalCredits: credits,
-            isBalanced: Math.abs(debits - credits) < 0.01 && debits > 0
+    }, [startDate, endDate, user]);
+
+    // --- DATA PROCESSING & GROUPING ---
+    const { groupedData, totals } = useMemo(() => {
+        if (!reportData) return { groupedData: {}, totals: {} };
+        
+        const groups: Record<string, { icon: JSX.Element, accounts: BalanceEntry[] }> = {
+            Assets: { icon: <Briefcase className="h-4 w-4 mr-2"/>, accounts: [] },
+            Liabilities: { icon: <Landmark className="h-4 w-4 mr-2"/>, accounts: [] },
+            Equity: { icon: <Users className="h-4 w-4 mr-2"/>, accounts: [] },
+            Revenue: { icon: <TrendingUp className="h-4 w-4 mr-2"/>, accounts: [] },
+            'Cost of Goods Sold': { icon: <ShoppingCart className="h-4 w-4 mr-2"/>, accounts: [] },
+            Expenses: { icon: <TrendingDown className="h-4 w-4 mr-2"/>, accounts: [] },
+        };
+        
+        reportData.forEach(acc => {
+             if (acc.account_type === 'Expense' && acc.accountName.toLowerCase().includes('cost of goods sold')) {
+                groups['Cost of Goods Sold'].accounts.push(acc);
+             }
+             else if (acc.account_type === 'Asset') groups.Assets.accounts.push(acc);
+             else if (acc.account_type === 'Liability') groups.Liabilities.accounts.push(acc);
+             else if (acc.account_type === 'Equity') groups.Equity.accounts.push(acc);
+             else if (acc.account_type === 'Revenue') groups.Revenue.accounts.push(acc);
+             else if (acc.account_type === 'Expense') groups.Expenses.accounts.push(acc);
+        });
+
+        let grandTotalDebit = 0;
+        let grandTotalCredit = 0;
+        const groupTotals: Record<string, { debit: number, credit: number }> = {};
+
+        for (const groupName in groups) {
+            const currentGroup = groups[groupName];
+            const groupTotal = currentGroup.accounts.reduce((sum, current) => ({debit: sum.debit + current.debit, credit: sum.credit + current.credit}), {debit: 0, credit: 0});
+            groupTotals[groupName] = groupTotal;
+            grandTotalDebit += groupTotal.debit;
+            grandTotalCredit += groupTotal.credit;
+        }
+
+        return { 
+            groupedData: groups,
+            totals: { grandTotalDebit, grandTotalCredit, groupTotals }
         };
     }, [reportData]);
 
-    const handleExportPdf = useCallback(() => {
-        if (!reportData.length || !user?.company_id) return;
-
-        const doc = new jsPDF();
-        const fromDateFmt = dateRange?.from ? format(dateRange.from, 'PPP') : 'N/A';
-        const toDateFmt = dateRange?.to ? format(dateRange.to, 'PPP') : 'N/A';
-        
-        // Title
-        doc.setFontSize(18);
-        doc.text('Trial Balance', 14, 22);
-
-        // Sub-header info
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        // Assuming company_name is available on the user object. If not, fallback to company_id.
-        doc.text(`Company: ${user.company_name || user.company_id}`, 14, 30);
-        doc.text(`Period: ${fromDateFmt} to ${toDateFmt}`, 14, 36);
-
-        // Table
-        autoTable(doc, {
-            startY: 42,
-            head: [['Account Code', 'Account Name', 'Debit', 'Credit']],
-            body: reportData.map(entry => [
-                entry.accountId,
-                entry.accountName,
-                { content: formatCurrency(entry.debit), styles: { halign: 'right' } },
-                { content: formatCurrency(entry.credit), styles: { halign: 'right' } },
-            ]),
-            foot: [[
-                { content: 'Totals', colSpan: 2, styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: formatCurrency(totalDebits), styles: { halign: 'right', fontStyle: 'bold' } },
-                { content: formatCurrency(totalCredits), styles: { halign: 'right', fontStyle: 'bold' } },
-            ]],
-            theme: 'grid',
-            headStyles: { fillColor: [34, 41, 47] },
-            footStyles: { fillColor: [244, 244, 245], textColor: [34, 41, 47] },
-        });
-        
-        doc.save(`Trial-Balance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
-
-    }, [reportData, dateRange, totalDebits, totalCredits, user]);
+    const isBalanced = Math.abs(totals.grandTotalDebit - totals.grandTotalCredit) < 0.01;
 
     return (
-        <>
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold">Financial Reports</h1>
-                <p className="text-muted-foreground">Generate key financial statements and review company accounts.</p>
-            </div>
+        <div className="space-y-6">
+            <h1 className="text-2xl font-bold">Trial Balance Report</h1>
+            <Card>
+                 <CardContent className="pt-6">
+                    <div className="flex flex-wrap items-end gap-4">
+                        <div className="space-y-2"><label className="text-sm font-medium">Start Date</label><DatePicker date={startDate} setDate={setStartDate} /></div>
+                        <div className="space-y-2"><label className="text-sm font-medium">End Date</label><DatePicker date={endDate} setDate={setEndDate} /></div>
+                        <div className="flex items-center space-x-2 pt-6"><Checkbox id="hide-zero" checked={hideZeroBalances} onCheckedChange={(c) => setHideZeroBalances(c as boolean)} /><label htmlFor="hide-zero" className="text-sm font-medium">Hide Zero Balances</label></div>
+                         <div className="flex items-center gap-2 pt-6">
+                            <Button onClick={generateReport} disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Generate Report</Button>
+                            <Button variant="outline">Export Excel</Button>
+                            <Button variant="destructive">Export PDF</Button>
+                            <Button variant="outline">Print</Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-                {/* Left Column: Controls */}
-                <div className="lg:col-span-2 lg:sticky lg:top-20">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Report Options</CardTitle>
-                            <CardDescription>Select the period for the report.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <label htmlFor="report-date-range" className="font-semibold text-sm">Date Range</label>
-                                <DateRangePicker id="report-date-range" date={dateRange} onDateChange={setDateRange} />
-                            </div>
+            {isGenerated && (
+                <>
+                    <Card className="bg-blue-50 border-blue-200"><CardContent className="pt-6 text-blue-800">Period: {startDate && format(startDate, 'MMMM dd, yyyy')} to {endDate && format(endDate, 'MMMM dd, yyyy')}</CardContent></Card>
+                    <Card className={`border-2 ${isBalanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}>
+                        <CardContent className="pt-6 flex justify-between items-center">
+                            <div className={`flex items-center font-semibold ${isBalanced ? 'text-green-700' : 'text-red-700'}`}><CheckCircle className="h-5 w-5 mr-2"/> Status: {isBalanced ? 'Balanced' : 'Not Balanced'}</div>
+                            <div className="text-sm font-semibold">Total Debit Balances: {formatCurrency(totals.grandTotalDebit)} | Total Credit Balances: {formatCurrency(totals.grandTotalCredit)}</div>
                         </CardContent>
-                         <CardFooter>
-                            <Button onClick={generateReport} disabled={isLoading} className="w-full">
-                                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                Generate Report
-                            </Button>
-                        </CardFooter>
                     </Card>
-                </div>
+                </>
+            )}
 
-                {/* Right Column: Report Display */}
-                <div className="lg:col-span-3">
-                    <Tabs defaultValue="trial-balance">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="trial-balance">{language.trialBalance}</TabsTrigger>
-                            <TabsTrigger value="chart-of-accounts">{language.chartOfAccounts}</TabsTrigger>
-                        </TabsList>
-                        
-                        <TabsContent value="trial-balance" className="mt-6">
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <div>
-                                        <CardTitle>{language.trialBalance}</CardTitle>
-                                        <CardDescription>
-                                            {dateRange?.from && dateRange?.to 
-                                                ? `For the period from ${format(dateRange.from, 'PPP')} to ${format(dateRange.to, 'PPP')}`
-                                                : "Generate a report to see the trial balance."}
-                                        </CardDescription>
-                                    </div>
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm"
-                                        onClick={handleExportPdf}
-                                        disabled={reportData.length === 0 || isLoading}
-                                    >
-                                        <FileDown className="mr-2 h-4 w-4"/>
-                                        Export to PDF
-                                    </Button>
-                                </CardHeader>
-                                <CardContent>
-                                    {isLoading ? (
-                                        <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-                                    ) : error ? (
-                                        <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
-                                    ) : reportData.length > 0 ? (
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead className="w-[120px]">Account Code</TableHead>
-                                                    <TableHead>Account Name</TableHead>
-                                                    <TableHead className="text-right">Debit</TableHead>
-                                                    <TableHead className="text-right">Credit</TableHead>
+            {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+            {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
+            
+            {isGenerated && !isLoading && !error && (
+                <Card>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader><TableRow><TableHead className="w-1/4">Account Number</TableHead><TableHead className="w-1/2">Account Name</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Credit</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {Object.entries(groupedData).map(([groupName, groupData]) => {
+                                     const groupTotal = totals.groupTotals[groupName];
+                                     if (hideZeroBalances && groupTotal.debit === 0 && groupTotal.credit === 0) return null;
+                                     return (
+                                        <React.Fragment key={groupName}>
+                                            <TableRow className="bg-gray-100 font-bold"><TableCell colSpan={4} className="flex items-center">{groupData.icon} {groupName.toUpperCase()}</TableCell></TableRow>
+                                            {groupData.accounts.map((acc: BalanceEntry) => (
+                                                <TableRow key={acc.accountId}>
+                                                    <TableCell className="pl-12">{acc.accountId}</TableCell>
+                                                    <TableCell>{acc.accountName}</TableCell>
+                                                    <TableCell className="text-right font-mono text-green-600">{formatCurrency(acc.debit)}</TableCell>
+                                                    <TableCell className="text-right font-mono text-red-600">{formatCurrency(acc.credit)}</TableCell>
                                                 </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {reportData.map((entry) => (
-                                                    <TableRow key={entry.accountId}>
-                                                        <TableCell>{entry.accountId}</TableCell>
-                                                        <TableCell>{entry.accountName}</TableCell>
-                                                        <TableCell className="text-right font-mono">{formatCurrency(entry.debit)}</TableCell>
-                                                        <TableCell className="text-right font-mono">{formatCurrency(entry.credit)}</TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                            <TableFooter>
-                                                <TableRow>
-                                                    <TableCell colSpan={2} className="text-right font-bold">Totals</TableCell>
-                                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(totalDebits)}</TableCell>
-                                                    <TableCell className="text-right font-bold font-mono">{formatCurrency(totalCredits)}</TableCell>
-                                                </TableRow>
-                                            </TableFooter>
-                                        </Table>
-                                    ) : (
-                                        <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the trial balance.</p></div>
-                                    )}
-                                </CardContent>
-                                {reportData.length > 0 && (
-                                    <CardFooter className="flex justify-end">
-                                        {isBalanced ? (
-                                            <div className="flex items-center gap-2 text-green-600 bg-green-50 p-2 rounded-md border border-green-200">
-                                                <CheckCircle className="h-5 w-5" />
-                                                <span className="font-semibold">Balanced</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-2 rounded-md border border-amber-200">
-                                                <AlertTriangle className="h-5 w-5" />
-                                                <span className="font-semibold">Not Balanced</span>
-                                            </div>
-                                        )}
-                                    </CardFooter>
-                                )}
-                            </Card>
-                        </TabsContent>
-                        
-                        <TabsContent value="chart-of-accounts" className="mt-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>{language.chartOfAccounts}</CardTitle>
-                                    <CardDescription>A complete list of all accounts in the general ledger.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="max-h-[600px] overflow-y-auto relative">
-                                        <Table>
-                                            <TableHeader className="sticky top-0 bg-background z-10">
-                                                <TableRow>
-                                                    <TableHead>Code</TableHead>
-                                                    <TableHead>Name</TableHead>
-                                                    <TableHead>Type</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {chartOfAccounts.map((account) => (
-                                                    <TableRow key={account.code}>
-                                                        <TableCell className="font-mono">{account.code}</TableCell>
-                                                        <TableCell>{account.name}</TableCell>
-                                                        <TableCell><span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded-full">{account.type}</span></TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </div>
-        </>
+                                            ))}
+                                            <TableRow className="bg-blue-100 font-bold"><TableCell colSpan={2}>TOTAL {groupName.toUpperCase()}</TableCell><TableCell className="text-right font-mono">{formatCurrency(groupTotal.debit)}</TableCell><TableCell className="text-right font-mono text-red-600">{formatCurrency(groupTotal.credit)}</TableCell></TableRow>
+                                        </React.Fragment>
+                                     )
+                                })}
+                            </TableBody>
+                            <TableFooter>
+                                <TableRow className="bg-gray-800 text-white font-bold"><TableCell colSpan={2}>GRAND TOTAL</TableCell><TableCell className="text-right font-mono">{formatCurrency(totals.grandTotalDebit)}</TableCell><TableCell className="text-right font-mono text-red-600">{formatCurrency(totals.grandTotalCredit)}</TableCell></TableRow>
+                            </TableFooter>
+                        </Table>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
     );
 };
 
