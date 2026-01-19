@@ -128,8 +128,10 @@ if ($method == 'POST') {
             }
             foreach ($data->lines as $line) {
                 $payeeId = $line->payeeId ?? null;
-                $description = $line->description ?? null;
-                $line_stmt->bind_param('siisddis', $data->company_id, $data->user_id, $journalVoucherId, $line->accountId, $line->debit, $line->credit, $payeeId, $description);
+                // FIX: Read 'narration' from the payload to match the frontend
+                $description = $line->narration ?? null;
+                // FIX: Use 'account_code' to match the frontend payload
+                $line_stmt->bind_param('siisddis', $data->company_id, $data->user_id, $journalVoucherId, $line->account_code, $line->debit, $line->credit, $payeeId, $description);
                 $line_stmt->execute();
             }
             $line_stmt->close();

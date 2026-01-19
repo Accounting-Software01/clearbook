@@ -23,7 +23,6 @@ if (!isset($_GET['company_id'])) {
 $company_id = $_GET['company_id'];
 
 try {
-    // FIX #1: Changed `u.full_name` back to `u.username`
     $voucherSql = "SELECT 
                         jv.id, 
                         jv.voucher_number, 
@@ -57,17 +56,17 @@ try {
         $placeholders = implode(',', array_fill(0, count($voucherIds), '?'));
         $types = str_repeat('i', count($voucherIds));
 
-        // FIX #2: Added `jvl.company_id` to the WHERE clause to correctly fetch lines.
+        // FIX: Aliased column names to match the frontend data structure (account_code, narration)
         $lineSql = "SELECT 
                         jvl.voucher_id,
-                        jvl.account_id,
-                        jvl.description,
+                        jvl.account_id AS account_code,
+                        jvl.description AS narration,
                         jvl.debit,
                         jvl.credit,
                         coa.account_name AS account_name
                     FROM journal_voucher_lines jvl
                     LEFT JOIN chart_of_accounts coa ON jvl.account_id = coa.account_code AND coa.company_id = jvl.company_id
-                    WHERE jvl.voucher_id IN ($placeholders) AND jvl.company_id = ?";
+                    WHERE jvl.voucher_id IN ($placeholders) AND jv.company_id = ?";
         
         $lineStmt = $conn->prepare($lineSql);
         if (!$lineStmt) throw new Exception('Line SQL statement failed: ' . $conn->error);

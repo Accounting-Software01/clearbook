@@ -41,7 +41,7 @@ export default function TrialBalancePage() {
     if (!user?.company_id) return;
     setLoading(true);
     try {
-      const url = new URL('https://hariindustries.net/api/clearbook/trial-balance.php');
+      const url = new URL('https://hariindustries.net/api/clearbook/balancetrial.php');
       url.searchParams.set('company_id', user.company_id);
       url.searchParams.set('fromDate', format(startDate, 'yyyy-MM-dd'));
       url.searchParams.set('toDate', format(endDate, 'yyyy-MM-dd'));

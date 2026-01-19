@@ -25,11 +25,11 @@ import {
 import { format } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 
-// Corrected types to match the new API response
+// Aligned types with the API response and new entry page
 interface JournalEntryLine {
-  account_id: string; // Changed from account_code
+  account_code: string; 
   account_name: string;
-  description: string | null;
+  narration: string | null; // Use narration for consistency
   debit: number;
   credit: number;
 }
@@ -43,7 +43,7 @@ interface JournalEntry {
   total_credits: number; 
   status: 'Draft' | 'Posted';
   created_by: string;
-  lines: JournalEntryLine[]; // Now always present
+  lines: JournalEntryLine[]; 
 }
 
 // A small component to render the action buttons
@@ -77,7 +77,6 @@ const JournalPage = () => {
       if (!companyId) return;
       setIsLoading(true);
       try {
-          // Corrected API endpoint name
           const response = await fetch(`https://hariindustries.net/api/clearbook/get_journal_vouchers.php?company_id=${companyId}`);
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
@@ -107,17 +106,33 @@ const JournalPage = () => {
   };
 
   const handlePost = async (id: number) => {
-      if (!companyId || !userId) return;
+      const entryToPost = journalEntries.find(entry => entry.id === id);
+      if (!entryToPost || !companyId || !userId) {
+          toast({ variant: 'destructive', title: 'Error', description: 'Could not find the entry to post.' });
+          return;
+      }
+      
       toast({ title: "Posting Entry...", description: "Please wait while the entry is being posted." });
+
       try {
-        const response = await fetch(`https://hariindustries.net/api/clearbook/journal-entry.php?action=post&id=${id}&company_id=${companyId}&user_id=${userId}`, { method: 'POST' });
-        const result = await response.json();
-        if (!response.ok || result.error) throw new Error(result.error || 'Failed to post entry');
-        
-        toast({ variant: 'success', title: "Success!", description: "Journal entry has been posted to the general ledger." });
-        fetchJournalEntries(); // Refresh data
+          // The backend expects the IDs in the URL, and the rest of the data in the body.
+          const apiUrl = `https://hariindustries.net/api/clearbook/journal-entry.php?action=post&id=${id}&company_id=${companyId}&user_id=${userId}`;
+
+          const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(entryToPost) // Send the whole entry
+          });
+
+          const result = await response.json();
+          if (!response.ok || result.error) throw new Error(result.error || 'Failed to post entry');
+          
+          toast({ variant: 'success', title: "Success!", description: "Journal entry has been posted to the general ledger." });
+          fetchJournalEntries(); // Refresh data
       } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Posting Failed', description: error.message });
+          toast({ variant: 'destructive', title: 'Posting Failed', description: error.message });
       }
   };
 
@@ -198,8 +213,8 @@ const JournalPage = () => {
                                                     <TableBody>
                                                         {entry.lines.map((line, index) => (
                                                             <TableRow key={index}>
-                                                                <TableCell>{line.account_id} - {line.account_name}</TableCell>
-                                                                <TableCell className="text-muted-foreground text-xs">{line.description || '-'}</TableCell>
+                                                                <TableCell>{line.account_code} - {line.account_name}</TableCell>
+                                                                <TableCell className="text-muted-foreground text-xs">{line.narration || '-'}</TableCell>
                                                                 <TableCell className="text-right font-mono">{Number(line.debit) > 0 ? Number(line.debit).toFixed(2) : '-'}</TableCell>
                                                                 <TableCell className="text-right font-mono">{Number(line.credit) > 0 ? Number(line.credit).toFixed(2) : '-'}</TableCell>
                                                             </TableRow>

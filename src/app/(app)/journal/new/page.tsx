@@ -19,7 +19,7 @@ import {
 import { PlusCircle, Trash2, AlertTriangle, CheckCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { fetchChartOfAccounts, type Account } from '@/lib/chart-of-accounts';
+import type { Account } from '@/lib/chart-of-accounts';
 import type { Payee } from '@/types/payee';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
@@ -53,14 +53,27 @@ const NewJournalEntryPage = () => {
 
     // Fetch chart of accounts
     useEffect(() => {
-        if (user?.company_id) {
-            fetchChartOfAccounts(user.company_id)
-                .then(setAccounts)
-                .catch(error => {
-                    console.error("Failed to fetch accounts", error);
-                    toast({ variant: 'destructive', title: 'Failed to load Chart of Accounts' });
-                });
-        }
+        const loadAccounts = async () => {
+            if (!user?.company_id) return;
+            try {
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${user.company_id}`);
+                const data = await response.json();
+                
+                let accountsData;
+                if (Array.isArray(data)) {
+                    accountsData = data;
+                } else if (data.success && Array.isArray(data.accounts)) {
+                    accountsData = data.accounts;
+                } else {
+                    throw new Error(data.message || "Invalid data format for chart of accounts.");
+                }
+                setAccounts(accountsData);
+            } catch (error: any) {
+                console.error("Failed to fetch accounts", error);
+                toast({ variant: 'destructive', title: 'Failed to load Chart of Accounts', description: error.message });
+            }
+        };
+        loadAccounts();
     }, [user, toast]);
 
     // Fetch payees
@@ -82,8 +95,8 @@ const NewJournalEntryPage = () => {
 
     // Memoized control accounts (dynamic per company)
     const controlAccounts = useMemo(() => ({
-        customer: accounts.find(a => a.is_control_account && a.type === 'Customer')?.code,
-        supplier: accounts.find(a => a.is_control_account && a.type === 'Supplier')?.code,
+        customer: accounts.find(a => a.is_control_account && a.account_type === 'Customer')?.account_code,
+        supplier: accounts.find(a => a.is_control_account && a.account_type === 'Supplier')?.account_code,
     }), [accounts]);
 
     // Add a new line
@@ -151,10 +164,22 @@ const NewJournalEntryPage = () => {
 
         setIsLoading(true);
         const apiEndpoint = 'https://hariindustries.net/api/clearbook/journal-entry.php';
+        
         const payload = {
             entryDate: format(entryDate, 'yyyy-MM-dd'),
             narration,
-            lines: lines.map(({ id, payees, ...rest }) => rest),
+            lines: lines.map(line => {
+                const account = accounts.find(acc => acc.account_code === line.accountId);
+                return {
+                    debit: line.debit,
+                    credit: line.credit,
+                    description: line.description,
+                    payeeId: line.payeeId,
+                    account_code: account?.account_code,
+                    account_name: account?.account_name,
+                    account_type: account?.account_type,
+                };
+            }),
             totalDebits,
             totalCredits,
             user_id: user?.uid,
@@ -227,8 +252,10 @@ const NewJournalEntryPage = () => {
                                             <Select value={line.accountId} onValueChange={(value) => handleLineChange(line.id, 'accountId', value)}>
                                                 <SelectTrigger><SelectValue placeholder="Select an account..." /></SelectTrigger>
                                                 <SelectContent>
-                                                    {accounts.map(account => (
-                                                        <SelectItem key={account.code} value={account.code}>{account.code} - {account.name}</SelectItem>
+                                                    {accounts
+                                                        .filter(account => account && account.account_code)
+                                                        .map(account => (
+                                                            <SelectItem key={account.account_code} value={String(account.account_code)}>{account.account_code} - {account.account_name}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
@@ -243,7 +270,7 @@ const NewJournalEntryPage = () => {
                                                             }...`} />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {line.payees.map(payee => <SelectItem key={payee.id} value={payee.id}>{payee.name}</SelectItem>)}
+                                                            {line.payees.map(payee => <SelectItem key={payee.id} value={String(payee.id)}>{payee.name}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
