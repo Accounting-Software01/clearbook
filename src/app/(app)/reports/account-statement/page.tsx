@@ -1,20 +1,24 @@
 'use client';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { DatePicker } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Loader2, AlertCircle, FileText, ClipboardList } from 'lucide-react';
+import { Loader2, AlertCircle, FileText, Download, Printer, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import useSWR from 'swr';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Interfaces
-interface StatementAccount {
-    id: string;
-    name: string;
-    type: 'Customer' | 'Vendor' | 'Account';
+interface GLAccount {
+    id: number;
+    account_code: string;
+    account_name: string;
 }
 
 interface Transaction {
@@ -30,6 +34,8 @@ interface StatementData {
     closingBalance: number;
 }
 
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 const formatCurrency = (amount: number) => {
     if (typeof amount !== 'number' || isNaN(amount)) return '0.00';
     const formatted = new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(amount));
@@ -40,32 +46,20 @@ const AccountStatementPage = () => {
     const { user } = useAuth();
     const { toast } = useToast();
     
-    const [accounts, setAccounts] = useState<StatementAccount[]>([]);
+    const { data: accountsResponse, error: accountsError, isLoading: isAccountsLoading } = useSWR(
+        user?.company_id ? `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${user.company_id}` : null,
+        fetcher
+    );
+    
     const [selectedAccount, setSelectedAccount] = useState<string | undefined>();
     const [startDate, setStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
     
     const [data, setData] = useState<StatementData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isAccountsLoading, setIsAccountsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (user?.company_id) {
-            setIsAccountsLoading(true);
-            fetch(`/api/gl/get-statement-accounts.php?company_id=${user.company_id}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        setAccounts(data.accounts);
-                    } else {
-                        throw new Error(data.message || 'Failed to load accounts');
-                    }
-                })
-                .catch(e => toast({ title: "Error Loading Accounts", description: e.message, variant: "destructive" }))
-                .finally(() => setIsAccountsLoading(false));
-        }
-    }, [user, toast]);
+    const accounts: GLAccount[] = accountsResponse || [];
 
     const generateReport = useCallback(async () => {
         if (!startDate || !endDate || !selectedAccount || !user?.company_id) {
@@ -84,14 +78,14 @@ const AccountStatementPage = () => {
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-            const rawData: StatementData = await response.json();
-
-            if (!rawData || typeof rawData.openingBalance === 'undefined') {
-                throw new Error("Invalid data structure received.");
+            
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.message || "An API error occurred.");
             }
             
-            setData(rawData);
-            if (rawData.transactions.length === 0) {
+            setData(result.statement);
+            if (result.statement.transactions.length === 0) {
                  toast({ title: "No Transactions", description: "There are no transactions for this account in the selected period." });
             }
 
@@ -105,18 +99,73 @@ const AccountStatementPage = () => {
 
     const runningBalance = useMemo(() => {
         if (!data) return [];
-        const balances: number[] = [];
         let currentBalance = data.openingBalance;
-        data.transactions.forEach(tx => {
+        return data.transactions.map(tx => {
             currentBalance += (tx.debit - tx.credit);
-            balances.push(currentBalance);
+            return currentBalance;
         });
-        return balances;
     }, [data]);
+
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const handleExport = (formatType: 'excel' | 'pdf') => {
+        if (!data || !selectedAccount) return;
+        const accountName = accounts.find((a) => a.account_code === selectedAccount)?.account_name || 'Selected Account';
+        const title = `Account Statement for ${accountName}`;
+        const head = [['Date', 'Description', 'Debit', 'Credit', 'Balance']];
+        const body = data.transactions.map((t, i) => [
+            t.date,
+            t.description,
+            t.debit > 0 ? formatCurrency(t.debit) : '-',
+            t.credit > 0 ? formatCurrency(t.credit) : '-',
+            formatCurrency(runningBalance[i])
+        ]);
+
+        if (formatType === 'pdf') {
+            const doc = new jsPDF();
+            doc.text(title, 14, 15);
+            (doc as any).autoTable({
+                startY: 25,
+                head: head,
+                body: [
+                    [{content: 'Opening Balance', colSpan: 4, styles: { fontStyle: 'bold'}}, {content: formatCurrency(data.openingBalance), styles: { halign: 'right', fontStyle: 'bold' }}],
+                    ...body,
+                    [{content: 'Closing Balance', colSpan: 4, styles: { fontStyle: 'bold'}}, {content: formatCurrency(data.closingBalance), styles: { halign: 'right', fontStyle: 'bold' }}]
+                ],
+                theme: 'striped'
+            });
+            doc.save(`${accountName}_Statement.pdf`);
+        } else {
+            const ws = XLSX.utils.aoa_to_sheet([
+                [title],
+                [`Period: ${format(startDate!, 'MMM dd, yyyy')} to ${format(endDate!, 'MMM dd, yyyy')}`],
+                [],
+                ['', '', '', 'Opening Balance', formatCurrency(data.openingBalance)],
+                ...head,
+                ...body,
+                ['', '', '', 'Closing Balance', formatCurrency(data.closingBalance)]
+            ]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Account Statement');
+            XLSX.writeFile(wb, `${accountName}_Statement.xlsx`);
+        }
+    };
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold tracking-tight flex items-center"><ClipboardList className="mr-3 h-8 w-8"/> Account Statement</h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold tracking-tight flex items-center"><ClipboardList className="mr-3 h-8 w-8"/> Account Statement</h1>
+                {data && (
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => handleExport('excel')}><Download className="mr-2 h-4 w-4" />Excel</Button>
+                        <Button variant="outline" onClick={() => handleExport('pdf')}><FileText className="mr-2 h-4 w-4" />PDF</Button>
+                        <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Print</Button>
+                    </div>
+                )}
+            </div>
+            
             <Card>
                 <CardHeader><CardTitle>Report Controls</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -127,7 +176,12 @@ const AccountStatementPage = () => {
                                 <SelectValue placeholder={isAccountsLoading ? "Loading accounts..." : "Select an account"} />
                             </SelectTrigger>
                             <SelectContent>
-                                {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type})</SelectItem>)}
+                                {accountsError && <SelectItem value="error" disabled>Failed to load accounts</SelectItem>}
+                                {accounts.map((acc) => (
+                                    <SelectItem key={acc.account_code} value={acc.account_code}>
+                                        {acc.account_name}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -145,7 +199,7 @@ const AccountStatementPage = () => {
             {data && (
                  <Card>
                     <CardHeader>
-                        <CardTitle>Statement for: {accounts.find(a => a.id === selectedAccount)?.name}</CardTitle>
+                        <CardTitle>Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}</CardTitle>
                         <p className="text-sm text-muted-foreground">Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}</p>
                     </CardHeader>
                     <CardContent>
@@ -179,7 +233,7 @@ const AccountStatementPage = () => {
                                 )}
                             </TableBody>
                             <TableFooter>
-                                <TableRow className="font-extrabold text-lg bg-gray-800 text-white hover:bg-black">
+                                <TableRow className="font-extrabold text-lg bg-gray-50">
                                     <TableCell colSpan={4}>Closing Balance</TableCell>
                                     <TableCell className="text-right font-mono">{formatCurrency(data.closingBalance)}</TableCell>
                                 </TableRow>
