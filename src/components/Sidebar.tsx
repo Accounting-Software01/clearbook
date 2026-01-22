@@ -72,7 +72,8 @@ import {
     Cog,
     BadgeDollarSign,
     Ruler,
-    Link as LinkIcon
+    Link as LinkIcon,
+    FileChartPie
 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -164,13 +165,6 @@ export function Sidebar() {
         {
             label: 'Business Operations',
             isTitle: true,
-        },
-        {
-            label: 'Invoicing',
-            icon: FileText,
-            subItems: [
-                { href: '/invoicing/all-invoices', label: 'All Invoices', icon: FileText, permission: 'view_invoicing' },
-            ]
         },
         {
             label: 'Bills/Purchases',
@@ -320,33 +314,30 @@ export function Sidebar() {
             subItems: [
                 { href: '/sales/pos', label: 'Point of Sale (POS)', icon: Store, permission: 'view_sales' },
                 { href: '/sales/pending-invoices', label: 'Pending Invoices', icon: FileClock, permission: 'view_sales' },
-                { href: '/sales/quotations', label: 'Quotations', icon: Quote, permission: 'view_sales' },
-                { href: '/sales/sales-orders', label: 'Sales Orders', icon: ShoppingCart, permission: 'view_sales' },
-                { href: '/sales/sales-invoices', label: 'Sales Invoices', icon: FileText, permission: 'view_sales' },
-                { href: '/sales/invoice-issuance', label: 'Invoice Issuance', icon: CheckSquare, permission: 'view_sales' },
-                { href: '/sales/credit-notes', label: 'Credit Notes', icon: FileText, permission: 'view_sales' },
+                 { href: '/sales/credit-notes', label: 'Credit Notes', icon: FileText, permission: 'view_sales' },
             ]
         },
         {
             label: 'Purchases',
             icon: ShoppingCart,
             subItems: [
-                { href: '/purchases/procurement', label: 'Purchase Orders', icon: ShoppingCart, permission: 'view_purchases' },
+                { href: '/procurement', label: 'Purchase Orders', icon: ShoppingCart, permission: 'view_purchases' },
+                { href: '/Account-Payable', label: 'Purchase Invoices', icon: FileChartPie, permission: 'view_purchases' },
+         
             ]
         },
         {
             label: 'Products',
-            icon: Package,
+            icon: Factory,
             subItems: [
-                { href: '/products/all-products', label: 'All Products', icon: Package, permission: 'view_products' },
-                { href: '/products/categories', label: 'Categories', icon: Layers, permission: 'view_products' },
-                { href: '/products/brands', label: 'Brands', icon: Tags, permission: 'view_products' },
-            ]
+                { href: '/production', label: 'Production', icon: Factory, permission: 'manage_bomsettings' },
+                { href: '/production/boms', label: 'BOM Settings', icon: Users, permission: 'manage_bomsettings' },
+                
+                { href: '/products/reports', label: 'Reports', icon: BarChart, permission: 'view_products' },
+          ]
         },
       
-        { href: '/production', label: 'Production', icon: Factory, permission: 'manage_bomsettings' },
-        { href: '/production/boms/new', label: 'BOM Settings', icon: Users, permission: 'manage_bomsettings' },
-        
+      
         { href: '/admin/register-user', label: 'Users', icon: Users, permission: 'manage_users' },
         { href: '/admin/settings', label: 'Settings', icon: Settings, permission: 'manage_settings' },
     ];

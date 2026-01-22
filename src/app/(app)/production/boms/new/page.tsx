@@ -323,10 +323,10 @@ const MasterBomSetup = () => {
                                 <TableRow key={i}>
                                     <TableCell><Select value={c.item_id.toString()} onValueChange={v => handleComponentChange(i, 'item_id', parseInt(v))} required><SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{inventoryItems.raw_materials.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}</SelectContent></Select></TableCell>
                                     <TableCell><Select value={c.component_type} onValueChange={v => handleComponentChange(i, 'component_type', v)} required><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="raw-material">Raw Material</SelectItem><SelectItem value="packaging">Packaging</SelectItem><SelectItem value="semi-finished">Semi-Finished</SelectItem></SelectContent></Select></TableCell>
-                                    <TableCell><Input type="number" min="0.0001" step="any" value={c.quantity} onChange={e => handleComponentChange(i, 'quantity', e.target.value)} required placeholder="e.g., 0.01" /></TableCell>
+                                    <TableCell><Input type="number" min="0.00000001"  step="any" value={c.quantity} onChange={e => handleComponentChange(i, 'quantity', e.target.value)} required placeholder="e.g., 0.01" /></TableCell>
                                     <TableCell><Input value={c.uom || 'N/A'} readOnly className="border-none bg-transparent px-0 w-20" /></TableCell>
-                                    <TableCell><Input type="number" min="0" step="any" value={c.waste_percentage} onChange={e => handleComponentChange(i, 'waste_percentage', e.target.value)} className="w-24" placeholder="e.g., 3" /></TableCell>
-                                    <TableCell><Input value={batchConsumption.toFixed(4)} readOnly className="border-none bg-transparent font-medium" /></TableCell>
+                                    <TableCell><Input type="number" min="0.00000001" step="any" value={c.waste_percentage} onChange={e => handleComponentChange(i, 'waste_percentage', e.target.value)} className="w-24" placeholder="e.g., 3" /></TableCell>
+                                    <TableCell><Input value={batchConsumption.toString()} readOnly className="border-none bg-transparent font-medium" /></TableCell>
                                     <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveComponent(i)}><Trash2 className="h-4 w-4 text-red-500" /></Button></TableCell>
                                 </TableRow>
                             );})

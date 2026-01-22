@@ -45,6 +45,7 @@ interface Customer {
   primary_phone_number: string;
   price_tier: string;
   customer_type: string;
+
 }
 
 const Breadcrumbs = () => (
