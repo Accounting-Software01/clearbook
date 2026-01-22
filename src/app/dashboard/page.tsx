@@ -157,22 +157,24 @@ export default function DashboardPage() {
                 <div className="pt-4">
                     <h3 className="text-xl font-semibold mb-4">Financial Snapshot</h3>
                     {isFinancialLoading ? (
-                        <div className="flex items-center justify-center h-24"><Loader2 className="h-8 w-8 animate-spin" /></div>
-                    ) : financialData ? (
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <Card>
+                            <div className="flex items-center justify-center h-24"><Loader2 className="h-8 w-8 animate-spin" /></div>
+                        ) : financialData ? (
+                            <div className="grid gap-4 md:grid-cols-3">
+                                                            <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total Revenue</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground" /></CardHeader>
-                                <CardContent><div className="text-2xl font-bold">N{financialData.totalRevenue.toFixed(2)}</div></CardContent>
+                                <CardContent><div className="text-2xl font-bold">{new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(parseFloat(String(financialData.totalRevenue || '0').replace(/[^0-9.]/g, '')))}</div></CardContent>
                             </Card>
                              <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader>
-                                <CardContent><div className="text-2xl font-bold">N{financialData.outstandingBalance.toFixed(2)}</div></CardContent>
+                                <CardContent><div className="text-2xl font-bold">{new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(parseFloat(String(financialData.outstandingBalance || '0').replace(/[^0-9.]/g, '')))}</div></CardContent>
                             </Card>
                              <Card>
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Overdue Invoices</CardTitle><AlertTriangle className="h-4 w-4 text-red-500" /></CardHeader>
                                 <CardContent><div className="text-2xl font-bold">{financialData.overdueInvoices}</div></CardContent>
                             </Card>
                         </div>
+
+
                     ) : (
                          <div className="p-4 flex items-center text-center rounded-lg bg-gray-50">
                             <Info className="w-5 h-5 mr-3 text-primary"/>
