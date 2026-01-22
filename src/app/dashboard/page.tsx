@@ -56,9 +56,11 @@ export default function DashboardPage() {
         if (!res.ok) throw new Error('Could not fetch financial data.');
         const invoices: Invoice[] = await res.json();
 
-        const totalRevenue = invoices.reduce((sum, inv) => sum + inv.total_amount, 0);
-        const outstandingBalance = invoices.reduce((sum, inv) => sum + inv.amount_due, 0);
-        const overdueInvoices = invoices.filter(inv => new Date(inv.due_date) < new Date() && inv.status !== 'Paid').length;
+
+
+        const totalRevenue = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount), 0);
+        const outstandingBalance = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_due), 0);
+        const overdueInvoices = invoices.filter(inv => new Date(inv.due_date) < new Date() && inv.status !== 'PAID').length;
 
         setFinancialData({ totalRevenue, outstandingBalance, overdueInvoices });
 
