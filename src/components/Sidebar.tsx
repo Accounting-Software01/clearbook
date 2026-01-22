@@ -179,12 +179,7 @@ export function Sidebar() {
             icon: Users,
             permission: 'view_customers'
         },
-        {
-            href: '/suppliers',
-            label: 'Suppliers',
-            icon: Truck,
-            permission: 'view_suppliers'
-        },
+        
         {
             label: 'Reports',
             icon: ClipboardList,
@@ -204,15 +199,7 @@ export function Sidebar() {
                         { href: '/reports/last-transaction-date', label: 'Last Transaction Date', icon: CalendarClock, permission: 'view_reports' },
                     ]
                 },
-                {
-                    label: 'Supplier Reports',
-                    icon: Truck,
-                    subItems: [
-                        { href: '/reports/supplier-statement', label: 'Supplier Statement', icon: FileText, permission: 'view_reports' },
-                        { href: '/reports/supplier-balances', label: 'Supplier Balances', icon: Wallet, permission: 'view_reports' },
-                        { href: '/reports/supplier-aging', label: 'Supplier Aging', icon: Clock, permission: 'view_reports' },
-                    ]
-                }
+                
             ]
         },
         {
@@ -327,7 +314,7 @@ export function Sidebar() {
             ]
         },
         {
-            label: 'Products',
+            label: 'Production',
             icon: Factory,
             subItems: [
                 { href: '/production', label: 'Production', icon: Factory, permission: 'manage_bomsettings' },

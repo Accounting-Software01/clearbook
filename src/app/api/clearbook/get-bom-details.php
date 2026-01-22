@@ -3,7 +3,7 @@ header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Methods: GET');
 
-require_once '../../db_connect.php';
+require_once '../../../db_connect.php';
 
 if (!isset($_GET['bom_id']) || !is_numeric($_GET['bom_id'])) {
     http_response_code(400);
@@ -16,8 +16,8 @@ $bom_id = (int)$_GET['bom_id'];
 try {
     $conn->begin_transaction();
 
-    // 1. Fetch BOM Identity (joining with items for finished good name)
-    $identity_sql = "SELECT b.*, i.name as finished_good_name FROM boms b JOIN items i ON b.finished_good_id = i.id WHERE b.id = ?";
+    // 1. Fetch BOM Identity (Corrected: joining with 'products')
+    $identity_sql = "SELECT b.*, p.name as finished_good_name FROM boms b JOIN products p ON b.finished_good_id = p.id WHERE b.id = ?";
     $stmt_identity = $conn->prepare($identity_sql);
     $stmt_identity->bind_param("i", $bom_id);
     $stmt_identity->execute();
@@ -29,8 +29,8 @@ try {
         throw new Exception("BOM not found.");
     }
 
-    // 2. Fetch Components (joining with raw_materials for component name)
-    $components_sql = "SELECT bc.*, rm.name as item_name, rm.unit_of_measure as uom FROM bom_components bc JOIN raw_materials rm ON bc.item_id = rm.id WHERE bc.bom_id = ?";
+    // 2. Fetch Components (Corrected: joining with raw_materials and ADDING average_unit_cost)
+    $components_sql = "SELECT bc.*, rm.name as item_name, rm.unit_of_measure as uom, rm.average_unit_cost FROM bom_components bc JOIN raw_materials rm ON bc.item_id = rm.id WHERE bc.bom_id = ?";
     $stmt_components = $conn->prepare($components_sql);
     $stmt_components->bind_param("i", $bom_id);
     $stmt_components->execute();
@@ -57,7 +57,6 @@ try {
     $stmt_overheads->close();
 
     $conn->commit();
-    $conn->close();
 
     echo json_encode([
         'success' => true,

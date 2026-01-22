@@ -1,44 +1,63 @@
 <?php
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-// Handle preflight requests for CORS
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit(0);
 }
 
-include_once '../db_connect.php';
+include_once '../../../db_connect.php';
 
-$company_id = isset($_GET['company_id']) ? intval($_GET['company_id']) : 0;
+// Corrected: Treat company_id as a string
+$company_id = isset($_GET['company_id']) ? $_GET['company_id'] : '';
 $product_id = isset($_GET['product_id']) ? intval($_GET['product_id']) : 0;
+$bom_id_param = isset($_GET['bom_id']) ? intval($_GET['bom_id']) : 0;
 
-if (!$company_id || !$product_id) {
+if (empty($company_id)) {
     http_response_code(400);
-    echo json_encode(['message' => 'Company ID and Product ID are required.']);
+    echo json_encode(['message' => 'Company ID is required.']);
+    exit;
+}
+
+if (!$product_id && !$bom_id_param) {
+    http_response_code(400);
+    echo json_encode(['message' => 'Either a Product ID or a BOM ID is required.']);
     exit;
 }
 
 try {
-    // Find the active BOM for the given product
-    // We'll assume a simple structure here: a 'boms' table and a 'bom_components' table.
-    // This might need to be adjusted based on the actual production schema.
-    $findBomSql = "SELECT id FROM boms WHERE finished_good_id = ? AND company_id = ? AND status = 'Active' ORDER BY bom_version DESC LIMIT 1";
-    $stmt = $conn->prepare($findBomSql);
-    $stmt->bind_param("ii", $product_id, $company_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $bom = $result->fetch_assoc();
+    $bom_id = 0;
 
-    if (!$bom) {
+    if ($bom_id_param) {
+        $findBomSql = "SELECT id FROM boms WHERE id = ? AND company_id = ?";
+        $stmt = $conn->prepare($findBomSql);
+        // Corrected: Bind company_id as a string ('s')
+        $stmt->bind_param("is", $bom_id_param, $company_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($bom = $result->fetch_assoc()) {
+            $bom_id = $bom['id'];
+        }
+    } else if ($product_id) {
+        $findBomSql = "SELECT id FROM boms WHERE finished_good_id = ? AND company_id = ? AND status = 'Active' ORDER BY bom_version DESC LIMIT 1";
+        $stmt = $conn->prepare($findBomSql);
+        // Corrected: Bind company_id as a string ('s')
+        $stmt->bind_param("is", $product_id, $company_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($bom = $result->fetch_assoc()) {
+            $bom_id = $bom['id'];
+        }
+    }
+
+    if (!$bom_id) {
         http_response_code(404);
-        echo json_encode(['message' => 'No active BOM found for this product.']);
+        $error_message = $bom_id_param ? "No BOM found with ID {$bom_id_param}." : "No active BOM found for product ID {$product_id}.";
+        echo json_encode(['message' => $error_message, 'components' => []]);
         exit;
     }
 
-    $bom_id = $bom['id'];
-
-    // Fetch the components for this BOM, focusing on raw materials and packaging
     $getComponentsSql = "
         SELECT 
             bc.item_id AS id,
@@ -65,11 +84,14 @@ try {
     }
 
     header('Content-Type: application/json');
-    echo json_encode($components);
+    echo json_encode(['success' => true, 'bom_id' => $bom_id, 'components' => $components]);
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['message' => 'An error occurred while fetching the BOM: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'An error occurred: ' . $e->getMessage()]);
+} finally {
+    if ($conn) {
+        $conn->close();
+    }
 }
-
-$conn->close();
+?>
