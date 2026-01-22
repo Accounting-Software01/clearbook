@@ -181,28 +181,6 @@ export function Sidebar() {
         },
         
         {
-            label: 'Reports',
-            icon: ClipboardList,
-            subItems: [
-                {
-                    label: 'Customer Reports',
-                    icon: Users,
-                    subItems: [
-                        { href: '/reports/customer-statement', label: 'Customer Statement', icon: FileText, permission: 'view_reports' },
-                        { href: '/reports/customer-balances', label: 'Customer Balances', icon: Wallet, permission: 'view_reports' },
-                        { href: '/reports/debtors-report', label: 'Debtors Report', icon: ArrowDown, permission: 'view_reports' },
-                        { href: '/reports/creditors-report', label: 'Creditors Report', icon: ArrowUp, permission: 'view_reports' },
-                        { href: '/reports/customer-aging', label: 'Customer Aging', icon: Clock, permission: 'view_reports' },
-                        { href: '/reports/customers-with-credit-limit', label: 'Customers with Credit Limit', icon: CreditCard, permission: 'view_reports' },
-                        { href: '/reports/exceeded-credit-limit', label: 'Exceeded Credit Limit', icon: Ban, permission: 'view_reports' },
-                        { href: '/reports/best-performing-customers', label: 'Best Performing Customers', icon: Award, permission: 'view_reports' },
-                        { href: '/reports/last-transaction-date', label: 'Last Transaction Date', icon: CalendarClock, permission: 'view_reports' },
-                    ]
-                },
-                
-            ]
-        },
-        {
             label: 'Inventory Management',
             isTitle: true,
         },
