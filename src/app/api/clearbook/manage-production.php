@@ -1,11 +1,14 @@
 <?php
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set('error_log', '../../../php_error.log');
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 header('Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
-require_once __DIR__ . '../../../db_connect.php';
-require_once __DIR__ . '../../../lib/dbentry.php';
+require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/lib/dbentry.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -130,14 +133,41 @@ function handle_production_request($conn) {
                 $sub_entries = [];
                 $fg_account = null;
 
-                $components_stmt = $conn->prepare("SELECT bc.item_id, bc.quantity, rm.average_unit_cost, p.inventory_gl_account_id AS fg_account, rm.inventory_gl_account_id as rm_account FROM bom_components bc JOIN raw_materials rm ON bc.item_id = rm.id JOIN products p ON p.id = ? WHERE bc.bom_id = ?");
-                $components_stmt->bind_param("ii", $order['product_id'], $order['bom_id']);
+                // Fetch FG and RM GL Account IDs
+                $fg_gl_account_id = null;
+                $rm_gl_account_id = null;
+
+                $gl_accounts_stmt = $conn->prepare("SELECT id, system_role FROM chart_of_accounts WHERE company_id = ? AND system_role IN (?, ?)");
+                if (!$gl_accounts_stmt) { throw new Exception("DB Error preparing GL accounts statement: " . $conn->error, 500); }
+                $gl_role_fg = 'INVENTORY_FINISHED_GOODS';
+                $gl_role_rm = 'INVENTORY_RAW_MATERIAL';
+                $gl_accounts_stmt->bind_param("sss", $company_id, $gl_role_fg, $gl_role_rm);
+                $gl_accounts_stmt->execute();
+                $gl_accounts_result = $gl_accounts_stmt->get_result();
+                while ($row = $gl_accounts_result->fetch_assoc()) {
+                    if ($row['system_role'] === 'INVENTORY_FINISHED_GOODS') { $fg_gl_account_id = $row['id']; }
+                    if ($row['system_role'] === 'INVENTORY_RAW_MATERIAL') { $rm_gl_account_id = $row['id']; }
+                }
+                $gl_accounts_stmt->close();
+
+                if (is_null($fg_gl_account_id)) { throw new Exception("Finished Goods GL Account (INVENTORY_FINISHED_GOODS) not found in Chart of Accounts.", 404); }
+                if (is_null($rm_gl_account_id)) { throw new Exception("Raw Material GL Account (INVENTORY_RAW_MATERIAL) not found in Chart of Accounts.", 404); }
+
+                // Modified components_stmt query
+                $components_stmt = $conn->prepare("SELECT bc.item_id, bc.quantity, rm.average_unit_cost FROM bom_components bc JOIN raw_materials rm ON bc.item_id = rm.id WHERE bc.bom_id = ?");
+                if (!$components_stmt) {
+                    throw new Exception("DB Error preparing components statement: " . $conn->error, 500);
+                }
+                $components_stmt->bind_param("i", $order['bom_id']);
                 $components_stmt->execute();
                 $components = $components_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 $components_stmt->close();
 
                 // Corrected Loop for Consumption
                 $consumption_stmt = $conn->prepare("INSERT INTO production_order_consumption (production_order_id, material_id, quantity_consumed, unit_cost_at_consumption) VALUES (?, ?, ?, ?)");
+                if (!$consumption_stmt) {
+                    throw new Exception("DB Error preparing consumption statement: " . $conn->error, 500);
+                }
                 $consumption_stmt->bind_param("iidd", $order_id, $material_id_var, $quantity_consumed_var, $unit_cost_var);
                 foreach ($components as $c) {
                     $material_id_var = $c['item_id'];
@@ -145,13 +175,16 @@ function handle_production_request($conn) {
                     $unit_cost_var = $c['average_unit_cost'];
                     $cost = $quantity_consumed_var * $unit_cost_var;
                     $total_material_cost += $cost;
-                    $fg_account = $c['fg_account'];
+                    $fg_account = $fg_gl_account_id; // Set fg_account from fetched GL ID
                     if (!$consumption_stmt->execute()) throw new Exception("DB Error inserting consumption: " . $consumption_stmt->error, 500);
-                    $sub_entries[] = ['account' => $c['rm_account'], 'type' => 'Credit', 'amount' => $cost, 'narration' => 'Material Consumption for Prod. Order #' . $order_id];
+                    $sub_entries[] = ['account' => $rm_gl_account_id, 'type' => 'Credit', 'amount' => $cost, 'narration' => 'Material Consumption for Prod. Order #' . $order_id];
                 }
                 $consumption_stmt->close();
 
                 $overhead_costs_stmt = $conn->prepare("SELECT poc.amount, bo.gl_account, bo.overhead_name FROM production_order_costs poc JOIN bom_overheads bo ON poc.description = CONCAT('Planned: ', bo.overhead_name) WHERE poc.production_order_id = ?");
+                if (!$overhead_costs_stmt) {
+                    throw new Exception("DB Error preparing overhead costs statement: " . $conn->error, 500);
+                }
                 $overhead_costs_stmt->bind_param("i", $order_id);
                 $overhead_costs_stmt->execute();
                 $logged_overheads = $overhead_costs_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -179,12 +212,16 @@ function handle_production_request($conn) {
 }
 
 try {
+    // Corrected the path for require_once to db_connect.php
+    require_once __DIR__ . '/db_connect.php'; // Ensure correct path for db_connect.php relative to manage-production.php
+    require_once __DIR__ . '/lib/dbentry.php'; // Ensure correct path for dbentry.php relative to manage-production.php
+
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') $conn->begin_transaction();
     $response = handle_production_request($conn);
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') $conn->commit();
     echo json_encode($response);
 } catch (Exception $e) {
-    if ($conn->in_transaction) $conn->rollback();
+    if ($conn->autocommit(false) === false) $conn->rollback(); // Updated check for active transaction
     http_response_code($e->getCode() ?: 500);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 } finally {

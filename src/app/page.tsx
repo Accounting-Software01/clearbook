@@ -19,7 +19,8 @@ const useUser = () => {
     useEffect(() => {
         // getUser is synchronous, so no need for async/await.
         const checkUser = () => {
-            const currentUser = getUser();
+            
+            const currentUser = getCurrentUser();
             setUser(currentUser);
             setIsLoading(false);
         }

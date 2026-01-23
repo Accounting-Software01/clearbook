@@ -40,11 +40,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, MoreHorizontal, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/hooks/useAuth';
-import RolesAndPermissions from './RolesAndPermissions';
 import ManageUserPermissionsDialog from './ManageUserPermissionsDialog';
 
 interface User {
-    user_id: string;
+    uid: string;
     full_name: string;
     email: string;
     role: string;
@@ -78,17 +77,29 @@ const UsersAndAccessControl = () => {
             setIsLoading(true);
             try {
                 const response = await fetch(`https://hariindustries.net/api/clearbook/get_users.php?company_id=${currentUser.company_id}`);
+                
+                const responseText = await response.text();
+
                 if (!response.ok) {
-                    throw new Error('Failed to fetch users.');
+                    let errorMsg = `HTTP error! Status: ${response.status}`;
+                    try {
+                        const errorJson = JSON.parse(responseText);
+                        errorMsg = errorJson.error || errorJson.message || errorMsg;
+                    } catch(e) {
+                        errorMsg = responseText.substring(0, 100) || errorMsg;
+                    }
+                    throw new Error(errorMsg);
                 }
-                const data = await response.json();
-                if (data.success) {
+
+                const data = JSON.parse(responseText);
+
+                if (data.success && Array.isArray(data.users)) {
                     setUsers(data.users);
                 } else {
-                    throw new Error(data.error || 'Failed to fetch users.');
+                    throw new Error(data.error || 'Received invalid data from server.');
                 }
             } catch (error: any) {
-                toast({ variant: "destructive", title: "Error", description: error.message });
+                toast({ variant: "destructive", title: "Error Fetching Users", description: error.message });
             } finally {
                 setIsLoading(false);
             }
@@ -133,6 +144,12 @@ const UsersAndAccessControl = () => {
         }
     };
     
+    const handleUserUpdate = (updatedUser: User) => {
+        setUsers(currentUsers =>
+            currentUsers.map(u => (u.uid === updatedUser.uid ? updatedUser : u))
+        );
+    };
+
     const allRoles = [
         { value: "admin", label: "Admin" },
         { value: "accountant", label: "Accountant" },
@@ -153,8 +170,8 @@ const UsersAndAccessControl = () => {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle>Users & Roles</CardTitle>
-                        <CardDescription>Invite and manage user access.</CardDescription>
+                        <CardTitle>User Management</CardTitle>
+                        <CardDescription>Invite users and manage their roles & permissions.</CardDescription>
                     </div>
                      <Dialog open={isInviteDialogOpen} onOpenChange={setInviteDialogOpen}>
                         <DialogTrigger asChild>
@@ -210,7 +227,7 @@ const UsersAndAccessControl = () => {
                             </TableHeader>
                             <TableBody>
                                 {users.map((user) => (
-                                    <TableRow key={user.user_id}>
+                                    <TableRow key={user.uid}>
                                         <TableCell>
                                             <div className="font-medium">{user.full_name || 'Invited User'}</div>
                                             <div className="text-sm text-muted-foreground">{user.email}</div>
@@ -222,7 +239,7 @@ const UsersAndAccessControl = () => {
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon">
+                                                    <Button variant="ghost" size="icon" disabled={user.role === 'admin'}>
                                                         <MoreHorizontal className="h-4 w-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
@@ -231,7 +248,7 @@ const UsersAndAccessControl = () => {
                                                         setSelectedUser(user);
                                                         setPermissionsDialogOpen(true);
                                                     }}>
-                                                        Manage Permissions
+                                                        Manage Access
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -244,14 +261,12 @@ const UsersAndAccessControl = () => {
                 </CardContent>
             </Card>
 
-            <div className="mt-8">
-                <RolesAndPermissions />
-            </div>
-
             <ManageUserPermissionsDialog
                 user={selectedUser}
                 open={isPermissionsDialogOpen}
                 onOpenChange={setPermissionsDialogOpen}
+                availableRoles={availableRoles}
+                onUserUpdate={handleUserUpdate}
             />
         </>
     );

@@ -9,6 +9,8 @@ class DBEntry {
 
     /**
      * Creates a complete journal voucher and its lines based on the provided schema.
+     * @return bool True on success, false on failure.
+     * @throws Exception if any database operation fails.
      */
     public function create_journal_entry($company_id, $source, $narration, $reference_id, $sub_entries, $main_account, $total_amount, $user_id) {
         
@@ -34,21 +36,26 @@ class DBEntry {
             $stmt_voucher->bind_param("sisssisdds", $company_id, $user_id, $temp_voucher_number, $source, $voucher_type, $ref_id_int, $narration, $total_amount_float, $total_amount_float, $status);
             
             if (!$stmt_voucher->execute()) {
-                throw new Exception("Failed to create journal voucher: " . $stmt_voucher->error);
+                throw new Exception("DB Error inserting journal voucher: " . $stmt_voucher->error);
             }
 
             $voucher_id = $this->conn->insert_id;
             $stmt_voucher->close();
 
             if ($voucher_id == 0) {
-                throw new Exception("Failed to retrieve new voucher ID.");
+                throw new Exception("Failed to retrieve new voucher ID after insertion.");
             }
 
             // Update the voucher_number to be permanent and unique
             $final_voucher_number = 'JV-' . date('Ymd') . '-' . $voucher_id;
             $update_stmt = $this->conn->prepare("UPDATE journal_vouchers SET voucher_number = ? WHERE id = ?");
+            if (!$update_stmt) {
+                throw new Exception("Voucher number update preparation failed: " . $this->conn->error);
+            }
             $update_stmt->bind_param("si", $final_voucher_number, $voucher_id);
-            $update_stmt->execute();
+            if (!$update_stmt->execute()) {
+                throw new Exception("Failed to update voucher number: " . $update_stmt->error);
+            }
             $update_stmt->close();
 
             // 2. Insert the journal voucher lines
@@ -60,6 +67,8 @@ class DBEntry {
             }
 
             // Determine if the main entry is a Debit or Credit
+            // This logic seems to assume that if the first sub_entry is Debit, then the main entry is Credit for balance.
+            // Consider reviewing this logic for accuracy based on accounting principles.
             $main_entry_type = 'Debit';
             if (!empty($sub_entries) && isset($sub_entries[0]['type']) && $sub_entries[0]['type'] === 'Debit') {
                 $main_entry_type = 'Credit';
@@ -74,7 +83,7 @@ class DBEntry {
 
                 $stmt_lines->bind_param("siisdds", $company_id, $user_id, $voucher_id, $account_id_str, $debit, $credit, $entry_description);
                 if (!$stmt_lines->execute()) {
-                    throw new Exception("Failed to create journal line: " . $stmt_lines->error);
+                    throw new Exception("DB Error inserting journal voucher line: " . $stmt_lines->error);
                 }
             }
             
@@ -85,17 +94,16 @@ class DBEntry {
 
             $stmt_lines->bind_param("siisdds", $company_id, $user_id, $voucher_id, $main_account_str, $main_debit, $main_credit, $narration);
             if (!$stmt_lines->execute()) {
-                throw new Exception("Failed to create main journal line: " . $stmt_lines->error);
+                throw new Exception("DB Error inserting journal voucher line (main entry): " . $stmt_lines->error);
             }
 
             $stmt_lines->close();
             $this->conn->commit(); // Commit transaction
 
-            return $voucher_id;
+            return true; // Indicate success
         } catch (Exception $e) {
             $this->conn->rollback(); // Rollback on error
             throw $e; // Re-throw the exception to be handled by the caller
         }
     }
 }
-?>

@@ -13,27 +13,35 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { allNavItems } from '@/lib/nav-items';
 
-const staticModules = [
-  { permission: 'view_dashboard', name: 'Dashboard' },
-  { permission: 'manage_users', name: 'Users & Roles' },
-  { permission: 'view_accounting', name: 'Accounting' },
-  { permission: 'manage_settings', name: 'Settings' },
-  { permission: 'view_production', name: 'Production' },
-  { permission: 'view_inventory', name: 'Inventory' },
-  { permission: 'view_procurement', name: 'Procurement' },
-  { permission: 'view_sales', name: 'Sales' },
-];
+const extractPermissions = (items: any[]) => {
+    let permissions: { permission: string; name: string; }[] = [];
+    items.forEach(item => {
+        if (item.permission && item.label) {
+            if (!permissions.some(p => p.permission === item.permission)) {
+                 permissions.push({ permission: item.permission, name: item.label });
+            }
+        }
+        if (item.subItems) {
+            permissions = permissions.concat(extractPermissions(item.subItems));
+        }
+    });
+    return [...new Map(permissions.map(item => [item['permission'], item])).values()];
+};
+
 
 interface User {
   uid: string;
   full_name: string;
   email: string;
   role: string;
+  status: string;
 }
 
 interface Module {
@@ -60,10 +68,8 @@ const ManageUserPermissionsDialog = ({
   onOpenChange,
 }: ManageUserPermissionsDialogProps) => {
   const { user: currentUser } = useAuth();
-  const [modules] = useState<Module[]>(staticModules);
-  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
+  const modules = useMemo(() => extractPermissions(allNavItems), []);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
-  
   const initialUserPermissions = useRef<string[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +78,7 @@ const ManageUserPermissionsDialog = ({
 
   const userId = user?.uid;
   const companyId = currentUser?.company_id;
+  const [selectedRole, setSelectedRole] = useState('');
 
   useEffect(() => {
     let isCancelled = false;
@@ -95,11 +102,7 @@ const ManageUserPermissionsDialog = ({
         if (isCancelled) return;
 
         if (permissionsData.success) {
-          const fetchedUserPermissions = permissionsData.user_permissions || [];
-          const fetchedRolePermissions = permissionsData.role_permissions || [];
-          
-          // ✅ FINAL FIX: Create separate copies for state and the initial snapshot.
-          setRolePermissions([...fetchedRolePermissions]);
+          const fetchedUserPermissions = permissionsData.permissions || [];
           setUserPermissions([...fetchedUserPermissions]);
           initialUserPermissions.current = [...fetchedUserPermissions];
 
@@ -108,10 +111,9 @@ const ManageUserPermissionsDialog = ({
             permissionsData.error || 'An unknown error occurred while fetching permissions.'
           );
         }
-      } catch (error: any) { 
+      } catch (error: any) {
         if (isCancelled) return;
         toast({ variant: 'destructive', title: 'Error Loading Data', description: error.message });
-        setRolePermissions([]);
         setUserPermissions([]);
         initialUserPermissions.current = [];
       } finally {
@@ -119,20 +121,21 @@ const ManageUserPermissionsDialog = ({
       }
     };
 
-    if (open) {
+    if (open && user) { // Check for user here
+      setSelectedRole(user.role); // Set the role when the dialog opens
       fetchPermissions();
     } else {
-      setRolePermissions([]);
       setUserPermissions([]);
+      setSelectedRole('');
       initialUserPermissions.current = [];
       setIsLoading(false);
-      setIsSaving(false);
+  setIsSaving(false);
     }
 
     return () => {
       isCancelled = true;
     };
-  }, [userId, companyId, open, toast]);
+  }, [userId, companyId, open, toast, user]); // Add 'user' to the dependency array
 
   const handlePermissionChange = (permission: string) => {
     setUserPermissions((prev) =>
@@ -146,13 +149,12 @@ const ManageUserPermissionsDialog = ({
     userPermissions,
   ]);
 
-  const effectivePermissions = useMemo(
-    () => new Set([...rolePermissions, ...userPermissions]),
-    [rolePermissions, userPermissions]
-  );
-
   const handleSavePermissions = async () => {
-    if (!userId || !companyId) return;
+    if (!user || !currentUser?.company_id) {
+        toast({ variant: 'destructive', title: 'Error', description: 'User or Company ID is missing. Cannot save.' });
+        return;
+    }
+    
     if (!hasChanges) {
       toast({ title: 'No changes to save', description: "You haven't made any changes to the user's permissions." });
       return;
@@ -160,20 +162,27 @@ const ManageUserPermissionsDialog = ({
 
     setIsSaving(true);
     try {
-      const url = `https://hariindustries.net/api/clearbook/manage_user_permissions.php?user_id=${userId}&company_id=${companyId}`;
+      const url = `https://hariindustries.net/api/clearbook/manage_user_permissions.php`;
       
+      const payload = {
+        user_id: user.uid,
+        company_id: currentUser.company_id,
+        permissions: userPermissions,
+        role: selectedRole,
+      };
+
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          permissions: userPermissions,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
 
       if (result.success) {
-        toast({ title: 'Success!', description: 'User permissions updated successfully.' });
+        toast({ title: 'Success!', description: 'User details updated successfully.' });
+        // The ...user spread will now correctly include the status
+        onUserUpdate({ ...user, role: selectedRole });
         onOpenChange(false);
       } else {
         throw new Error(result.error || 'Failed to save permissions.');
@@ -185,13 +194,14 @@ const ManageUserPermissionsDialog = ({
     }
   };
 
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Manage Permissions for {user?.full_name || 'User'}</DialogTitle>
           <DialogDescription>
-            Assign or revoke permissions. Role permissions are fixed.
+            Select the modules this user has access to.
           </DialogDescription>
         </DialogHeader>
         {isLoading ? (
@@ -199,29 +209,25 @@ const ManageUserPermissionsDialog = ({
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 py-4">
-            {modules.map((module) => {
-              const hasRolePermission = rolePermissions.includes(module.permission);
-              const isChecked = effectivePermissions.has(module.permission);
-
-              return (
-                <div key={module.permission} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={module.permission}
-                    checked={isChecked}
-                    onCheckedChange={() => handlePermissionChange(module.permission)}
-                    disabled={hasRolePermission}
-                  />
-                  <Label
-                    htmlFor={module.permission}
-                    className={cn('font-normal', hasRolePermission && 'text-muted-foreground')}
-                  >
-                    {module.name}
-                  </Label>
+            <ScrollArea className="h-72 w-full rounded-md border">
+                 <div className="grid grid-cols-2 gap-4 p-4">
+                    {modules.map((module) => (
+                        <div key={module.permission} className="flex items-center space-x-2">
+                        <Checkbox
+                            id={module.permission}
+                            checked={userPermissions.includes(module.permission)}
+                            onCheckedChange={() => handlePermissionChange(module.permission)}
+                        />
+                        <Label
+                            htmlFor={module.permission}
+                            className={cn('font-normal')}
+                        >
+                            {module.name}
+                        </Label>
+                        </div>
+                    ))}
                 </div>
-              );
-            })}
-          </div>
+            </ScrollArea>
         )}
         <DialogFooter>
           <DialogClose asChild>
