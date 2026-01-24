@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../../src/app/api/db_connect.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -11,24 +11,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// --- DEBUGGING STEP ---
 $input = json_decode(file_get_contents('php://input'), true);
 
-// Immediately return the received input to the client for inspection.
-http_response_code(418); // Use an unusual status code to indicate it's a debug response
-echo json_encode([
-    'success' => false, 
-    'error' => 'DEBUG MODE: Server is returning the input it received.', 
-    'input_received' => $input
-]);
-exit;
-// --- END DEBUGGING STEP ---
-
-
-$user_id = $input['user_id'] ?? null;
+$user_id = isset($input['user_id']) ? (int)$input['user_id'] : null;
 $company_id = $input['company_id'] ?? null;
 $permissions = $input['permissions'] ?? [];
-$new_role = $input['role'] ?? null;
 
 if (!$user_id || !$company_id) {
     http_response_code(400);
@@ -45,11 +32,6 @@ if (!is_array($permissions)) {
 try {
     $pdo->beginTransaction();
 
-    if ($new_role) {
-        $stmt_update_role = $pdo->prepare("UPDATE users SET role = ? WHERE uid = ? AND company_id = ?");
-        $stmt_update_role->execute([$new_role, $user_id, $company_id]);
-    }
-
     $stmt_delete = $pdo->prepare("DELETE FROM user_permissions WHERE user_id = ? AND company_id = ?");
     $stmt_delete->execute([$user_id, $company_id]);
 
@@ -64,7 +46,7 @@ try {
 
     $pdo->commit();
 
-    echo json_encode(['success' => true, 'message' => 'User details updated successfully.']);
+    echo json_encode(['success' => true, 'message' => 'User permissions updated successfully.']);
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) {

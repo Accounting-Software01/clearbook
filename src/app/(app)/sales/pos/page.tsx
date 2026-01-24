@@ -72,20 +72,29 @@ const ProductListItem = ({ product, onAddToCart, disabled }: { product: Item, on
     </Card>
 );
 
-const CartItemView = ({ item, onRemove }: { item: CartItem, onRemove: (id: string) => void }) => (
-    <div className="flex justify-between items-center mb-3">
+const CartItemView = ({ item, onRemove, onQuantityChange }: { item: CartItem, onRemove: (id: string) => void, onQuantityChange: (id: string, quantity: number) => void }) => (
+    <div className="flex justify-between items-center mb-4">
         <div>
             <p className="font-semibold">{item.name}</p>
-            <p className="text-sm text-muted-foreground">{currencyFormatter.format(item.unit_price)} x {item.quantity}</p>
+            <p className="text-sm text-muted-foreground">{currencyFormatter.format(item.unit_price)}</p>
         </div>
         <div className="flex items-center gap-2">
-            <p className="font-bold">{currencyFormatter.format(item.unit_price * item.quantity)}</p>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity - 1)} disabled={item.quantity <= 1}>-</Button>
+            <Input 
+                type="number" 
+                className="w-16 h-8 text-center" 
+                value={item.quantity}
+                onChange={(e) => onQuantityChange(item.id, parseInt(e.target.value, 10) || 1)}
+            />
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity + 1)}>+</Button>
+            <p className="font-bold w-24 text-right">{currencyFormatter.format(item.unit_price * item.quantity)}</p>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(item.id)}>
                 <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
         </div>
     </div>
 );
+
 
 const EmptyCart = () => (
     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -294,6 +303,7 @@ export default function PointOfSalePage() {
         setCart(prevCart => {
             const existingItem = prevCart.find(item => item.id === product.id);
             if (existingItem) {
+                // Just increment the quantity by 1
                 return prevCart.map(item => {
                     if (item.id === product.id) {
                         const newQuantity = item.quantity + 1;
@@ -304,13 +314,32 @@ export default function PointOfSalePage() {
                     return item;
                 });
             } else {
+                // Add the new item to the cart
                 const grossAmount = unit_price * 1;
                 const newVat = (grossAmount - 0) * (vatRate / 100);
                 return [...prevCart, { ...product, quantity: 1, unit_price, discount: 0, vat: newVat }];
             }
         });
     };
+  
+    const handleQuantityChange = (itemId: string, newQuantity: number) => {
+        if (newQuantity < 1) {
+            // If the user tries to go below 1, remove the item instead
+            handleRemoveFromCart(itemId);
+            return;
+        }
 
+        setCart(prevCart => prevCart.map(item => {
+            if (item.id === itemId) {
+                const grossAmount = item.unit_price * newQuantity;
+                const newVat = (grossAmount - item.discount) * (vatRate / 100);
+                return { ...item, quantity: newQuantity, vat: newVat };
+            }
+            return item;
+        }));
+    };
+
+    
     const handleRemoveFromCart = (itemId: string) => {
         setCart(prevCart => prevCart.filter(item => item.id !== itemId));
     };
@@ -449,7 +478,9 @@ export default function PointOfSalePage() {
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col justify-between p-4">
                         <div className="flex-1 overflow-y-auto">
-                           {cart.length > 0 ? cart.map(item => <CartItemView key={item.id} item={item} onRemove={handleRemoveFromCart}/>) : <EmptyCart />}
+
+                           {cart.length > 0 ? cart.map(item => <CartItemView key={item.id} item={item} onRemove={handleRemoveFromCart} onQuantityChange={handleQuantityChange} />) : <EmptyCart />}
+
                         </div>
                         <div>
                           <Separator className="my-4" />

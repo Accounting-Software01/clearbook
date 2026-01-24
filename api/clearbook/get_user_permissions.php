@@ -1,15 +1,22 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../../src/app/api/db_connect.php';
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // In production, restrict this to your frontend domain
+header('Access-Control-Allow-Origin: *'); // For development. In production, restrict to your frontend domain.
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
+// Handle CORS preflight request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
+
+// --- Main Logic ---
 
 $user_id = $_GET['user_id'] ?? null;
 $company_id = $_GET['company_id'] ?? null;
@@ -21,59 +28,50 @@ if (!$user_id || !$company_id) {
 }
 
 try {
-    // FIX 1: Query users table by `id`, not `user_id`
-    $stmt_user = $pdo->prepare("SELECT role, company_type FROM users WHERE id = ? AND company_id = ?");
-    $stmt_user->execute([$user_id, $company_id]);
-    $user_info = $stmt_user->fetch(PDO::FETCH_ASSOC);
+    // 1. Get the user's assigned role from the `users` table.
+    $stmt_role = $pdo->prepare("SELECT role FROM users WHERE user_id = ? AND company_id = ?");
+    $stmt_role->execute([$user_id, $company_id]);
+    $user_data = $stmt_role->fetch(PDO::FETCH_ASSOC);
 
-    if (!$user_info) {
+    if (!$user_data) {
         http_response_code(404);
         echo json_encode(['success' => false, 'error' => 'User not found.']);
         exit;
     }
-
-    $role = $user_info['role'];
-    $company_type = $user_info['company_type'];
-
+    
+    $role = $user_data['role'];
     $role_permissions = [];
 
-    // FIX 2: Define modules statically for admin role, don't query the database
-    if ($role === 'admin') {
-        $modules = [
-            ["permission" => "view_dashboard"],
-            ["permission" => "manage_users"],
-            ["permission" => "view_accounting"],
-            ["permission" => "manage_settings"],
-            ["permission" => "view_production"],
-            ["permission" => "view_inventory"],
-            ["permission" => "view_procurement"],
-            ["permission" => "view_sales"],
-        ];
-        // Extract just the permission strings
-        $role_permissions = array_column($modules, 'permission');
-    } else {
-        // Fetch role-based permissions from the role_permissions table
-        $stmt_role = $pdo->prepare("SELECT permission FROM role_permissions WHERE role = ? AND (company_type = ? OR company_type = 'all')");
-        $stmt_role->execute([$role, $company_type]);
-        $role_permissions = $stmt_role->fetchAll(PDO::FETCH_COLUMN, 0);
+    // 2. If a role is assigned, get all base permissions for that role.
+    if ($role) {
+        // Role permissions are global, not company-specific
+        $stmt_role_perms = $pdo->prepare("SELECT permission FROM role_permissions WHERE role = ?");
+        $stmt_role_perms->execute([$role]);
+        $role_permissions = $stmt_role_perms->fetchAll(PDO::FETCH_COLUMN, 0); 
     }
 
-    // Fetch user-specific permissions from the user_permissions table
+    // 3. Get all user-specific, individual permissions from the `user_permissions` table.
     $stmt_user_perms = $pdo->prepare("SELECT permission FROM user_permissions WHERE user_id = ? AND company_id = ?");
     $stmt_user_perms->execute([$user_id, $company_id]);
-    $user_permissions = $stmt_user_perms->fetchAll(PDO::FETCH_COLUMN, 0);
+    $user_specific_permissions = $stmt_user_perms->fetchAll(PDO::FETCH_COLUMN, 0);
 
-    // Return both sets of permissions
+    // 4. Merge the base role permissions with the user-specific permissions.
+    $final_permissions = array_unique(array_merge($role_permissions, $user_specific_permissions));
+
+    // 5. Return the final, consolidated list of permissions.
     echo json_encode([
-        'success' => true,
-        'role_permissions' => $role_permissions,
-        'user_permissions' => $user_permissions
+        'success' => true, 
+        'permissions' => array_values($final_permissions)
     ]);
-
-} catch (Exception $e) {
-    error_log("Get User Permissions Error: " . $e->getMessage());
+} catch (Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'An internal server error occurred while fetching permissions.']);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
+    exit;
 }
 
 ?>

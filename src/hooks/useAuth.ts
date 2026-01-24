@@ -40,8 +40,8 @@ const fetchCombinedPermissions = async (userId: string, companyId: string): Prom
         if (!response.ok) return [];
         const data = await response.json();
         if (data.success) {
-            // Combine role and user permissions, ensuring no duplicates
-            return [...new Set([...(data.role_permissions || []), ...(data.user_permissions || [])])];
+            // Use the permissions key from the API response
+            return data.permissions || [];
         }
         return [];
     } catch (error) {
