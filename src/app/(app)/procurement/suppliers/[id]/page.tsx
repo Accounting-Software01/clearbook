@@ -3,41 +3,42 @@
 import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Button } from "@/components/ui/button";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { api } from '@/lib/api';
-import { Loader2, AlertCircle, Mail, Phone, MapPin, FileText, Percent, Edit, PlusCircle } from 'lucide-react';
-import { ActivitiesTable } from '@/components/procurement/ActivitiesTable';
+import { Loader2, AlertCircle, Mail, Phone, MapPin, FileText, Edit, PlusCircle, User, Briefcase, Building } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { LedgerTable } from '@/components/procurement/LedgerTable';
+import { Badge } from '@/components/ui/badge';
 
-// Define types
+// Define new types based on the API response
 interface Supplier {
-  id: string;
-  name: string;
-  contact_person?: string;
-  email?: string;
-  phone?: string;
-  billing_address?: string;
-  payment_terms?: number;
-  vat_percentage?: number;
-  withholding_tax_applicable?: boolean;
+    id: number;
+    supplier_code: string;
+    name: string;
+    contact_person: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    country: string;
+    supplier_currency: string;
+    payment_terms: number;
+    vat_number: string;
 }
 
-interface Activity {
-    id: string;
+interface LedgerEntry {
     date: string;
     type: string;
     reference: string;
-    amount: number;
-    status: string;
-}
-
-interface Balance {
-    total_invoiced: number;
-    total_paid: number;
-    outstanding_balance: number;
+    description: string;
+    debit: number;
+    credit: number;
+    balance: number;
 }
 
 const SupplierDetailsPage = () => {
@@ -47,8 +48,8 @@ const SupplierDetailsPage = () => {
     const supplierId = pathname.split('/').pop();
 
     const [supplier, setSupplier] = useState<Supplier | null>(null);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [balance, setBalance] = useState<Balance | null>(null);
+    const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+    const [currentBalance, setCurrentBalance] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -57,46 +58,43 @@ const SupplierDetailsPage = () => {
 
         const fetchSupplierData = async () => {
             setIsLoading(true);
+            setError(null);
             try {
-                // Simulating fetch with the data provided by the user
-                const response = {
-                    "success":true,
-                    "profile":{
-                        "id":"12",
-                        "name":"Sagheer+ Lab Limited",
-                        "contact_person":"Muhammad Sagheer",
-                        "email":"contact@sagheerplus.com.ng",
-                        "phone":"08063386516",
-                        "billing_address":"KM 142 Kano Kaduna Expressway, Maraban Gwanda, Sabon Gari Zaria",
-                        "payment_terms":0,
-                        "wht_applicable":1,
-                        "vat_percentage":0,
-                        "withholding_tax_applicable":true
-                    },
-                    "activities":[
-                        {"id":"103","date":"2026-01-07","reference":"O/B-12","amount":20000,"status":"posted","type":"Payment"}
-                    ],
-                    "balance":{"total_invoiced":0,"total_paid":20000,"outstanding_balance":-20000}
-                };
-                setSupplier(response.profile);
-                setActivities(response.activities);
-                setBalance(response.balance);
+                const response = await fetch(`https://hariindustries.net/api/clearbook/get-supplier-ledger.php?company_id=${user.company_id}&supplier_id=${supplierId}`);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || "Failed to fetch supplier ledger.");
+                }
+
+                setSupplier(result.supplier);
+                setLedger(result.ledger);
+                setCurrentBalance(result.current_balance);
+
             } catch (e: any) {
                 setError(`Failed to fetch supplier details: ${e.message}`);
+                toast({
+                    variant: "destructive",
+                    title: "Error fetching data",
+                    description: e.message,
+                });
             } finally {
                 setIsLoading(false);
             }
         };
 
         fetchSupplierData();
-    }, [supplierId, user]);
+    }, [supplierId, user, toast]);
 
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
+        if (!supplier) return 'N/A';
+        const currencyCode = supplier.supplier_currency && supplier.supplier_currency !== '0' ? supplier.supplier_currency : 'NGN';
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode }).format(amount);
+        
     };
 
     if (isLoading) {
-        return <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/> <span className='ml-2'>Loading supplier details...</span></div>;
+        return <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/> <span className='ml-2'>Loading supplier ledger...</span></div>;
     }
 
     if (error) {
@@ -112,55 +110,57 @@ const SupplierDetailsPage = () => {
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                     <Avatar className="h-16 w-16">
-                        <AvatarFallback className="text-2xl">{supplier.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback className="text-2xl bg-primary text-primary-foreground">{supplier.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div>
                         <h1 className="text-3xl font-bold">{supplier.name}</h1>
-                        <p className="text-muted-foreground">Supplier ID: {supplier.id}</p>
+                        <p className="text-muted-foreground">Supplier Code: {supplier.supplier_code}</p>
                     </div>
                 </div>
                 <div className="flex space-x-2">
-                    <Button variant="outline"><Edit className="h-4 w-4 mr-2"/> Edit Supplier</Button>
-                    <Button><PlusCircle className="h-4 w-4 mr-2"/> New Invoice</Button>
+                    <Button variant="outline"><Edit className="h-4 w-4 mr-2"/> Edit</Button>
+                    <Button><PlusCircle className="h-4 w-4 mr-2"/> New Bill</Button>
                 </div>
             </div>
 
-            <Tabs defaultValue="overview">
+            <Card>
+                <CardContent className="p-6">
+                    <h3 className="text-lg font-medium mb-4">Account Summary</h3>
+                     <div className="grid gap-4 md:grid-cols-3 mt-4">
+                        <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground">Currency</p>
+                            <p className="text-2xl font-bold">{supplier.supplier_currency}</p>
+                        </div>
+                         <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground">Total AP</p>
+                            <p className={`text-2xl font-bold ${currentBalance !== null && currentBalance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                                {currentBalance !== null ? formatCurrency(currentBalance) : 'N/A'}
+                            </p>
+                        </div>
+                         <div className="p-4 border rounded-lg">
+                             <p className="text-sm text-muted-foreground">Payment Terms</p>
+                             <p className="text-2xl font-bold">{supplier.payment_terms !== null ? `${supplier.payment_terms} days` : 'N/A'}</p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Tabs defaultValue="activities">
                 <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
+                    <TabsTrigger value="activities">Transaction Ledger</TabsTrigger>
                     <TabsTrigger value="profile">Profile</TabsTrigger>
-                    <TabsTrigger value="activities">Activities</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="overview">
-                    <div className="grid gap-4 md:grid-cols-3 mt-4">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Total Invoiced</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold">{balance ? formatCurrency(balance.total_invoiced) : 'N/A'}</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Total Paid</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-2xl font-bold text-green-600">{balance ? formatCurrency(balance.total_paid) : 'N/A'}</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Outstanding Balance</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className={`text-2xl font-bold ${balance && balance.outstanding_balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                                    {balance ? formatCurrency(balance.outstanding_balance) : 'N/A'}
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
+                 <TabsContent value="activities">
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle>Transactional History</CardTitle>
+                            <CardDescription>A detailed record of all transactions with this supplier.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                           <LedgerTable ledger={ledger} currency={supplier.supplier_currency} />
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 <TabsContent value="profile">
@@ -168,57 +168,51 @@ const SupplierDetailsPage = () => {
                         <CardHeader>
                             <CardTitle>Supplier Information</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <CardContent className="space-y-6 pt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="flex items-start space-x-3">
-                                    <Phone className="h-5 w-5 text-muted-foreground mt-1" />
+                                    <Building className="h-5 w-5 text-muted-foreground mt-1" />
+                                    <div>
+                                        <p className="font-semibold">Legal Name</p>
+                                        <p>{supplier.name || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start space-x-3">
+                                    <User className="h-5 w-5 text-muted-foreground mt-1" />
                                     <div>
                                         <p className="font-semibold">Contact Person</p>
                                         <p>{supplier.contact_person || 'N/A'}</p>
-                                        <p className="text-sm text-muted-foreground">{supplier.phone || 'N/A'}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start space-x-3">
                                     <Mail className="h-5 w-5 text-muted-foreground mt-1" />
                                     <div>
                                         <p className="font-semibold">Email</p>
-                                        <p>{supplier.email || 'N/A'}</p>
+                                        <p className="hover:underline cursor-pointer">{supplier.email || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                 <div className="flex items-start space-x-3">
+                                    <Phone className="h-5 w-5 text-muted-foreground mt-1" />
+                                    <div>
+                                        <p className="font-semibold">Phone</p>
+                                        <p>{supplier.phone || 'N/A'}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start space-x-3">
                                     <MapPin className="h-5 w-5 text-muted-foreground mt-1" />
                                     <div>
-                                        <p className="font-semibold">Billing Address</p>
-                                        <p>{supplier.billing_address || 'N/A'}</p>
+                                        <p className="font-semibold">Address</p>
+                                        <p>{`${supplier.address}, ${supplier.city}, ${supplier.state}, ${supplier.country}`}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start space-x-3">
-                                    <FileText className="h-5 w-5 text-muted-foreground mt-1" />
+                                    <Briefcase className="h-5 w-5 text-muted-foreground mt-1" />
                                     <div>
-                                        <p className="font-semibold">Payment Terms</p>
-                                        <p>{supplier.payment_terms !== null ? `${supplier.payment_terms} days` : 'N/A'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-start space-x-3">
-                                    <Percent className="h-5 w-5 text-muted-foreground mt-1" />
-                                    <div>
-                                        <p className="font-semibold">Tax Information</p>
-                                        <p>VAT: {supplier.vat_percentage !== null ? `${supplier.vat_percentage}%` : 'N/A'}</p>
-                                        <p>WHT Applicable: {supplier.withholding_tax_applicable ? 'Yes' : 'No'}</p>
+                                        <p className="font-semibold">Tax ID / VAT Number</p>
+                                        <p>{supplier.vat_number || 'Not Provided'}</p>
                                     </div>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="activities">
-                    <Card className="mt-4">
-                        <CardHeader>
-                            <CardTitle>Transactional History</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <ActivitiesTable activities={activities} />
                         </CardContent>
                     </Card>
                 </TabsContent>
