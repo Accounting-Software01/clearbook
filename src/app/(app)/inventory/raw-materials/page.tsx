@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, AlertCircle, RefreshCw, BookUp } from 'lucide-react';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
-import { ItemHistoryDialog } from '@/components/ItemHistoryDialog';
+import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog'; 
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -28,17 +28,30 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-// Interface matches the aliased output from the get-items.php API
+// Matches the aliased output from the get-items.php API
 interface InventoryItem {
   id: number;
   name: string;
   sku: string;
   category: string;
-  unit_of_measure: string;
-  unit_cost: number; // Aliased from average_unit_cost
-  quantity: number;  // Aliased from quantity_on_hand
+  unit_of_measure: string; // Now directly from API
+  unit_cost: number;
+  quantity: number;
   item_type: 'product' | 'raw_material';
-  total_value: number; // This will be calculated on the client
+  total_value: number; // Now directly from API
+}
+
+// Matches the history ledger entry from get-item-history.php
+interface LedgerEntry {
+  date: string;
+  type: string;
+  description: string;
+  quantity: number;
+  unit_cost: number | null;
+  total_value: number | null;
+  balance_quantity: number;
+  balance_avg_cost: number | null;
+  balance_total_value: number | null;
 }
 
 const formatCurrency = (amount: number) => {
@@ -56,43 +69,33 @@ const RawMaterialsPage = () => {
     const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
     const [isOpeningBalanceDialogOpen, setIsOpeningBalanceDialogOpen] = useState(false);
+    
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+    const [itemHistory, setItemHistory] = useState<LedgerEntry[]>([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
     const [showOpeningBalancePrompt, setShowOpeningBalancePrompt] = useState(false);
 
     const fetchInventory = useCallback(async () => {
         if (!user?.company_id) return;
-
         setIsLoading(true);
         setError(null);
-
         try {
             const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}&user_role=${user.role}`);
-            
-            if (!response.ok) {
-                let errorText = `HTTP error! status: ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorText = errorData.message || JSON.stringify(errorData);
-                } catch (jsonError) {
-                    errorText = response.statusText;
-                }
-                throw new Error(errorText);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             
             const data = await response.json();
-
             if (data) {
+                // Backend now calculates total_value, so we just parse it.
                 const processItem = (item: any): InventoryItem => ({
                     ...item,
                     unit_cost: parseFloat(item.unit_cost) || 0,
                     quantity: parseFloat(item.quantity) || 0,
-                    total_value: (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_cost) || 0),
+                    total_value: parseFloat(item.total_value) || 0,
                 });
-
                 const rawMaterials = (data.raw_materials || []).map(processItem);
                 setItems(rawMaterials);
 
-                // Prompt for opening balance if it's the first time and no stock exists
                 const hasSeenPrompt = localStorage.getItem('hasSeenOpeningBalancePrompt_raw_materials');
                 if (user && user.role === 'admin' && !hasSeenPrompt && rawMaterials.length > 0 && rawMaterials.every(item => item.quantity === 0)) {
                     setShowOpeningBalancePrompt(true);
@@ -118,9 +121,31 @@ const RawMaterialsPage = () => {
         fetchInventory();
     };
 
-    const handleRowClick = (item: InventoryItem) => {
+    const handleRowClick = async (item: InventoryItem) => {
+        if (!user) return;
         setSelectedItem(item);
         setIsHistoryDialogOpen(true);
+        setIsHistoryLoading(true);
+        setItemHistory([]); // Clear previous history
+
+        try {
+            const response = await fetch(`https://hariindustries.net/api/clearbook/get-item-history.php?company_id=${user.company_id}&item_id=${item.id}&item_type=raw_material&user_role=${user.role}`);
+            const data = await response.json();
+            if (data.status === 'success') {
+                setItemHistory(data.history);
+            } else {
+                throw new Error(data.message || 'Failed to fetch history');
+            }
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Error',
+                description: `Could not fetch item history: ${error.message}`,
+            });
+            setIsHistoryDialogOpen(false); // Close dialog on error
+        } finally {
+            setIsHistoryLoading(false);
+        }
     };
 
     const handlePromptAction = (confirm: boolean) => {
@@ -130,6 +155,12 @@ const RawMaterialsPage = () => {
             setIsOpeningBalanceDialogOpen(true);
         }
     };
+    
+    const handleCloseHistoryDialog = () => {
+        setIsHistoryDialogOpen(false);
+        setSelectedItem(null);
+        setItemHistory([]);
+    }
 
     return (
         <>
@@ -138,11 +169,14 @@ const RawMaterialsPage = () => {
                 onOpenChange={setIsRegisterItemDialogOpen}
                 onSuccess={handleRegistrationSuccess}
             />
-            <ItemHistoryDialog
-                open={isHistoryDialogOpen}
-                onOpenChange={setIsHistoryDialogOpen}
-                item={selectedItem}
-            />
+            {selectedItem && (
+                <ItemHistoryDialog
+                    isOpen={isHistoryDialogOpen}
+                    onClose={handleCloseHistoryDialog}
+                    history={itemHistory}
+                    itemName={selectedItem.name}
+                />
+            )}
             <RecordOpeningBalanceDialog
                 open={isOpeningBalanceDialogOpen}
                 onOpenChange={setIsOpeningBalanceDialogOpen}
