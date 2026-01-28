@@ -1,5 +1,40 @@
 <?php
+/************************************
+ * ERROR REPORTING (DEV ONLY)
+ ************************************/
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+/************************************
+ * CORS CONFIGURATION
+ ************************************/
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowed_origins = [
+    'https://9003-firebase-studiogit-1765450741734.cluster-cbeiita7rbe7iuwhvjs5zww2i4.cloudworkstations.dev',
+    'https://clearbook-olive.vercel.app',
+	'https://hariindustries.net'
+];
+if (in_array($origin, $allowed_origins, true)) {
+    header("Access-Control-Allow-Origin: {$origin}");
+}
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Content-Type: application/json; charset=UTF-8");
+
+/************************************
+ * PREFLIGHT REQUEST
+ ************************************/
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+
 require_once 'db_connect.php';
+
+
 
 // Suppress PHP errors from being displayed, ensuring a clean JSON response.
 error_reporting(0);
@@ -175,7 +210,10 @@ function handlePost($conn) {
 
         foreach ($data['items'] as $item) {
             $vat_applicable_int = $item['vat_applicable'] ? 1 : 0;
-            $stmt_items->bind_param("iisdddiidd",
+            $stmt_items->bind_param("iisdddiddd",
+            
+
+
                 $po_id, $item['item_id'], $item['description'], $item['quantity'], $item['unit_price'],
                 $item['line_amount'], $vat_applicable_int, $item['vat_rate'], $item['vat_amount'], $item['line_total']
             );

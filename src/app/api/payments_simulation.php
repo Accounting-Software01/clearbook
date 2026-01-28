@@ -77,39 +77,45 @@ try {
 // ======================================================
 
 function handleGet($pdo, $company_id, $action, $params) {
-    // These actions are for populating form dropdowns and are kept separate
     $simple_actions = [
-        'get_suppliers' => "SELECT id, supplier_name FROM suppliers WHERE company_id = :company_id ORDER BY supplier_name",
+        'get_debit_accounts' => "SELECT id, account_code, account_name FROM chart_of_accounts WHERE company_id = :company_id AND is_active = 1 ORDER BY account_code ASC",
+        'get_suppliers' => "SELECT id, name FROM suppliers WHERE company_id = :company_id ORDER BY name",
         'get_customers' => "SELECT id, customer_name FROM customers WHERE company_id = :company_id ORDER BY customer_name",
-        'get_bank_accounts' => "SELECT id, account_name, gl_account_code, id as account_id FROM chart_of_accounts WHERE company_id = :company_id AND classification = 'Asset' AND type = 'Cash & Bank' ORDER BY account_name",
+        'get_bank_accounts' => "SELECT id, bank_name, account_name, account_number, currency, gl_account_code FROM bank_accounts WHERE company_id = :company_id ORDER BY account_name"
     ];
 
     if (array_key_exists($action, $simple_actions)) {
         $stmt = $pdo->prepare($simple_actions[$action]);
-        $stmt->execute([':company_id' => $company_id]);
+        $stmt->execute(['company_id' => $company_id]);
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         return;
     }
     
-    // Complex GET actions that require parameters
     if ($action === 'get_supplier_unpaid_invoices') {
         $supplier_id = (int)($params['supplier_id'] ?? 0);
         if (!$supplier_id) throw new Exception("Supplier ID is required.");
-        $stmt = $pdo->prepare("SELECT id, invoice_number, total_amount, total_amount - COALESCE((SELECT SUM(amount) FROM supplier_payments sp WHERE sp.invoice_id = si.id), 0) as outstanding_amount FROM supplier_invoices si WHERE si.supplier_id = ? AND si.company_id = ? AND si.status IN ('SENT', 'PARTIALLY_PAID') HAVING outstanding_amount > 0.01");
+        $query = "SELECT si.id, si.invoice_number, (si.total_amount + COALESCE(po.vat_total, 0)) AS total_amount, (si.total_amount + COALESCE(po.vat_total, 0) - si.amount_paid) AS outstanding_amount FROM supplier_invoices si LEFT JOIN purchase_orders po ON si.purchase_order_id = po.id WHERE si.supplier_id = ? AND si.company_id = ? AND si.status = 'Unpaid' AND (si.total_amount + COALESCE(po.vat_total, 0) - si.amount_paid) > 0.01 ORDER BY si.invoice_date ASC";
+        $stmt = $pdo->prepare($query);
         $stmt->execute([$supplier_id, $company_id]);
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         return;
     }
+
+    if ($action === 'get_customer_invoices') {
+        $customerIntId = $params['customer_id'] ?? null;
+        if (!$customerIntId) throw new Exception("Customer ID is required.");
+        $stmt = $pdo->prepare("SELECT customer_id FROM customers WHERE id = ? AND company_id = ?");
+        $stmt->execute([$customerIntId, $company_id]);
+        $customerCode = $stmt->fetchColumn();
+        if (!$customerCode) throw new Exception("Customer not found.");
+        $query = "SELECT id, invoice_number, total_amount, amount_due FROM sales_invoices WHERE customer_id = ? AND company_id = ? AND status IN ('ISSUED', 'PARTIAL', 'OVERDUE') AND amount_due > 0.01 ORDER BY invoice_date ASC";
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$customerCode, $company_id]);
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        return;
+    }
     
-    // Default GET action: list all payments from journal_vouchers
-    $stmt = $pdo->prepare("
-        SELECT jv.id, jv.entry_date AS date, jv.voucher_number AS reference, jv.status,
-               jv.total_debits AS amount, jv.created_at, jv.narration, u.full_name AS created_by
-        FROM journal_vouchers jv
-        LEFT JOIN users u ON jv.created_by_id = u.id
-        WHERE jv.company_id = ? AND jv.source = 'Payment'
-        ORDER BY jv.entry_date DESC, jv.id DESC
-    ");
+    $stmt = $pdo->prepare("SELECT jv.id, jv.entry_date AS date, jv.voucher_number AS reference, jv.status, jv.total_debits AS amount, jv.created_at, jv.narration, u.full_name AS created_by FROM journal_vouchers jv LEFT JOIN users u ON jv.created_by_id = u.id WHERE jv.company_id = ? AND jv.source = 'Payment' ORDER BY jv.entry_date DESC, jv.id DESC");
     $stmt->execute([$company_id]);
     echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
 }
@@ -135,7 +141,7 @@ function handlePut($pdo, $company_id, $user_id, $id, $input) {
 
     $narration = buildNarration($input);
 
-    $stmt = $pdo->prepare("UPDATE journal_vouchers SET entry_date = ?, narration = ?, total_debits = ?, total_credits = ?, updated_by_id = ? WHERE id = ?");
+    $stmt = $pdo->prepare("UPDATE journal_vouchers SET entry_date = ?, narration = ?, total_debits = ?, total_credits = ?, created_by_id = ? WHERE id = ?");
     $stmt->execute([$input['date'], $narration, $input['amount'], $input['amount'], $user_id, $id]);
     
     $pdo->commit();
@@ -169,15 +175,15 @@ function buildNarration($input) {
             'payment_type' => $input['payment_type'],
             'payment_method' => $input['payment_method'],
             'payee_name' => $input['payee_name'],
-            'debit_account_id' => (int)$input['debit_account_id'],
-            'cash_bank_account_id' => (int)$input['cash_bank_account_id'],
+            'debit_account_code' => $input['debit_account_code'],
+            'cash_bank_account_code' => $input['cash_bank_account_code'],
             'invoice_id' => $input['invoice_id'] ?? null
         ]
     ]);
 }
 
 function createDraft($pdo, $company_id, $user_id, $input) {
-    $required = ['date', 'amount', 'payee_name', 'debit_account_id', 'cash_bank_account_id'];
+    $required = ['date', 'amount', 'payee_name', 'debit_account_code', 'cash_bank_account_code'];
     foreach ($required as $field) {
         if (empty($input[$field])) throw new Exception('Validation failed, missing field: ' . $field);
     }
@@ -191,10 +197,7 @@ function createDraft($pdo, $company_id, $user_id, $input) {
 
     $narration = buildNarration($input);
 
-    $stmt = $pdo->prepare("
-        INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, narration, total_debits, total_credits, status)
-        VALUES (?, ?, ?, 'Payment', ?, 'Journal', ?, ?, ?, 'draft')
-    ");
+    $stmt = $pdo->prepare("INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, narration, total_debits, total_credits, status) VALUES (?, ?, ?, 'Payment', ?, 'Journal', ?, ?, ?, 'draft')");
     $stmt->execute([$company_id, $user_id, $voucher_no, $input['date'], $narration, $input['amount'], $input['amount']]);
     
     $pdo->commit();
@@ -213,23 +216,47 @@ function postToLedger($pdo, $company_id, $user_id, $id) {
 
     $narration = json_decode($v['narration'], true);
     $amount = (float)$v['total_debits'];
-    $debit_acct_id = $narration['details']['debit_account_id'];
-    $credit_acct_id = $narration['details']['cash_bank_account_id'];
+    $debit_acct_code = $narration['details']['debit_account_code'];
+    $credit_acct_code = $narration['details']['cash_bank_account_code'];
     $desc = $narration['description'] ?: 'Payment to ' . ($narration['details']['payee_name'] ?? 'N/A');
+    $invoiceId = $narration['details']['invoice_id'] ?? null;
 
-    if (!$debit_acct_id || !$credit_acct_id) throw new Exception('Invalid accounting details in narration.');
+    if (!$debit_acct_code || !$credit_acct_code) throw new Exception('Invalid accounting details in narration.');
     
-    // Insert Debit Line
-    $pdo->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, description) VALUES (?, ?, ?, ?, ?, ?)")
-        ->execute([$company_id, $user_id, $id, $debit_acct_id, $amount, $desc]);
+    $pdo->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, description) VALUES (?, ?, ?, ?, ?, ?)")->execute([$company_id, $user_id, $id, $debit_acct_code, $amount, $desc]);
 
-    // Insert Credit Line
-    $pdo->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, credit, description) VALUES (?, ?, ?, ?, ?, ?)")
-        ->execute([$company_id, $user_id, $id, $credit_acct_id, $amount, $desc]);
+    $pdo->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, credit, description) VALUES (?, ?, ?, ?, ?, ?)")->execute([$company_id, $user_id, $id, $credit_acct_code, $amount, $desc]);
 
-    // Update Voucher Status
-    $pdo->prepare("UPDATE journal_vouchers SET status='posted', updated_by_id = ? WHERE id = ?")
-        ->execute([$user_id, $id]);
+    $pdo->prepare("UPDATE journal_vouchers SET status='posted', created_by_id = ? WHERE id = ?")->execute([$user_id, $id]);
+
+    if ($invoiceId) {
+        $stmt = $pdo->prepare("SELECT id, total_amount, amount_paid FROM sales_invoices WHERE id = ? AND company_id = ? FOR UPDATE");
+        $stmt->execute([$invoiceId, $company_id]);
+        $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($invoice) {
+            $newPaid = (float)$invoice['amount_paid'] + $amount;
+            $status = ($newPaid >= $invoice['total_amount']) ? 'PAID' : 'PARTIAL';
+
+            $stmt = $pdo->prepare("UPDATE sales_invoices SET amount_paid = ?, status = ? WHERE id = ? AND company_id = ?");
+            $stmt->execute([$newPaid, $status, $invoiceId, $company_id]);
+        } else {
+            $stmt = $pdo->prepare("SELECT si.id, si.amount_paid, si.total_amount, COALESCE(po.vat_total,0) AS vat_total, si.status FROM supplier_invoices si LEFT JOIN purchase_orders po ON si.purchase_order_id = po.id WHERE si.id = ? AND si.company_id = ? FOR UPDATE");
+            $stmt->execute([$invoiceId, $company_id]);
+            $supplierInvoice = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($supplierInvoice) {
+                $currentStatus = strtolower(trim($supplierInvoice['status']));
+                if ($currentStatus === 'unpaid' || $currentStatus === 'partial') {
+                    $paymentAmount = min($amount, $supplierInvoice['total_amount'] - $supplierInvoice['amount_paid']);
+                    $newPaid = $supplierInvoice['amount_paid'] + $paymentAmount;
+                    $status = ($newPaid >= $supplierInvoice['total_amount']) ? 'Paid' : 'Partial';
+                    $stmt = $pdo->prepare("UPDATE supplier_invoices SET amount_paid = ?, status = ? WHERE id = ? AND company_id = ?");
+                    $stmt->execute([$newPaid, $status, $invoiceId, $company_id]);
+                }
+            }
+        }
+    }
 
     $pdo->commit();
     echo json_encode(['success' => true]);

@@ -40,8 +40,6 @@ interface JournalVoucher {
 }
 
 interface JournalVoucherLine {
-    id: number;
-    account_id: number;
     account_name: string;
     account_code: string;
     description: string;
@@ -53,11 +51,11 @@ interface DecodedNarration {
     description: string;
     details: {
         payment_type: string;
-        payment_method: string;
-        payee_name: string;
-        debit_account_id: number;
-        cash_bank_account_id: number;
-        invoice_id?: string | null;
+    payment_method: string;
+    payee_name: string;
+    debit_account_code: string;
+    cash_bank_account_code: string;
+    invoice_id?: string | null;
     }
 }
 
@@ -100,7 +98,8 @@ const PaymentForm = ({ payment, onSave, onCancel, isLoading, callApi, debitAccou
 
 
 
-    const [debitAccountId, setDebitAccountId] = useState(details.debit_account_id?.toString() || '');
+    const [debitAccountCode, setDebitAccountCode] = useState(details.debit_account_code || '');
+
 
     // Loading states
     const [isPayeeLoading, setIsPayeeLoading] = useState(false);
@@ -226,15 +225,21 @@ useEffect(() => {
         const foundAccount = debitAccounts.find(acc => acc.account_name.toLowerCase().includes(autoSelectAccountType));
         if (foundAccount) {
             // SUCCESS: Account found, set it automatically.
-            setDebitAccountId(foundAccount.id.toString());
+           
+            setDebitAccountCode(foundAccount.account_code);
+
+
         } else {
             // FAIL: Account not found, clear the selection to allow manual input.
-            setDebitAccountId('');
+            
+            setDebitAccountCode('');
+
         }
     } else {
         // For 'Expense' and 'Other', allow manual selection.
         if (!payment) {
-             setDebitAccountId('');
+            setDebitAccountCode('');
+
         }
     }
 }, [paymentType, debitAccounts, payment]);
@@ -255,7 +260,10 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     // Manually add values from state for any fields that might be disabled,
     // as FormData does not include disabled inputs in its output.
     data.amount = amount;
-    data.debit_account_id = debitAccountId;
+    
+    data.debit_account_code = debitAccountCode;
+
+
 
     onSave(data);
 };
@@ -351,10 +359,13 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
 
                          <div className="space-y-2">
                             <Label htmlFor="cash_bank_account_id">Payment From (Credit) *</Label>
-                            <Select name="cash_bank_account_id" defaultValue={details.cash_bank_account_id?.toString()} required>
+
+                            <Select name="cash_bank_account_code" defaultValue={details.cash_bank_account_code} required>
+
                                 <SelectTrigger id="cash_bank_account_id"><SelectValue placeholder="Select a bank/cash account" /></SelectTrigger>
                                 <SelectContent>
-                                    {bankAccounts.map(acc => <SelectItem key={acc.id} value={acc.gl_account_code.toString()}>{acc.gl_account_code} - {acc.account_name}</SelectItem>)}
+                                    
+                                    {bankAccounts.map(acc => <SelectItem key={acc.gl_account_code} value={acc.gl_account_code.toString()}>{acc.gl_account_code} - {acc.account_name}</SelectItem>)}
 
                                 </SelectContent>
                             </Select>
@@ -363,18 +374,24 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
                         <div className="space-y-2">
     <Label htmlFor="debit_account_id">Payment For (Debit) *</Label>
     <Select 
-        name="debit_account_id" 
-        value={debitAccountId}
-        onValueChange={setDebitAccountId}
-        required
-        // Disable this field for supplier payments, as it's set automatically
+    name="debit_account_code"
+    value={debitAccountCode}
+    onValueChange={setDebitAccountCode}
+    required
+    disabled={
+        (paymentType === 'Supplier Payment' ||
+         paymentType === 'Advanced Payment' ||
+         paymentType === 'Customer Refund') &&
+        !!debitAccountCode
+    }
+>
 
-        disabled={(paymentType === 'Supplier Payment' || paymentType === 'Advanced Payment' || paymentType === 'Customer Refund') && !!debitAccountId}
-
-    >
         <SelectTrigger id="debit_account_id"><SelectValue placeholder="Select a debit account" /></SelectTrigger>
         <SelectContent>
-            {debitAccounts.map(acc => <SelectItem key={acc.id} value={acc.id.toString()}>{acc.account_code} - {acc.account_name}</SelectItem>)}
+            {debitAccounts.map(acc => <SelectItem key={acc.account_code} value={acc.account_code}>
+    {acc.account_code} - {acc.account_name}
+</SelectItem>
+)}
         </SelectContent>
     </Select>
 </div>
@@ -767,7 +784,8 @@ return (
                             const isExpanded = expandedRows.includes(p.id);
       
                             // Find account names for the expanded view
-                            const debitAccount = debitAccounts.find(acc => acc.id.toString() === narration.details.debit_account_id?.toString());
+                            const debitAccount = debitAccounts.find(acc => acc.account_code === narration.details.debit_account_code);
+
                             const creditAccount = bankAccounts.find(acc => acc.gl_account_code === narration.details.cash_bank_account_id.toString());
                             
                             return (
