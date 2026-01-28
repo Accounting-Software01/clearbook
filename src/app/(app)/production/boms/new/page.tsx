@@ -30,22 +30,20 @@ interface BomComponent {
     component_type: 'raw-material' | 'packaging' | 'semi-finished';
     quantity: string;
     uom: string;
-    consumption_uom: string; // <-- ADD THIS LINE
+    consumption_uom: string;
     waste_percentage: string;
 }
-
 
 interface Operation {
     sequence: number;
     operation_name: string;
-    sequence_per_hour: string; // New
-    no_of_hours: string;       // New
-    qty_per_set: string;       // New
-    good_qty: string;          // New
-    defect_qty: string;        // New
+    sequence_per_hour: string;
+    no_of_hours: string;
+    qty_per_set: string;
+    good_qty: string;
+    defect_qty: string;
     notes: string;
 }
-
 
 interface OverheadComponent {
     overhead_name: string;
@@ -68,34 +66,30 @@ const overheadOptions = [
     'Machine Depreciation', 'Machine Maintenance', 'Supervisory Salaries',
     'Quality Control', 'Insurance', 'Safety and Security'
 ];
-// --- UOM CONVERSION MAP ---
+
 const UOM_CONVERSIONS: { [key: string]: { base: string, factor: number } } = {
     // Weight
-    'g':    { base: 'kg', factor: 0.001 },
-    'kg':   { base: 'kg', factor: 1 },
-    'kgs':  { base: 'kg', factor: 1 }, // Plural
-    'ton':  { base: 'kg', factor: 1000 },
-    'tons': { base: 'kg', factor: 1000 }, // Plural
-
+    'g': { base: 'kg', factor: 0.001 },
+    'kg': { base: 'kg', factor: 1 },
+    'kgs': { base: 'kg', factor: 1 },
+    'ton': { base: 'kg', factor: 1000 },
+    'tons': { base: 'kg', factor: 1000 },
     // Volume
-    'ml':   { base: 'l',  factor: 0.001 },
-    'cl':   { base: 'l',  factor: 0.01 },
-    'l':    { base: 'l',  factor: 1 },
-    'lit':  { base: 'l',  factor: 1 }, // Abbreviation
-    
-    // Discrete Units (Base is itself)
-    'pcs':  { base: 'pcs', factor: 1 },
-    'pc':   { base: 'pcs', factor: 1 },
+    'ml': { base: 'l', factor: 0.001 },
+    'cl': { base: 'l', factor: 0.01 },
+    'l': { base: 'l', factor: 1 },
+    'lit': { base: 'l', factor: 1 },
+    // Discrete Units
+    'pcs': { base: 'pcs', factor: 1 },
+    'pc': { base: 'pcs', factor: 1 },
     'roll': { base: 'roll', factor: 1 },
-    'rolls':{ base: 'roll', factor: 1 }, // Plural
-    'bag':  { base: 'bag', factor: 1 },
-    'bags': { base: 'bag', factor: 1 }, // Plural
+    'rolls': { base: 'roll', factor: 1 },
+    'bag': { base: 'bag', factor: 1 },
+    'bags': { base: 'bag', factor: 1 },
     'pack': { base: 'pack', factor: 1 },
 };
 
-
-const UOM_OPTIONS = Object.keys(UOM_CONVERSIONS); // ['g', 'kg', 'ton', 'ml', ...]
-
+const UOM_OPTIONS = Object.keys(UOM_CONVERSIONS);
 const costCategories = ['Direct Labor', 'Manufacturing Overhead', 'Other'];
 const bomTypes = ['Standard', 'Production', 'Engineering', 'Trial'];
 
@@ -130,197 +124,109 @@ const MasterBomSetup = () => {
     const [overheadComponents, setOverheadComponents] = useState<OverheadComponent[]>([]);
     const [standardCost, setStandardCost] = useState<StandardCost>({ materialCost: 0, overheadCost: 0, scrapCost: 0, totalCost: 0 });
 
-   // --- DATA FETCHING ---
-const fetchData = useCallback(async () => {
-    if (!user?.company_id) return;
-    setIsLoading(true);
+    // --- DATA FETCHING ---
+    const fetchData = useCallback(async () => {
+        if (!user?.company_id) return;
+        setIsLoading(true);
 
-    // This helper function will clean the cost string
-    const cleanCost = (cost: any): number => {
-        if (typeof cost === 'number') {
-            return cost;
+        const cleanCost = (cost: any): number => {
+            if (typeof cost === 'number') return cost;
+            if (typeof cost === 'string') {
+                const cleanedString = cost.replace(/[^0-9.]/g, '');
+                return parseFloat(cleanedString) || 0;
+            }
+            return 0;
+        };
+
+        try {
+            const [itemsResponse, glResponse] = await Promise.all([
+                fetch(`https://hariindustries.net/api/clearbook/get_bom_creation_data.php?company_id=${user.company_id}&include_costs=true`),
+                fetch(`https://hariindustries.net/api/clearbook/get-gl-accounts.php?company_id=${user.company_id}`)
+            ]);
+
+            const itemsData = await itemsResponse.json();
+            if (!itemsResponse.ok) throw new Error(itemsData.message || 'Failed to fetch inventory items');
+
+            const withCosts = (items: any[]) => items.map(item => ({
+                ...item,
+                cost: cleanCost(item.cost),
+                uom: item.uom || item.unit_of_measure
+            }));
+            
+            setInventoryItems({
+                products: withCosts(itemsData.products || []),
+                raw_materials: withCosts(itemsData.raw_materials || [])
+            });
+
+            const glData = await glResponse.json();
+            if (!glResponse.ok || !glData.success) throw new Error(glData.error || 'Failed to fetch GL accounts');
+            setGlAccounts(glData.accounts || []);
+
+        } catch (error: any) {
+            toast({ title: "Error", description: error.message, variant: 'destructive' });
+        } finally {
+            setIsLoading(false);
         }
-        if (typeof cost === 'string') {
-            // Removes all characters that are not a digit (0-9) or a period (.)
-            const cleanedString = cost.replace(/[^0-9.]/g, '');
-            return parseFloat(cleanedString) || 0;
-        }
-        // Return 0 for any other type (null, undefined, etc.)
-        return 0;
-    };
-
-    try {
-        const [itemsResponse, glResponse] = await Promise.all([
-            fetch(`https://hariindustries.net/api/clearbook/get_bom_creation_data.php?company_id=${user.company_id}&include_costs=true`),
-            fetch(`https://hariindustries.net/api/clearbook/get-gl-accounts.php?company_id=${user.company_id}`)
-        ]);
-
-        const itemsData = await itemsResponse.json();
-        if (!itemsResponse.ok) throw new Error(itemsData.message || 'Failed to fetch inventory items');
-
-        // This function now uses the 'cleanCost' helper
-        const withCosts = (items: any[]) => items.map(item => ({
-            ...item, 
-            cost: cleanCost(item.cost), // Use the cleaning function here
-            uom: item.uom || item.unit_of_measure
-        }));
-        console.log("--- DATA FETCHED ---");
-        console.log("Cleaned Raw Materials:", withCosts(itemsData.raw_materials || []));
-        
-        setInventoryItems({ 
-            products: withCosts(itemsData.products || []), 
-            raw_materials: withCosts(itemsData.raw_materials || []) 
-        });
-// Find your cost calculation useEffect (around line 190)
-
-useEffect(() => {
-    // --- ADD THESE TWO LINES ---
-    console.log("--- COST CALCULATION EFFECT TRIGGERED ---");
-    console.log("Current bomComponents state:", JSON.stringify(bomComponents, null, 2));
-
-    const batchSize = parseFloat(bomIdentity.batch_size) || 1;
-
-    const totalMaterialCostPerUnit = bomComponents.reduce((acc, comp) => {
-        // ... (existing code)
-        if (!material) return acc;
-    
-        // ... (existing code)
-        const totalConsumptionPerUnit = convertedConsumptionQty * (1 + waste / 100);
-        
-        // --- ADD THIS CONSOLE.LOG OBJECT ---
-        console.log("Calculating component:", {
-            name: material.name,
-            cost: costOfBaseUOM,
-            qty: consumptionQty,
-            baseUOM: baseUOM,
-            consumptionUOM: consumptionUOM,
-            convertedQty: convertedConsumptionQty,
-            componentTotal: (totalConsumptionPerUnit * costOfBaseUOM)
-        });
-
-        return acc + (totalConsumptionPerUnit * costOfBaseUOM);
-    }, 0);
-    
-    // ... (existing code)
-
-    const finalTotalCost = totalPreScrapCost + bomScrapCost;
-
-    // --- ADD THIS CONSOLE.LOG ---
-    console.log("Final Calculated Costs:", { material: totalMaterialCostPerUnit, overhead: totalOverheadCostPerUnit, scrap: bomScrapCost, total: finalTotalCost });
-
-    setStandardCost({
-        materialCost: totalMaterialCostPerUnit || 0,
-        overheadCost: totalOverheadCostPerUnit || 0,
-        scrapCost: bomScrapCost || 0,
-        totalCost: finalTotalCost || 0
-    });
-
-}, [bomComponents, overheadComponents, bomIdentity.batch_size, bomIdentity.scrap_percentage, inventoryItems.raw_materials]);
-        
-        setInventoryItems({ 
-            products: withCosts(itemsData.products || []), 
-            raw_materials: withCosts(itemsData.raw_materials || []) 
-        });
-
-        const glData = await glResponse.json();
-        console.log("GL Data from API:", glData);
-        if (!glResponse.ok || !glData.success) throw new Error(glData.error || 'Failed to fetch GL accounts');
-        setGlAccounts(glData.accounts || []);
-
-    } catch (error: any) {
-        toast({ title: "Error", description: error.message, variant: 'destructive' });
-    } finally {
-        setIsLoading(false);
-    }
-}, [user?.company_id, toast]);
-
+    }, [user?.company_id, toast]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-// --- COST CALCULATION ---
-useEffect(() => {
+    // --- COST CALCULATION ---
+    useEffect(() => {
+        const batchSize = parseFloat(bomIdentity.batch_size) || 1;
 
-    console.log("--- COST CALCULATION EFFECT TRIGGERED ---");
-    console.log("Current bomComponents state:", JSON.stringify(bomComponents, null, 2));
+        const totalMaterialCostPerUnit = bomComponents.reduce((acc, comp) => {
+            const material = inventoryItems.raw_materials.find(m => m.id === comp.item_id);
+            if (!material) return acc;
 
-    const batchSize = parseFloat(bomIdentity.batch_size) || 1;
+            const costOfBaseUOM = material.cost || 0;
+            const baseUOM = material.uom ? material.uom.trim().toLowerCase() : '';
+            const consumptionUOM = comp.consumption_uom ? comp.consumption_uom.trim().toLowerCase() : '';
+            
+            if (!baseUOM || !consumptionUOM) return acc;
 
-    const totalMaterialCostPerUnit = bomComponents.reduce((acc, comp) => {
-        const material = inventoryItems.raw_materials.find(m => m.id === comp.item_id);
-        if (!material) return acc;
-    
-        // 1. Get values, trim whitespace, and convert UOMs to lowercase
-        const costOfBaseUOM = material.cost || 0;
-        const baseUOM = material.uom ? material.uom.trim().toLowerCase() : '';
-        const consumptionUOM = comp.consumption_uom ? comp.consumption_uom.trim().toLowerCase() : '';
-        
-        if (!baseUOM || !consumptionUOM) {
+            const consumptionQty = parseFloat(comp.quantity) || 0;
+            const baseConversion = UOM_CONVERSIONS[baseUOM];
+            const consumptionConversion = UOM_CONVERSIONS[consumptionUOM];
+
+            let convertedConsumptionQty = consumptionQty;
+
+            if (baseUOM !== consumptionUOM) {
+                if (baseConversion && consumptionConversion && baseConversion.base === consumptionConversion.base) {
+                    convertedConsumptionQty = (consumptionQty * consumptionConversion.factor) / baseConversion.factor;
+                } else {
+                    return acc;
+                }
+            }
+
+            const waste = parseFloat(comp.waste_percentage) || 0;
+            const totalConsumptionPerUnit = convertedConsumptionQty * (1 + waste / 100);
+            return acc + (totalConsumptionPerUnit * costOfBaseUOM);
+        }, 0);
+
+        const totalOverheadCostPerUnit = overheadComponents.reduce((acc, overhead) => {
+            const cost = parseFloat(overhead.cost) || 0;
+            if (overhead.cost_method === 'per_unit') return acc + cost;
+            if (overhead.cost_method === 'per_batch') return acc + (cost / batchSize);
+            if (overhead.cost_method === 'percentage_of_material') return acc + (totalMaterialCostPerUnit * (cost / 100));
             return acc;
-        }
-    
-        const consumptionQty = parseFloat(comp.quantity) || 0;
+        }, 0);
 
-        // 2. Look up conversion factors
-        const baseConversion = UOM_CONVERSIONS[baseUOM];
-        const consumptionConversion = UOM_CONVERSIONS[consumptionUOM];
-    
-        let convertedConsumptionQty = consumptionQty;
-    
-        // 3. Perform conversion logic
-        if (baseUOM === consumptionUOM) {
-            convertedConsumptionQty = consumptionQty;
-        } else if (baseConversion && consumptionConversion && baseConversion.base === consumptionConversion.base) {
-            convertedConsumptionQty = (consumptionQty * consumptionConversion.factor) / baseConversion.factor;
-        } else {
-            return acc; 
-        }
-    
-        // 4. Calculate final cost for this component
-        const waste = parseFloat(comp.waste_percentage) || 0;
-        const totalConsumptionPerUnit = convertedConsumptionQty * (1 + waste / 100);
-        
+        const bomScrapPercentage = parseFloat(bomIdentity.scrap_percentage) || 0;
+        const totalPreScrapCost = totalMaterialCostPerUnit + totalOverheadCostPerUnit;
+        const bomScrapCost = totalPreScrapCost * (bomScrapPercentage / 100);
+        const finalTotalCost = totalPreScrapCost + bomScrapCost;
 
-        console.log("Calculating component:", {
-            name: material.name,
-            cost: costOfBaseUOM,
-            qty: consumptionQty,
-            baseUOM: baseUOM,
-            consumptionUOM: consumptionUOM,
-            convertedQty: convertedConsumptionQty,
-            componentTotal: (totalConsumptionPerUnit * costOfBaseUOM)
+        setStandardCost({
+            materialCost: totalMaterialCostPerUnit,
+            overheadCost: totalOverheadCostPerUnit,
+            scrapCost: bomScrapCost,
+            totalCost: finalTotalCost
         });
 
-        return acc + (totalConsumptionPerUnit * costOfBaseUOM);
-    }, 0);
-    
-    
-    // The rest of the logic remains the same.
-    const totalOverheadCostPerUnit = overheadComponents.reduce((acc, overhead) => {
-        const cost = parseFloat(overhead.cost) || 0;
-        if (overhead.cost_method === 'per_unit') return acc + cost;
-        if (overhead.cost_method === 'per_batch') return acc + (cost / batchSize);
-        if (overhead.cost_method === 'percentage_of_material') return acc + (totalMaterialCostPerUnit * (cost / 100));
-        return acc;
-    }, 0);
-
-    const bomScrapPercentage = parseFloat(bomIdentity.scrap_percentage) || 0;
-    const totalPreScrapCost = (totalMaterialCostPerUnit || 0) + (totalOverheadCostPerUnit || 0);
-
-    const bomScrapCost = totalPreScrapCost * (bomScrapPercentage / 100);
-
-    const finalTotalCost = totalPreScrapCost + bomScrapCost;
-    console.log("Final Calculated Costs:", { material: totalMaterialCostPerUnit, overhead: totalOverheadCostPerUnit, scrap: bomScrapCost, total: finalTotalCost });
-
-    setStandardCost({
-        materialCost: totalMaterialCostPerUnit || 0,
-        overheadCost: totalOverheadCostPerUnit || 0,
-        scrapCost: bomScrapCost || 0,
-        totalCost: finalTotalCost || 0
-    });
-
-}, [bomComponents, overheadComponents, bomIdentity.batch_size, bomIdentity.scrap_percentage, inventoryItems.raw_materials]);
+    }, [bomComponents, overheadComponents, bomIdentity.batch_size, bomIdentity.scrap_percentage, inventoryItems.raw_materials]);
 
     // --- HANDLER FUNCTIONS ---
     const handleIdentityChange = (field: string, value: string) => {
@@ -333,16 +239,13 @@ useEffect(() => {
         }
     };
 
-    
     const handleAddComponent = () => setBomComponents(prev => [...prev, { item_id: 0, item_name: '', component_type: 'raw-material', quantity: '1', uom: '', consumption_uom: '', waste_percentage: '0' }]);
-
     const handleRemoveComponent = (index: number) => setBomComponents(prev => prev.filter((_, i) => i !== index));
     const handleComponentChange = (index: number, field: keyof BomComponent, value: any) => {
         setBomComponents(prevComponents =>
             prevComponents.map((component, i) => {
-                if (i !== index) {
-                    return component;
-                }
+                if (i !== index) return component;
+                
                 const updatedComponent = { ...component, [field]: value };
     
                 if (field === 'item_id') {
@@ -350,7 +253,6 @@ useEffect(() => {
                     if (material) {
                         updatedComponent.item_name = material.name;
                         updatedComponent.uom = material.uom;
-                        // THE FIX IS HERE: Convert the UOM to lowercase to match dropdown options
                         updatedComponent.consumption_uom = material.uom ? material.uom.toLowerCase() : '';
                     }
                 }
@@ -358,35 +260,28 @@ useEffect(() => {
             })
         );
     };
-    
 
     const handleAddOperation = () => setOperations(prev => [...prev, { 
         sequence: (prev.length + 1) * 10, 
         operation_name: '', 
-        sequence_per_hour: '1', // New
-        no_of_hours: '1',       // New
-        qty_per_set: '1',       // New
-        good_qty: '1',          // New
-        defect_qty: '0',        // New
+        sequence_per_hour: '1',
+        no_of_hours: '1',
+        qty_per_set: '1',
+        good_qty: '1',
+        defect_qty: '0',
         notes: '' 
     }]);
     
     const handleRemoveOperation = (index: number) => setOperations(prev => prev.filter((_, i) => i !== index));
     const handleOperationChange = (index: number, field: keyof Operation, value: any) => {
-        setOperations(prevOps =>
-            prevOps.map((op, i) => (i === index ? { ...op, [field]: value } : op))
-        );
+        setOperations(prevOps => prevOps.map((op, i) => (i === index ? { ...op, [field]: value } : op)));
     };
-    
 
     const handleAddOverhead = () => setOverheadComponents(prev => [...prev, { overhead_name: '', cost_category: 'Manufacturing Overhead', cost_method: 'per_unit', cost: '0', gl_account: '' }]);
     const handleRemoveOverhead = (index: number) => setOverheadComponents(prev => prev.filter((_, i) => i !== index));
     const handleOverheadChange = (index: number, field: keyof OverheadComponent, value: any) => {
-        setOverheadComponents(prevOverheads =>
-            prevOverheads.map((o, i) => (i === index ? { ...o, [field]: value } : o))
-        );
+        setOverheadComponents(prevOverheads => prevOverheads.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
     };
-    
 
     const handleCancel = () => {
         setBomIdentity(getInitialBomIdentity());
@@ -411,8 +306,7 @@ useEffect(() => {
                 finished_good_id: parseInt(bomIdentity.finished_good_id),
                 batch_size: parseInt(bomIdentity.batch_size),
                 scrap_percentage: parseFloat(bomIdentity.scrap_percentage),
-                total_standard_cost: standardCost.totalCost, // <-- ADD THIS LINE
-
+                total_standard_cost: standardCost.totalCost,
                 components: bomComponents.map(c => ({...c, item_id: c.item_id, quantity: parseFloat(c.quantity), waste_percentage: parseFloat(c.waste_percentage)})),
                 overheads: overheadComponents.filter(o => o.overhead_name && parseFloat(o.cost) > 0).map(o => ({...o, cost: parseFloat(o.cost)})),
                 operations: operations.filter(op => op.operation_name),
@@ -439,7 +333,6 @@ useEffect(() => {
     if (isLoading) {
         return <div className="flex justify-center items-center h-64"><Loader2 className="h-12 w-12 animate-spin" /></div>;
     }
-
     return (
         <form onSubmit={handleSubmit} className="p-4 md:p-8 space-y-6">
             <div className="flex justify-between items-start">
@@ -489,7 +382,7 @@ useEffect(() => {
             {/* Step 1: The TableHeader is simplified. It only shows the columns for the main row. */}
             <TableHeader>
                 <TableRow>
-                    <TableHead className="w-20">Seq.</TableHead>
+                    
                     <TableHead className="w-1/3">Operation / Stage Name *</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead className="w-20 text-right">Action</TableHead>
@@ -514,10 +407,8 @@ useEffect(() => {
                     <React.Fragment key={i}>
                         {/* --- Main Row --- */}
                         <TableRow>
-                            {/* Input for Sequence */}
-                            <TableCell className="align-top">
-                                <Input type="number" value={op.sequence} onChange={e => handleOperationChange(i, 'sequence', parseInt(e.target.value))} className="text-center h-10" />
-                            </TableCell>
+                            
+                            
                             {/* Input for Operation Name */}
                             <TableCell className="align-top">
                                 <Input value={op.operation_name} onChange={e => handleOperationChange(i, 'operation_name', e.target.value)} placeholder="e.g., Mixing, Molding, Packaging" required className="h-10" />
@@ -583,49 +474,90 @@ useEffect(() => {
 
             <Card>
                 <CardHeader className='flex-row items-center justify-between'><CardTitle>Material Consumption (BOM)</CardTitle><Button type="button" variant="outline" onClick={handleAddComponent}><PlusCircle className="h-4 w-4 mr-2" />Add Material</Button></CardHeader>
-                <CardContent>
+          
+                <CardContent className="relative w-full overflow-auto">
                     <Table>
-                        <TableHeader><TableRow><TableHead>Item *</TableHead><TableHead>Type</TableHead><TableHead>Consumption / Unit *</TableHead><TableHead>UOM</TableHead><TableHead>Waste %</TableHead><TableHead>Est. Batch Consumption</TableHead><TableHead>Action</TableHead></TableRow></TableHeader>
+                    <TableHeader>
+    <TableRow>
+        <TableHead className="w-2/5">Item *</TableHead>
+        <TableHead className="w-1/5">Type</TableHead>
+        <TableHead className="text-right">Action</TableHead>
+    </TableRow>
+</TableHeader>
+
                         <TableBody>
                             {bomComponents.length > 0 ? bomComponents.map((c, i) => {
                                 const batchConsumption = (parseFloat(c.quantity) || 0) * (parseFloat(bomIdentity.batch_size) || 1);
                                 return (
-                                <TableRow key={i}>
-                                    <TableCell><Select value={c.item_id.toString()} onValueChange={v => handleComponentChange(i, 'item_id', parseInt(v))} required><SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{inventoryItems.raw_materials.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}</SelectContent></Select></TableCell>
-                                    <TableCell><Select value={c.component_type} onValueChange={v => handleComponentChange(i, 'component_type', v)} required><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="raw-material">Raw Material</SelectItem><SelectItem value="packaging">Packaging</SelectItem><SelectItem value="semi-finished">Semi-Finished</SelectItem></SelectContent></Select></TableCell>
-
-                                    <TableCell>
-    <div className="flex items-center gap-1">
-        <Input 
-            type="number" 
-            min="0.000001" 
-            step="any" 
-            value={c.quantity} 
-            onChange={e => handleComponentChange(i, 'quantity', e.target.value)} 
-            required 
-            placeholder="e.g., 0.5" 
-            className="w-28"
-        />
-        <Select 
-            value={c.consumption_uom} 
-            onValueChange={v => handleComponentChange(i, 'consumption_uom', v)}
-        >
-            <SelectTrigger className="w-24">
-                <SelectValue placeholder="Unit" />
-            </SelectTrigger>
-            <SelectContent>
-                {UOM_OPTIONS.map(uom => <SelectItem key={uom} value={uom}>{uom}</SelectItem>)}
-            </SelectContent>
-        </Select>
-    </div>
-</TableCell>
- 
-                                    <TableCell><Input value={c.uom || 'N/A'} readOnly className="border-none bg-transparent px-0 w-20" /></TableCell>
-                                    <TableCell><Input type="number" min="0.00000001" step="any" value={c.waste_percentage} onChange={e => handleComponentChange(i, 'waste_percentage', e.target.value)} className="w-24" placeholder="e.g., 3" /></TableCell>
-                                    <TableCell><Input value={batchConsumption.toString()} readOnly className="border-none bg-transparent font-medium" /></TableCell>
-                                    <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveComponent(i)}><Trash2 className="h-4 w-4 text-red-500" /></Button></TableCell>
-                                </TableRow>
-                            );})
+                                    <React.Fragment key={i}>
+                                        {/* --- TOP ROW: For Item, Type, and Action --- */}
+                                        <TableRow>
+                                            <TableCell>
+                                                <Select value={c.item_id ? c.item_id.toString() : ""} onValueChange={v => handleComponentChange(i, 'item_id', parseInt(v))} required>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select Material..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>{inventoryItems.raw_materials.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}</SelectContent>
+                                                </Select>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Select value={c.component_type} onValueChange={v => handleComponentChange(i, 'component_type', v)} required>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="raw-material">Raw Material</SelectItem>
+                                                        <SelectItem value="packaging">Packaging</SelectItem>
+                                                        <SelectItem value="semi-finished">Semi-Finished</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveComponent(i)}>
+                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                
+                                        {/* --- BOTTOM ROW: For the other details --- */}
+                                        <TableRow>
+                                            <TableCell colSpan={3} className="p-2 bg-muted/50 rounded-b-lg">
+                                                <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                                                    
+                                                    {/* Consumption / Unit */}
+                                                    <div className="flex-1 min-w-[200px]">
+                                                        <Label className="text-xs font-semibold">Consumption / Unit *</Label>
+                                                        <div className="flex items-center gap-1 mt-1">
+                                                            <Input type="number" min="0.000001" step="any" value={c.quantity} onChange={e => handleComponentChange(i, 'quantity', e.target.value)} required placeholder="e.g., 0.5" className="h-8"/>
+                                                            <Select value={c.consumption_uom} onValueChange={v => handleComponentChange(i, 'consumption_uom', v)}>
+                                                                <SelectTrigger className="h-8 w-24"><SelectValue placeholder="Unit" /></SelectTrigger>
+                                                                <SelectContent>{UOM_OPTIONS.map(uom => <SelectItem key={uom} value={uom}>{uom}</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    </div>
+                                
+                                                    {/* Base UOM */}
+                                                    <div className="flex-1 min-w-[100px]">
+                                                        <Label className="text-xs font-semibold">Base UOM</Label>
+                                                        <Input value={c.uom || 'N/A'} readOnly className="h-8 mt-1 border-none bg-transparent px-1" />
+                                                    </div>
+                                
+                                                    {/* Waste % */}
+                                                    <div className="flex-1 min-w-[100px]">
+                                                        <Label className="text-xs font-semibold">Waste %</Label>
+                                                        <Input type="number" min="0" step="any" value={c.waste_percentage} onChange={e => handleComponentChange(i, 'waste_percentage', e.target.value)} className="h-8 mt-1" placeholder="e.g., 3" />
+                                                    </div>
+                                
+                                                    {/* Est. Batch Consumption */}
+                                                    <div className="flex-1 min-w-[150px]">
+                                                        <Label className="text-xs font-semibold">Est. Batch Consumption</Label>
+                                                        <Input value={batchConsumption.toFixed(4)} readOnly className="h-8 mt-1 border-none bg-transparent font-medium px-1" />
+                                                    </div>
+                                                    
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    </React.Fragment>
+                                );
+                                })
                              : <TableRow><TableCell colSpan={7} className="text-center py-8">No material components added.</TableCell></TableRow>}
                         </TableBody>
                     </Table>

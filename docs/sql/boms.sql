@@ -1,15 +1,16 @@
 CREATE TABLE `boms` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `company_id` int(11) NOT NULL,
+  `company_id` varchar(20) NOT NULL,
   `finished_good_id` int(11) NOT NULL,
   `bom_code` varchar(50) NOT NULL,
-  `bom_version` varchar(20) DEFAULT '1.0',
+  `bom_version` varchar(20) NOT NULL,
+  `total_standard_cost` decimal(20,8) DEFAULT 0.00000000,
   `status` varchar(20) DEFAULT 'Active',
   `uom` varchar(20) DEFAULT NULL,
-  `batch_size` decimal(15,5) DEFAULT 1.00000,
+  `batch_size` decimal(15,8) DEFAULT 1.00000000,
   `effective_from` date DEFAULT NULL,
   `notes` text DEFAULT NULL,
-  `scrap_percentage` decimal(8,5) DEFAULT 0.00000,
+  `scrap_percentage` decimal(10,8) DEFAULT 0.00000000,
   `prepared_by` varchar(100) DEFAULT NULL,
   `approved_by` varchar(100) DEFAULT NULL,
   `bom_type` varchar(50) DEFAULT 'Standard',
@@ -18,7 +19,8 @@ CREATE TABLE `boms` (
   `created_by` int(11) DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `bom_code` (`bom_code`),
+  UNIQUE KEY `company_fg_version` (`company_id`,`finished_good_id`,`bom_version`),
   KEY `company_id` (`company_id`),
-  KEY `finished_good_id` (`finished_good_id`)
+  KEY `finished_good_id` (`finished_good_id`),
+  KEY `bom_code` (`bom_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

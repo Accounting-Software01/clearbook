@@ -4,7 +4,7 @@ CREATE TABLE `bom_overheads` (
   `overhead_name` varchar(100) NOT NULL,
   `cost_category` varchar(50) NOT NULL,
   `cost_method` varchar(50) NOT NULL,
-  `cost` decimal(15,5) NOT NULL,
+  `cost` decimal(15,8) NOT NULL,
   `gl_account` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `bom_id` (`bom_id`)
