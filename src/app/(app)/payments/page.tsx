@@ -441,7 +441,7 @@ const PaymentDetailView = ({ payment, onEdit, onPost, onBack, onDelete, voucherL
 
     const handlePrint = () => { window.print(); };
 
-    const creditAccount = bankAccounts.find(acc => acc.gl_account_code === details.cash_bank_account_id?.toString());
+    const creditAccount = bankAccounts.find(acc => acc.gl_account_code === details.cash_bank_account_code);
 
     return (
         <div className="printable-area space-y-4">
@@ -786,8 +786,8 @@ return (
                             // Find account names for the expanded view
                             const debitAccount = debitAccounts.find(acc => acc.account_code === narration.details.debit_account_code);
 
-                            const creditAccount = bankAccounts.find(acc => acc.gl_account_code === narration.details.cash_bank_account_id.toString());
-                            
+                            const creditAccount = bankAccounts.find(acc => acc.gl_account_code === narration.details.cash_bank_account_code);
+
                             return (
                                 <Fragment key={p.id}>
                                     <TableRow>
