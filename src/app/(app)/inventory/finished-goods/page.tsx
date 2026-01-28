@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp } from 'lucide-react';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
 import { PriceTierManagerDialog } from '@/components/PriceTierManagerDialog';
-import { ItemHistoryDialog } from '@/components/ItemHistoryDialog';
+import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -160,6 +160,7 @@ const FinishedGoodsPage = () => {
                 open={isHistoryDialogOpen}
                 onOpenChange={setIsHistoryDialogOpen}
                 item={selectedItem}
+                itemType="product"
             />
              <RecordOpeningBalanceDialog
                 open={isOpeningBalanceDialogOpen}

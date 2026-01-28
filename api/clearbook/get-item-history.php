@@ -26,7 +26,6 @@ $allowed_origins = ['https://hariindustries.net', 'https://clearbook-olive.verce
 if (in_array($origin, $allowed_origins, true)) {
     header("Access-Control-Allow-Origin: $origin");
 } else {
-    // Fallback for development environments
     header("Access-Control-Allow-Origin: *");
 }
 header("Access-Control-Allow-Credentials: true");
@@ -63,77 +62,24 @@ $params = [];
 $types = "";
 
 if ($item_type === 'raw_material') {
-    // Goods Received (Stock In)
-    $sql_parts[] = "(
-        SELECT
-            grn.received_date AS date,
-            'Goods Receipt' AS type,
-            CONCAT('From GRN: ', grn.grn_number) AS description,
-            gri.quantity_received AS quantity,
-            gri.unit_price AS price
-        FROM goods_received_note_items gri
-        JOIN goods_received_notes grn ON grn.id = gri.grn_id
-        WHERE gri.raw_material_id = ? AND gri.company_id = ?
-    )";
+    $sql_parts[] = "(SELECT grn.received_date AS date, 'Goods Receipt' AS type, CONCAT('From GRN: ', grn.grn_number) AS description, gri.quantity_received AS quantity, gri.unit_price AS price, grn.id AS sort_key FROM goods_received_note_items gri JOIN goods_received_notes grn ON grn.id = gri.grn_id WHERE gri.raw_material_id = ? AND gri.company_id = ?)";
     array_push($params, $item_id, $company_id);
     $types .= "is";
 
-    // Issued to Production (Stock Out)
-    $sql_parts[] = "(
-        SELECT
-            po.creation_date AS date,
-            'Production Issue' AS type,
-            CONCAT('To Production Order: ', po.id) AS description,
-            -poc.quantity_consumed AS quantity,
-            poc.unit_cost_at_consumption AS price
-        FROM production_order_consumption poc
-        JOIN production_orders po ON po.id = poc.production_order_id
-        WHERE poc.material_id = ? AND po.company_id = ?
-    )";
+    $sql_parts[] = "(SELECT po.creation_date AS date, 'Production Issue' AS type, CONCAT('To Production Order: ', po.id) AS description, -poc.quantity_consumed AS quantity, poc.unit_cost_at_consumption AS price, po.id AS sort_key FROM production_order_consumption poc JOIN production_orders po ON po.id = poc.production_order_id WHERE poc.material_id = ? AND po.company_id = ?)";
     array_push($params, $item_id, $company_id);
     $types .= "is";
 
-    // Manual Issuances (Stock Out)
-    $sql_parts[] = "(
-        SELECT
-            ii.issue_date AS date,
-            'Manual Issue' AS type,
-            CONCAT(ii.issue_type, IF(ii.reference IS NOT NULL, CONCAT(' - Ref: ', ii.reference), '')) AS description,
-            -ii.quantity_issued AS quantity,
-            ii.unit_cost AS price
-        FROM inventory_issuances ii
-        WHERE ii.raw_material_id = ? AND ii.company_id = ?
-    )";
+    $sql_parts[] = "(SELECT ii.issue_date AS date, 'Manual Issue' AS type, CONCAT(ii.issue_type, IF(ii.reference IS NOT NULL, CONCAT(' - Ref: ', ii.reference), '')) AS description, -ii.quantity_issued AS quantity, ii.unit_cost AS price, ii.id AS sort_key FROM inventory_issuances ii WHERE ii.raw_material_id = ? AND ii.company_id = ?)";
     array_push($params, $item_id, $company_id);
     $types .= "is";
 
 } elseif ($item_type === 'finished_good') {
-    // Production Output (Stock In)
-    $sql_parts[] = "(
-        SELECT
-            po.completion_date AS date,
-            'Production Output' AS type,
-            CONCAT('From Production Order: ', po.id) AS description,
-            po.quantity_to_produce AS quantity,
-            (po.total_material_cost + po.total_labor_cost + po.total_overhead_cost) / NULLIF(po.quantity_to_produce, 0) AS price
-        FROM production_orders po
-        WHERE po.product_id = ? AND po.company_id = ? AND po.status = 'Completed'
-    )";
+    $sql_parts[] = "(SELECT po.completion_date AS date, 'Production Output' AS type, CONCAT('From Production Order: ', po.id) AS description, po.quantity_to_produce AS quantity, (po.total_material_cost + po.total_labor_cost + po.total_overhead_cost) / NULLIF(po.quantity_to_produce, 0) AS price, po.id AS sort_key FROM production_orders po WHERE po.product_id = ? AND po.company_id = ? AND po.status = 'Completed')";
     array_push($params, $item_id, $company_id);
     $types .= "is";
 
-    // Sales (Stock Out)
-    $sql_parts[] = "(
-        SELECT
-            si.invoice_date AS date,
-            'Sale' AS type,
-            CONCAT('Invoice ', si.invoice_number) AS description,
-            -sii.quantity AS quantity,
-            sii.unit_price AS price -- This is sales price, for stock out, we will use running avg cost
-        FROM sales_invoice_items sii
-        JOIN sales_invoices si ON si.id = sii.invoice_id
-        WHERE sii.item_id = ? AND sii.company_id = ?
-    )";
+    $sql_parts[] = "(SELECT si.invoice_date AS date, 'Sale' AS type, CONCAT('Invoice ', si.invoice_number) AS description, -sii.quantity AS quantity, sii.unit_price AS price, si.id AS sort_key FROM sales_invoice_items sii JOIN sales_invoices si ON si.id = sii.invoice_id WHERE sii.item_id = ? AND sii.company_id = ?)";
     array_push($params, $item_id, $company_id);
     $types .= "is";
 }
@@ -143,7 +89,7 @@ if (empty($sql_parts)) {
     exit;
 }
 
-$full_sql = implode(" UNION ALL ", $sql_parts) . " ORDER BY date ASC, type ASC"; // Added type to sort order for stability
+$full_sql = implode(" UNION ALL ", $sql_parts) . " ORDER BY date ASC, sort_key ASC";
 $stmt = $conn->prepare($full_sql);
 if (!$stmt) {
      http_response_code(500);
@@ -155,10 +101,8 @@ $stmt->execute();
 $transactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-
 // Step 1.5: Calculate and Set Opening Balance
 $table_name = ($item_type === 'raw_material') ? 'raw_materials' : 'products';
-
 $stmt_current = $conn->prepare("SELECT quantity_on_hand, average_unit_cost, created_at FROM {$table_name} WHERE id = ? AND company_id = ?");
 $stmt_current->bind_param("is", $item_id, $company_id);
 $stmt_current->execute();
@@ -172,13 +116,47 @@ $earliest_date = $current_stock['created_at'] ?? date('Y-m-d H:i:s');
 $total_txn_qty_change = array_sum(array_column($transactions, 'quantity'));
 $opening_qty = $current_qty - $total_txn_qty_change;
 
-
 // Step 2: Process transactions to build a running ledger
 $ledger = [];
+$running_qty = 0.0;
+$running_avg_cost = 0.0;
+
+// Re-calculate opening balance from scratch if there are transactions
+if (!empty($transactions)) {
+    // Recalculate a more accurate opening cost by working backwards from the end state.
+    $temp_running_qty = $current_qty;
+    $temp_running_value = $current_qty * $opening_avg_cost; // Start with the DB value, which is likely stale
+
+    // This loop is just to find a better opening cost. It doesn't build the final ledger.
+    foreach (array_reverse($transactions) as $txn) {
+        $qty_change = (float)$txn['quantity'];
+        $price = (float)$txn['price'];
+
+        if ($qty_change > 0) { // Backing out a stock-in
+            $value_change = $qty_change * $price;
+            $temp_running_value -= $value_change;
+            $temp_running_qty -= $qty_change;
+        } else { // Backing out a stock-out
+            $old_qty_before_out = $temp_running_qty - $qty_change; // e.g. 10 - (-5) = 15
+            if ($old_qty_before_out != 0 && $temp_running_qty != 0) {
+                 $cost_at_time_of_issue = $temp_running_value / $temp_running_qty; // This is the avg cost before the issue
+                 $value_change = $qty_change * $cost_at_time_of_issue;
+                 $temp_running_value -= $value_change;
+            }
+            $temp_running_qty -= $qty_change;
+        }
+    }
+    
+    $opening_qty = $temp_running_qty;
+    // If there was an opening quantity, use the reverse-calculated value to get a better opening cost.
+    if($opening_qty > 0.001) {
+      $opening_avg_cost = $temp_running_value / $opening_qty;
+    }
+}
+
 $running_qty = $opening_qty;
 $running_avg_cost = $opening_avg_cost;
 
-// Add the calculated Opening Balance as the first entry
 if ($opening_qty > 0.001) {
     $opening_entry = [
         'date' => $earliest_date,
@@ -191,18 +169,16 @@ if ($opening_qty > 0.001) {
         'balance_avg_cost' => $running_avg_cost,
         'balance_total_value' => $running_qty * $running_avg_cost,
     ];
-
     if ($user_role === 'staff') {
         $opening_entry['unit_cost'] = null;
         $opening_entry['total_value'] = null;
         $opening_entry['balance_avg_cost'] = null;
         $opening_entry['balance_total_value'] = null;
     }
-
     $ledger[] = $opening_entry;
 }
 
-// Now process the actual transactions
+// Now process the actual transactions chronologically
 foreach ($transactions as $txn) {
     $qty_change = (float)$txn['quantity'];
     $db_price = (float)$txn['price'];
@@ -213,41 +189,31 @@ foreach ($transactions as $txn) {
 
     if ($qty_change > 0) { // STOCK IN
         $transaction_cost = $db_price;
+        $new_total_value = ($old_qty * $old_avg_cost) + ($qty_change * $transaction_cost);
         $running_qty = $old_qty + $qty_change;
-        if ($running_qty != 0) {
-            $running_avg_cost = (($old_qty * $old_avg_cost) + ($qty_change * $transaction_cost)) / $running_qty;
-        } else {
-            $running_avg_cost = $transaction_cost;
-        }
+        $running_avg_cost = ($running_qty != 0) ? $new_total_value / $running_qty : 0;
     } else { // STOCK OUT
-        $transaction_cost = $old_avg_cost; // Use the running average cost for the cost of goods sold/issued
+        $transaction_cost = $old_avg_cost; 
         $running_qty = $old_qty + $qty_change;
-        // The average cost of remaining stock doesn't change on a stock-out event.
     }
 
-    $value_change = $qty_change * $transaction_cost;
-
     $entry = [
-        'date' => $txn['date'],
-        'type' => $txn['type'],
-        'description' => $txn['description'],
-        'quantity' => $qty_change,
-        'unit_cost' => $transaction_cost,
-        'total_value' => $value_change,
-        'balance_quantity' => $running_qty,
-        'balance_avg_cost' => $running_avg_cost,
+        'date' => $txn['date'], 'type' => $txn['type'], 'description' => $txn['description'],
+        'quantity' => $qty_change, 'unit_cost' => $transaction_cost, 'total_value' => $qty_change * $transaction_cost,
+        'balance_quantity' => $running_qty, 'balance_avg_cost' => $running_avg_cost,
         'balance_total_value' => $running_qty * $running_avg_cost,
     ];
 
     if ($user_role === 'staff') {
-        $entry['unit_cost'] = null;
-        $entry['total_value'] = null;
-        $entry['balance_avg_cost'] = null;
-        $entry['balance_total_value'] = null;
+        $entry['unit_cost'] = null; $entry['total_value'] = null;
+        $entry['balance_avg_cost'] = null; $entry['balance_total_value'] = null;
     }
-    
     $ledger[] = $entry;
 }
+
+// Self-healing has been removed as it is a dangerous practice.
+// The responsibility for maintaining accurate average cost lies with the individual
+// transaction scripts (e.g., create-grn.php, issue-material.php).
 
 echo json_encode([
     'status' => 'success',

@@ -1,38 +1,63 @@
 <?php
-header('Access-Control-Allow-Origin: *');
-header('Content-Type: application/json');
+// Set headers for CORS and content type
+header("Access-Control-Allow-Origin: *");
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Methods: GET");
 
-require_once '../../../db_connect.php';
+// Include the database connection file
+require_once __DIR__ . '/db_connect.php';
 
-function get_products($conn, $company_id) {
-    $stmt = $conn->prepare("SELECT id, name FROM products WHERE company_id = ? ORDER BY name ASC");
-    if (!$stmt) {
-        throw new Exception("SQL Prepare failed: " . $conn->error);
-    }
-    $stmt->bind_param("s", $company_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $products = $result->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    return $products;
+// Check for company_id GET parameter
+if (!isset($_GET['company_id']) || empty(trim($_GET['company_id']))) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Company ID is required.']);
+    exit;
 }
 
-// Main execution block
+$company_id = trim($_GET['company_id']);
+
 try {
-    if (!isset($_GET['company_id'])) {
-        throw new Exception("Company ID is required.", 400);
+    // Prepare the simple SQL statement to select products
+    $sql = "SELECT 
+                id, 
+                name, 
+                sku, 
+                category, 
+                unit_of_measure 
+            FROM products 
+            WHERE company_id = ?";
+
+    $stmt = $conn->prepare($sql);
+    if ($stmt === false) {
+        throw new Exception("Failed to prepare the statement: " . $conn->error);
     }
-    $company_id = $_GET['company_id'];
-    
-    $products = get_products($conn, $company_id);
+
+    // Bind the company_id parameter
+    $stmt->bind_param("s", $company_id);
+
+    // Execute the statement
+    $stmt->execute();
+
+    // Get the result set
+    $result = $stmt->get_result();
+
+    // Fetch all products into an array
+    $products = $result->fetch_all(MYSQLI_ASSOC);
+
+    // Close the statement and connection
+    $stmt->close();
+    $conn->close();
+
+    // Send the response
+    http_response_code(200);
     echo json_encode(['success' => true, 'products' => $products]);
 
 } catch (Exception $e) {
-    http_response_code($e->getCode() ?: 500);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-} finally {
-    if (isset($conn)) {
-        $conn->close();
-    }
+    // Handle any errors
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'An error occurred while fetching products: ' . $e->getMessage()
+    ]);
 }
 ?>
