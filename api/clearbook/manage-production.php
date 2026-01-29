@@ -293,8 +293,10 @@ function handle_production_request($conn) {
                     }
                     if ($cost_var > 0) {
                         $total_overhead_cost += $cost_var;
-                        $overhead_account_role = $o['gl_account_role'] ?? 'MANUFACTURING_OVERHEAD_APPLIED';
-                        $overhead_account_code = get_account_code_by_role($conn, $company_id, $overhead_account_role);
+                        if (empty($o['gl_account'])) {
+                            throw new Exception("The 'gl_account' is not set for the overhead '{$o['overhead_name']}' in the BOM settings.", 400);
+                        }
+                        $overhead_account_code = $o['gl_account'];
                         $sub_entries[] = ['account' => $overhead_account_code, 'type' => 'Credit', 'amount' => $cost_var, 'narration' => 'Applied Overhead: ' . $o['overhead_name']];
 
                         $cost_type_var = (stripos($o['overhead_name'], 'labor') !== false) ? 'Labor' : 'Overhead';

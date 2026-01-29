@@ -26,20 +26,20 @@ interface InventoryItem {
   name: string;
 }
 
-// This interface matches the data from the get-item-history.php API
+// **FIXED**: This interface now matches the actual API response data
 interface LedgerEntry {
     date: string;
     type: string;
     description: string;
-    quantity_change: number;
-    unit_cost: number;
-    value_change: number;
-    running_quantity: number;
-    running_avg_cost: number;
-    running_total_value: number;
+    quantity: number; // Corrected from quantity_change
+    unit_cost: number | null;
+    total_value: number | null; // Corrected from value_change
+    balance_quantity: number;
+    balance_avg_cost: number | null;
+    balance_total_value: number | null;
 }
 
-// The props for our new, intelligent dialog
+// The props for your intelligent dialog
 interface ItemHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,7 +58,7 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // This useEffect hook is the magic. It runs when the dialog is opened.
+  // This useEffect hook is preserved as you intended.
   useEffect(() => {
     if (open && item && user) {
       const fetchHistory = async () => {
@@ -66,7 +66,8 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
         setError(null);
         try {
           const response = await fetch(
-            `https://hariindustries.net/api/clearbook/get-item-history.php?company_id=${user.company_id}&item_id=${item.id}&item_type=${itemType}`
+              `https://hariindustries.net/api/clearbook/get-item-history.php?company_id=${user.company_id}&item_id=${item.id}&item_type=${itemType}&user_role=${user.role}`
+            
           );
           if (!response.ok) {
             throw new Error('Failed to fetch item history.');
@@ -98,19 +99,16 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[70vh] overflow-y-auto">
-          {/* 1. Show a loading spinner while fetching */}
           {isLoading ? (
             <div className="flex justify-center items-center h-48">
               <Loader2 className="h-12 w-12 animate-spin" />
             </div>
-          /* 2. Show an error message if something went wrong */
           ) : error ? (
              <div className="flex flex-col items-center justify-center h-48 text-red-600">
                 <AlertCircle className="h-10 w-10 mb-2" />
                 <p className="font-semibold">Error Loading History</p>
                 <p>{error}</p>
             </div>
-          /* 3. Show the table with the data when it's ready */
           ) : (
             <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
@@ -136,7 +134,8 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
               <TableBody>
                 {history && history.length > 0 ? (
                   history.map((entry, index) => {
-                    const isPositive = (entry.quantity_change ?? 0) > 0;
+                    // **FIXED**: Logic now uses `entry.quantity` which exists in your data.
+                    const isPositive = (entry.quantity ?? 0) > 0;
                     return (
                       <TableRow key={index} className={entry.type === 'Opening Balance' ? 'bg-secondary/50' : ''}>
                         <TableCell className="text-sm">{entry.date ? format(new Date(entry.date), 'dd/MM/yyyy') : '-'}</TableCell>
@@ -145,20 +144,20 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
                           <div className="text-xs text-muted-foreground">{entry.description}</div>
                         </TableCell>
                         
-                        {/* INFLOW */}
-                        <TableCell className="text-right border-l text-green-600">{isPositive ? (entry.quantity_change ?? 0).toLocaleString() : ''}</TableCell>
+                        {/* INFLOW - **FIXED**: Now reads from `quantity` and `total_value` */}
+                        <TableCell className="text-right border-l text-green-600">{isPositive ? (entry.quantity ?? 0).toLocaleString() : ''}</TableCell>
                         <TableCell className="text-right text-green-600">{isPositive ? formatCurrency(entry.unit_cost) : ''}</TableCell>
-                        <TableCell className="text-right border-r text-green-600">{isPositive ? formatCurrency(entry.value_change) : ''}</TableCell>
+                        <TableCell className="text-right border-r text-green-600">{isPositive ? formatCurrency(entry.total_value) : ''}</TableCell>
 
-                        {/* OUTFLOW */}
-                        <TableCell className="text-right text-red-600">{!isPositive && entry.type !== 'Opening Balance' ? Math.abs(entry.quantity_change ?? 0).toLocaleString() : ''}</TableCell>
-                        <TableCell className="text-right text-red-600">{!isPositive && entry.type !== 'Opening Balance' ? formatCurrency(entry.unit_cost) : ''}</TableCell>
-                        <TableCell className="text-right border-r text-red-600">{!isPositive && entry.type !== 'Opening Balance' ? formatCurrency(Math.abs(entry.value_change ?? 0)) : ''}</TableCell>
+                        {/* OUTFLOW - **FIXED**: Now reads from `quantity` and `total_value` */}
+                        <TableCell className="text-right text-red-600">{!isPositive ? Math.abs(entry.quantity ?? 0).toLocaleString() : ''}</TableCell>
+                        <TableCell className="text-right text-red-600">{!isPositive ? formatCurrency(entry.unit_cost) : ''}</TableCell>
+                        <TableCell className="text-right border-r text-red-600">{!isPositive ? formatCurrency(Math.abs(entry.total_value ?? 0)) : ''}</TableCell>
 
-                        {/* BALANCE (This includes the fix for the crash) */}
-                        <TableCell className="text-right font-bold">{(entry.running_quantity ?? 0).toLocaleString()}</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(entry.running_avg_cost)}</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(entry.running_total_value)}</TableCell>
+                        {/* BALANCE - Reads from the correct balance fields, which were already correct */}
+                        <TableCell className="text-right font-bold">{(entry.balance_quantity ?? 0).toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(entry.balance_avg_cost)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(entry.balance_total_value)}</TableCell>
                       </TableRow>
                     );
                   })

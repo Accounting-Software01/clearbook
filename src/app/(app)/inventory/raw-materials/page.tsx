@@ -121,31 +121,9 @@ const RawMaterialsPage = () => {
         fetchInventory();
     };
 
-    const handleRowClick = async (item: InventoryItem) => {
-        if (!user) return;
+    const handleRowClick = (item: InventoryItem) => {
         setSelectedItem(item);
         setIsHistoryDialogOpen(true);
-        setIsHistoryLoading(true);
-        setItemHistory([]); // Clear previous history
-
-        try {
-            const response = await fetch(`https://hariindustries.net/api/clearbook/get-item-history.php?company_id=${user.company_id}&item_id=${item.id}&item_type=raw_material&user_role=${user.role}`);
-            const data = await response.json();
-            if (data.status === 'success') {
-                setItemHistory(data.history);
-            } else {
-                throw new Error(data.message || 'Failed to fetch history');
-            }
-        } catch (error: any) {
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: `Could not fetch item history: ${error.message}`,
-            });
-            setIsHistoryDialogOpen(false); // Close dialog on error
-        } finally {
-            setIsHistoryLoading(false);
-        }
     };
 
     const handlePromptAction = (confirm: boolean) => {
@@ -171,11 +149,11 @@ const RawMaterialsPage = () => {
             />
             {selectedItem && (
                 <ItemHistoryDialog
-                    isOpen={isHistoryDialogOpen}
-                    onClose={handleCloseHistoryDialog}
-                    history={itemHistory}
-                    itemName={selectedItem.name}
-                />
+                open={isHistoryDialogOpen}
+                onOpenChange={setIsHistoryDialogOpen}
+                item={selectedItem}
+                itemType="raw_material"
+            />
             )}
             <RecordOpeningBalanceDialog
                 open={isOpeningBalanceDialogOpen}
