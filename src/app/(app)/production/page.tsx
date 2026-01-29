@@ -8,11 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, AlertTriangle, GanttChartSquare, Workflow } from 'lucide-react';
+// On line 11
+import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, GanttChartSquare, Workflow, Eye, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { InventoryItem } from '@/types/inventory';
-
 // --- NEW COMPREHENSIVE INTERFACES ---
 interface Bom {
     id: number;
@@ -64,6 +64,40 @@ interface ProductionOrder {
     notes?: string;
 }
 
+// --- Add these new interfaces below the ProductionOrder interface (around line 65) ---
+
+interface ProductionOrderHeader extends ProductionOrder {
+    total_material_cost: string | null;
+    total_overhead_cost: string | null;
+    total_production_cost: string | null;
+}
+
+interface OrderConsumption {
+    material_name: string;
+    quantity_consumed: string;
+    unit_cost_at_consumption: string;
+}
+
+interface OrderCost {
+    cost_type: string;
+    description: string;
+    amount: string;
+}
+
+interface OrderJournal {
+    voucher_number: string;
+    narration: string;
+    total_debits: string;
+    entry_date: string;
+}
+
+interface ProductionOrderDetails {
+    header: ProductionOrderHeader;
+    consumption: OrderConsumption[];
+    costs: OrderCost[];
+    journals: OrderJournal[];
+}
+
 // --- HELPER COMPONENTS ---
 
 // Helper to format amounts safely into Naira (₦)
@@ -75,7 +109,7 @@ const formatNaira = (amount: string | number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(num);
 };
 
-const OrderList = ({ orders, onStart, onComplete }: { orders: ProductionOrder[], onStart: (id: number) => void, onComplete: (id: number) => void }) => {
+const OrderList = ({ orders, onStart, onComplete, onView }: { orders: ProductionOrder[], onStart: (id: number) => void, onComplete: (id: number) => void, onView: (id: number) => void }) => {
     if (orders.length === 0) {
         return <p className='text-center text-muted-foreground py-8'>No production orders in this category.</p>;
     }
@@ -89,6 +123,7 @@ const OrderList = ({ orders, onStart, onComplete }: { orders: ProductionOrder[],
                     </div>
                     <div className='flex items-center gap-2'>
                         <p className={`text-sm font-bold capitalize px-2 py-1 rounded-full ${order.status === 'Pending' ? 'bg-yellow-400/20 text-yellow-500' : order.status === 'In Progress' ? 'bg-blue-400/20 text-blue-500' : 'bg-green-400/20 text-green-500'}`}>{order.status}</p>
+                        <Button size='sm' variant='outline' onClick={() => onView(order.id)}><Eye className='h-4 w-4 mr-2'/>View</Button>
                         {order.status === 'Pending' && <Button size='sm' variant='secondary' onClick={() => onStart(order.id)}><PlayCircle className='h-4 w-4 mr-2'/>Start</Button>}
                         {order.status === 'In Progress' && <Button size='sm' variant='secondary' onClick={() => onComplete(order.id)}><CheckCircle className='h-4 w-4 mr-2'/>Complete</Button>}
                     </div>
@@ -97,7 +132,6 @@ const OrderList = ({ orders, onStart, onComplete }: { orders: ProductionOrder[],
         </div>
     );
 };
-
 const CostingSummary = ({ costs }: { costs: any }) => (
     <Card className="bg-green-50 border-green-200">
         <CardHeader><CardTitle className="text-lg text-green-900">Estimated Production Cost</CardTitle></CardHeader>
@@ -112,6 +146,89 @@ const CostingSummary = ({ costs }: { costs: any }) => (
     </Card>
 );
 
+const OrderDetailView = ({ details, onClose }: { details: ProductionOrderDetails, onClose: () => void }) => {
+    const { header, consumption, costs, journals } = details;
+
+    return (
+        <div className="space-y-6">
+            <Button variant="outline" onClick={onClose}><ArrowLeft className="mr-2 h-4 w-4"/>Back to Dashboard</Button>
+            
+            <Card>
+                <CardHeader>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle className="text-2xl">Production Order #{header.id}</CardTitle>
+                            <CardDescription>Details for <strong>{header.product_name}</strong></CardDescription>
+                        </div>
+                        <p className={`text-lg font-bold capitalize px-3 py-1 rounded-full ${header.status === 'Pending' ? 'bg-yellow-400/20 text-yellow-500' : header.status === 'In Progress' ? 'bg-blue-400/20 text-blue-500' : 'bg-green-400/20 text-green-500'}`}>{header.status}</p>
+                    </div>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                    <div><strong>Quantity Produced:</strong> {header.quantity_to_produce}</div>
+                    <div><strong>Creation Date:</strong> {new Date(header.creation_date).toLocaleDateString()}</div>
+                    <div className="font-semibold"><strong>Total Material Cost:</strong> {formatNaira(header.total_material_cost || 0)}</div>
+                    <div className="font-semibold"><strong>Total Overhead Cost:</strong> {formatNaira(header.total_overhead_cost || 0)}</div>
+                    <div className="font-bold text-base text-primary"><strong>Total Production Cost:</strong> {formatNaira(header.total_production_cost || 0)}</div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle>Material Consumption</CardTitle></CardHeader>
+                <CardContent>
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Quantity Consumed</TableHead><TableHead className="text-right">Cost at Consumption</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {consumption.map((item, i) => (
+                                <TableRow key={i}>
+                                    <TableCell>{item.material_name}</TableCell>
+                                    <TableCell className="text-right">{parseFloat(item.quantity_consumed).toFixed(4)}</TableCell>
+                                    <TableCell className="text-right">{formatNaira(item.unit_cost_at_consumption)}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                 <Card>
+                    <CardHeader><CardTitle>Applied Costs</CardTitle></CardHeader>
+                    <CardContent>
+                         <Table>
+                            <TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {costs.map((item, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell>{item.cost_type}</TableCell>
+                                        <TableCell>{item.description}</TableCell>
+                                        <TableCell className="text-right">{formatNaira(item.amount)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><CardTitle>Accounting Journals</CardTitle></CardHeader>
+                    <CardContent>
+                         <Table>
+                            <TableHeader><TableRow><TableHead>Voucher</TableHead><TableHead>Narration</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                {journals.map((item, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell>{item.voucher_number}</TableCell>
+                                        <TableCell>{item.narration}</TableCell>
+                                        <TableCell className="text-right">{formatNaira(item.total_debits)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
+};
 
 // --- MAIN PAGE COMPONENT ---
 export default function ProductionPage() {
@@ -119,12 +236,17 @@ export default function ProductionPage() {
     const { user } = useAuth();
 
     // State
+
     const [orders, setOrders] = useState<ProductionOrder[]>([]);
     const [boms, setBoms] = useState<Bom[]>([]);
     const [products, setProducts] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isBomLoading, setIsBomLoading] = useState(false);
+
+    // --- Add these new state variables around line 128 ---
+    const [viewingOrderDetails, setViewingOrderDetails] = useState<ProductionOrderDetails | null>(null);
+    const [isDetailLoading, setIsDetailLoading] = useState(false);
 
     // Form State
     const [selectedBomId, setSelectedBomId] = useState<string>("");
@@ -265,55 +387,79 @@ export default function ProductionPage() {
             setIsSubmitting(false);
         }
     };
-
-    const updateOrderStatus = async (orderId: number, status: 'In Progress' | 'Completed') => {
-        if (!user) return;
-        try {
-            const response = await fetch('https://hariindustries.net/api/clearbook/manage-production.php', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ production_order_id: orderId, company_id: user.company_id, user_id: user.uid, status: status }),
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-            toast({ title: 'Success', description: result.message || `Order #${orderId} status updated.` });
-            fetchData();
-        } catch (error: any) {
-             toast({ title: "Operation Failed", description: error.message, variant: 'destructive' });
+// --- Add this new function inside ProductionPage, after handleCreateOrder (around line 285) ---
+const handleViewOrder = useCallback(async (orderId: number) => {
+    if (!user?.company_id) return;
+    setIsDetailLoading(true);
+    setViewingOrderDetails(null);
+    try {
+        const response = await fetch(`https://hariindustries.net/api/clearbook/manage-production.php?company_id=${user.company_id}&production_order_id=${orderId}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Failed to fetch order details');
+        
+        if (data.success) {
+            setViewingOrderDetails(data.data);
+        } else {
+            throw new Error(data.message);
         }
+    } catch (error: any) {
+        toast({ title: "Error Fetching Details", description: error.message, variant: 'destructive' });
+    } finally {
+        setIsDetailLoading(false);
     }
+}, [user?.company_id, toast]);
 
-    if (isLoading) {
-        return <div className="flex justify-center items-center h-64"><Loader2 className="h-12 w-12 animate-spin" /></div>;
+ 
+const updateOrderStatus = async (orderId: number, status: 'In Progress' | 'Completed') => {
+    if (!user) return;
+    try {
+        const response = await fetch('https://hariindustries.net/api/clearbook/manage-production.php', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ production_order_id: orderId, company_id: user.company_id, user_id: user.uid, status: status }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message);
+        toast({ title: 'Success', description: result.message || `Order #${orderId} status updated.` });
+        fetchData();
+    } catch (error: any) {
+         toast({ title: "Operation Failed", description: error.message, variant: 'destructive' });
     }
+}
 
-    return (
-        <Card>
-            <CardHeader className="flex flex-row justify-between items-center">
-                 <div className='flex items-center'><Factory className="mr-2" /><CardTitle>Production Dashboard</CardTitle></div>
-                <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>Refresh</Button>
-            </CardHeader>
-            <CardContent>
+// --- Replace the main return statement (lines 290-405) with this ---
+return (
+    <Card>
+        <CardHeader className="flex flex-row justify-between items-center">
+             <div className='flex items-center'><Factory className="mr-2" /><CardTitle>Production Dashboard</CardTitle></div>
+            <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>Refresh</Button>
+        </CardHeader>
+        <CardContent>
+            {isDetailLoading ? (
+                 <div className="flex justify-center items-center h-64"><Loader2 className="h-12 w-12 animate-spin" /></div>
+            ) : viewingOrderDetails ? (
+                <OrderDetailView details={viewingOrderDetails} onClose={() => setViewingOrderDetails(null)} />
+            ) : (
                 <Tabs defaultValue="orders" className='w-full'>
                     <TabsList className="grid w-full grid-cols-4">
-                         <TabsTrigger value="orders"><Package className="mr-2 h-4 w-4"/>Pending ({orders.filter(o=>o.status === 'Pending').length})</TabsTrigger>
-                         <TabsTrigger value="wip"><ListChecks className="mr-2 h-4 w-4"/>WIP ({orders.filter(o=>o.status === 'In Progress').length})</TabsTrigger>
-                         <TabsTrigger value="finished"><PackageCheck className="mr-2 h-4 w-4"/>Finished ({orders.filter(o=>o.status === 'Completed').length})</TabsTrigger>
+                        <TabsTrigger value="orders"><Package className="mr-2 h-4 w-4"/>Pending ({orders.filter(o=>o.status === 'Pending').length})</TabsTrigger>
+                        <TabsTrigger value="wip"><ListChecks className="mr-2 h-4 w-4"/>WIP ({orders.filter(o=>o.status === 'In Progress').length})</TabsTrigger>
+                        <TabsTrigger value="finished"><PackageCheck className="mr-2 h-4 w-4"/>Finished ({orders.filter(o=>o.status === 'Completed').length})</TabsTrigger>
                         <TabsTrigger value="new"><PlusCircle className="mr-2 h-4 w-4"/>Create New</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="orders" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Pending')} onStart={(id) => updateOrderStatus(id, 'In Progress')} onComplete={(id) => updateOrderStatus(id, 'Completed')} /></TabsContent>
-                    <TabsContent value="wip" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'In Progress')} onStart={(id) => {}} onComplete={(id) => updateOrderStatus(id, 'Completed')} /></TabsContent>
-                    <TabsContent value="finished" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Completed')} onStart={(id) => {}} onComplete={(id) => {}} /></TabsContent>
+                    <TabsContent value="orders" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Pending')} onStart={(id) => updateOrderStatus(id, 'In Progress')} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
+                    <TabsContent value="wip" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'In Progress')} onStart={(id) => {}} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
+                    <TabsContent value="finished" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Completed')} onStart={(id) => {}} onComplete={(id) => {}} onView={handleViewOrder} /></TabsContent>
 
                     <TabsContent value="new" className="mt-4">
                         <form onSubmit={handleCreateOrder} className="space-y-6 max-w-5xl mx-auto">
-                             <Card>
+                            <Card>
                                 <CardHeader>
                                     <CardTitle className="text-lg flex items-center"><Notebook className="h-5 w-5 mr-2" />1. Define Production Goal</CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                     <div>
+                                    <div>
                                         <label className="font-medium">Bill of Materials (BOM)</label>
                                         <Select value={selectedBomId} onValueChange={setSelectedBomId} required><SelectTrigger><SelectValue placeholder="Select a BOM..." /></SelectTrigger><SelectContent>{bomOptions.map(bom => <SelectItem key={bom.id} value={bom.id.toString()}>{bom.bom_code} (v{bom.bom_version}) - {bom.finished_good_name}</SelectItem>)}</SelectContent></Select>
                                     </div>
@@ -340,13 +486,13 @@ export default function ProductionPage() {
                                                     <Table>
                                                         <TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Required Qty</TableHead><TableHead>Unit</TableHead></TableRow></TableHeader>
                                                         <TableBody>
-                                                            {selectedBomDetails.components.length > 0 ? selectedBomDetails.components.map(c => (
+                                                            {selectedBomDetails.components.map(c => (
                                                                 <TableRow key={c.id}>
                                                                     <TableCell>{c.item_name}</TableCell>
                                                                     <TableCell className="text-right">{(c.quantity * (parseFloat(quantityToProduce) || 0)).toFixed(4)}</TableCell>
                                                                     <TableCell>{c.uom}</TableCell>
                                                                 </TableRow>
-                                                            )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No materials in this BOM.</TableCell></TableRow>}
+                                                            ))}
                                                         </TableBody>
                                                     </Table>
                                                 </CardContent>
@@ -358,13 +504,13 @@ export default function ProductionPage() {
                                                     <Table>
                                                         <TableHeader><TableRow><TableHead>Step</TableHead><TableHead>Operation</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
                                                         <TableBody>
-                                                            {selectedBomDetails.operations.length > 0 ? selectedBomDetails.operations.map(o => (
+                                                            {selectedBomDetails.operations.map(o => (
                                                                 <TableRow key={o.sequence}>
                                                                     <TableCell>{o.sequence}</TableCell>
                                                                     <TableCell className="font-medium">{o.operation_name}</TableCell>
                                                                     <TableCell className="text-muted-foreground">{o.notes}</TableCell>
                                                                 </TableRow>
-                                                            )) : <TableRow><TableCell colSpan={3} className="text-center h-24">No operations defined in this BOM.</TableCell></TableRow>}
+                                                            ))}
                                                         </TableBody>
                                                     </Table>
                                                 </CardContent>
@@ -376,14 +522,14 @@ export default function ProductionPage() {
                                                     <Table>
                                                         <TableHeader><TableRow><TableHead>Overhead</TableHead><TableHead>Category</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
                                                         <TableBody>
-                                                            {selectedBomDetails.overheads.length > 0 ? selectedBomDetails.overheads.map((o, i) => (
+                                                            {selectedBomDetails.overheads.map((o, i) => (
                                                                 <TableRow key={i}>
                                                                     <TableCell>{o.overhead_name}</TableCell>
                                                                     <TableCell>{o.cost_category}</TableCell>
                                                                     <TableCell>{o.cost_method.replace('_', ' ')}</TableCell>
                                                                     <TableCell className="text-right">{o.cost_method === 'percentage_of_material' ? `${o.cost}%` : formatNaira(o.cost)}</TableCell>
                                                                 </TableRow>
-                                                            )) : <TableRow><TableCell colSpan={4} className="text-center h-24">No overheads defined in this BOM.</TableCell></TableRow>}
+                                                            ))}
                                                         </TableBody>
                                                     </Table>
                                                 </CardContent>
@@ -399,7 +545,8 @@ export default function ProductionPage() {
                         </form>
                     </TabsContent>
                 </Tabs>
-            </CardContent>
-        </Card>
-    );
+            )}
+        </CardContent>
+    </Card>
+);
 }

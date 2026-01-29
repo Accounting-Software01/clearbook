@@ -48,29 +48,47 @@ const currencyFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', cu
 
 // --- Sub-components ---
 
-const ProductListItem = ({ product, onAddToCart, disabled }: { product: Item, onAddToCart: (product: Item) => void, disabled: boolean }) => (
-    <Card 
-        className={`hover:shadow-md ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} 
-        onClick={() => !disabled && onAddToCart(product)}
-    >
-        <CardContent className="p-4 flex justify-between items-center">
-            <div className="flex items-center gap-4">
-                <div className="bg-gray-100 p-3 rounded-lg"><Package className="h-6 w-6 text-gray-500" /></div>
-                <div>
-                    <p className="font-semibold">{product.name}</p>
-                    <div className="text-sm text-muted-foreground flex gap-4">
-                        <span><Tag className="h-3 w-3 inline-block mr-1" />{product.code || 'N/A'}</span>
-                        <span><Badge variant="outline">{product.category || 'N/A'}</Badge></span>
+// --- Replace the old ProductListItem with this ---
+const ProductListItem = ({ product, onAddToCart, disabled, activePriceTier }: { product: Item, onAddToCart: (product: Item) => void, disabled: boolean, activePriceTier: string }) => {
+    
+    const tierPrice = product.price_tiers?.[activePriceTier];
+
+    // Determine the price to display. Use the tier price if it's valid, otherwise default to base_price.
+    const displayPrice = (activePriceTier !== 'base_price' && tierPrice !== undefined) 
+        ? tierPrice 
+        : product.base_price;
+        
+    // A tier is considered "active" for display purposes if a specific tier is selected AND that tier price is different from the base price.
+    const isTierPriceDisplayed = activePriceTier !== 'base_price' && tierPrice !== undefined && tierPrice !== product.base_price;
+
+    return (
+        <Card 
+            className={`hover:shadow-md ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} 
+            onClick={() => !disabled && onAddToCart(product)}
+        >
+            <CardContent className="p-4 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <div className="bg-gray-100 p-3 rounded-lg"><Package className="h-6 w-6 text-gray-500" /></div>
+                    <div>
+                        <p className="font-semibold">{product.name}</p>
+                        <div className="text-sm text-muted-foreground flex gap-4">
+                            <span><Tag className="h-3 w-3 inline-block mr-1" />{product.code || 'N/A'}</span>
+                            <span><Badge variant="outline">{product.category || 'N/A'}</Badge></span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div className="text-right">
-                <p className="font-bold text-primary text-lg">{currencyFormatter.format(product.base_price)}</p>
-                <p className="text-sm text-muted-foreground">Stock: {product.stock}</p>
-            </div>
-        </CardContent>
-    </Card>
-);
+                <div className="text-right">
+                    <p className="font-bold text-primary text-lg">{currencyFormatter.format(displayPrice)}</p>
+                    {isTierPriceDisplayed && (
+                        <p className="text-xs text-muted-foreground line-through">{currencyFormatter.format(product.base_price)}</p>
+                    )}
+                    <p className="text-sm text-muted-foreground">Stock: {product.stock}</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
 
 const CartItemView = ({ item, onRemove, onQuantityChange }: { item: CartItem, onRemove: (id: string) => void, onQuantityChange: (id: string, quantity: number) => void }) => (
     <div className="flex justify-between items-center mb-4">
@@ -242,7 +260,9 @@ export default function PointOfSalePage() {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
-    
+    const [priceTiers, setPriceTiers] = useState<string[]>([]);
+    const [activePriceTier, setActivePriceTier] = useState<string>('base_price');
+
     // POS state
     const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
     const [activeCategory, setActiveCategory] = useState('All Products');
@@ -276,6 +296,16 @@ export default function PointOfSalePage() {
             const uniqueCategories = ['All Products', ...new Set(itemsData.map((i: Item) => i.category).filter(Boolean))];
             setCategories(uniqueCategories);
 
+            const allTiers = new Set<string>(['base_price']);
+            itemsData.forEach((item: Item) => {
+                if (item.price_tiers) {
+                    Object.keys(item.price_tiers).forEach(tier => {
+                        if(tier) allTiers.add(tier);
+                    });
+                }
+            });
+            setPriceTiers(Array.from(allTiers));
+
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Error fetching data', description: error.message });
         } finally {
@@ -287,17 +317,14 @@ export default function PointOfSalePage() {
         if (user?.company_id) fetchInitialData();
     }, [user, fetchInitialData]);
 
-    const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [selectedCustomerId, customers]);
-
     const handleAddToCart = (product: Item) => {
         if (!selectedCustomerId) {
             toast({ variant: 'destructive', title: 'Please select a customer first.'});
             return;
         }
     
-        const customerTier = selectedCustomer?.price_tier;
-        const unit_price = customerTier && product.price_tiers[customerTier] 
-            ? product.price_tiers[customerTier] 
+        const unit_price = activePriceTier !== 'base_price' && product.price_tiers && product.price_tiers[activePriceTier] 
+            ? product.price_tiers[activePriceTier] 
             : product.base_price;
     
         setCart(prevCart => {
@@ -324,7 +351,6 @@ export default function PointOfSalePage() {
   
     const handleQuantityChange = (itemId: string, newQuantity: number) => {
         if (newQuantity < 1) {
-            // If the user tries to go below 1, remove the item instead
             handleRemoveFromCart(itemId);
             return;
         }
@@ -421,15 +447,31 @@ export default function PointOfSalePage() {
         <div className="flex flex-col h-screen bg-gray-50/50">
             <header className="flex items-center justify-between p-4 bg-white border-b">
                 <h1 className="text-2xl font-bold">Point of Sale</h1>
-                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={isSubmitting || cart.length > 0}>
-                    <SelectTrigger className="w-[280px]">
-                        <User className="h-4 w-4 mr-2 text-muted-foreground"/>
-                        <SelectValue placeholder="Select a customer..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
+                <div className="flex items-center gap-4">
+                    <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId} disabled={isSubmitting || cart.length > 0}>
+                        <SelectTrigger className="w-[280px]">
+                            <User className="h-4 w-4 mr-2 text-muted-foreground"/>
+                            <SelectValue placeholder="Select a customer..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                
+                    <Select value={activePriceTier} onValueChange={setActivePriceTier} disabled={isSubmitting || cart.length > 0}>
+                        <SelectTrigger className="w-[180px]">
+                            <Tag className="h-4 w-4 mr-2 text-muted-foreground"/>
+                            <SelectValue placeholder="Select a price tier" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {priceTiers.map(tier => (
+                                <SelectItem key={tier} value={tier}>
+                                    {tier.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </header>
 
             <main className="flex-1 flex gap-4 p-4 overflow-hidden">
@@ -463,7 +505,13 @@ export default function PointOfSalePage() {
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2">
                         {filteredProducts.map(product => (
-                            <ProductListItem key={product.id} product={product} onAddToCart={handleAddToCart} disabled={!selectedCustomerId || isSubmitting}/>
+                            <ProductListItem 
+                            key={product.id} 
+                            product={product} 
+                            onAddToCart={handleAddToCart} 
+                            disabled={!selectedCustomerId || isSubmitting}
+                            activePriceTier={activePriceTier}
+                        />
                         ))}
                     </div>
                 </div>

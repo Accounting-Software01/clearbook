@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
@@ -9,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-require_once '../../db_connect.php';
+require_once __DIR__ .'/../../db_connect.php';
 
 if (!isset($_GET['bom_id']) || empty($_GET['bom_id'])) {
     http_response_code(400);
@@ -25,11 +28,14 @@ $conn->begin_transaction();
 try {
     // Fetch BOM Identity
     $stmt = $conn->prepare(
-        "SELECT b.*, i.name as finished_good_name 
+        "SELECT b.*, p.name as finished_good_name 
          FROM boms b 
-         JOIN inventory_items i ON b.finished_good_id = i.id 
+         JOIN products p ON b.finished_good_id = p.id 
          WHERE b.id = ?"
     );
+    if ($stmt === false) {
+        throw new Exception('Prepare failed (BOM Identity): ' . $conn->error);
+    }
     $stmt->bind_param("i", $bom_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -39,13 +45,19 @@ try {
     $bom_details['identity'] = $result->fetch_assoc();
     $stmt->close();
 
-    // Fetch Components
+    // Fetch Components - NOW INCLUDES average_unit_cost
     $stmt = $conn->prepare(
-        "SELECT bc.*, i.name as item_name, i.uom 
+        "SELECT bc.*, 
+                rm.name as item_name, 
+                rm.unit_of_measure as uom, 
+                rm.average_unit_cost 
          FROM bom_components bc
-         JOIN inventory_items i ON bc.item_id = i.id
+         JOIN raw_materials rm ON bc.item_id = rm.id
          WHERE bc.bom_id = ?"
     );
+    if ($stmt === false) {
+        throw new Exception('Prepare failed (Components): ' . $conn->error);
+    }
     $stmt->bind_param("i", $bom_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -54,6 +66,9 @@ try {
 
     // Fetch Operations
     $stmt = $conn->prepare("SELECT * FROM bom_operations WHERE bom_id = ? ORDER BY sequence ASC");
+    if ($stmt === false) {
+        throw new Exception('Prepare failed (Operations): ' . $conn->error);
+    }
     $stmt->bind_param("i", $bom_id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -62,6 +77,9 @@ try {
 
     // Fetch Overheads
     $stmt = $conn->prepare("SELECT * FROM bom_overheads WHERE bom_id = ?");
+    if ($stmt === false) {
+        throw new Exception('Prepare failed (Overheads): ' . $conn->error);
+    }
     $stmt->bind_param("i", $bom_id);
     $stmt->execute();
     $result = $stmt->get_result();
