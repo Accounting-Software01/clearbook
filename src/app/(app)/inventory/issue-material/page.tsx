@@ -1,409 +1,307 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from '@/hooks/use-toast';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
-import { apiEndpoints } from '@/lib/apiEndpoints';
 
+// NEW: Define interfaces for our data structures for type safety
 interface RawMaterial {
     id: number;
     name: string;
-    quantity_on_hand: number;
+    quantity: number; // The API uses 'quantity'
     unit_cost: number;
+}
+
+interface GLAccount {
+    account_code: string;
+    account_name: string;
+    account_type: string;
 }
 
 interface MaterialIssue {
     id: number;
-    raw_material_id: number;
-    material_name: string; // Display name for history
+    issue_date: string;
+    material_name: string;
     quantity_issued: number;
-    unit_cost: number;
-    issue_type: string;
-    expense_account_id: number;
-    expense_account_name: string; // Display name for history
+    total_cost: number;
     reference?: string;
-    notes?: string;
-    issued_by: string; // User name
-    issue_date: string; // Date of issuance
-    created_at: string; // Timestamp of record creation
-}
-
-interface GLAccount {
-    id: number;
-    name: string;
-    account_code: string;
-    account_type: string;
 }
 
 const IssueMaterialPage = () => {
     const { user } = useAuth();
-    const { toast } = useToast();
-    const [materials, setMaterials] = useState<RawMaterial[]>([]);
-    const [issues, setIssues] = useState<MaterialIssue[]>([]);
-    const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
-    const [isLoadingGlAccounts, setIsLoadingGlAccounts] = useState(false);
+    // This is the missing line
+const { toast } = useToast();
 
-    // Form states
-    const [selectedMaterialId, setSelectedMaterialId] = useState<string | undefined>(undefined);
+    const [materials, setMaterials] = useState<RawMaterial[]>([]);
+    const [glAccounts, setGlAccounts] = useState<GLAccount[]>([]);
+    const [issues, setIssues] = useState<MaterialIssue[]>([]);
+    
+    // NEW: State for form fields
+    const [selectedMaterialId, setSelectedMaterialId] = useState<string>('');
     const [quantity, setQuantity] = useState<string>('');
-    const [unitCost, setUnitCost] = useState<string>('');
-    const [issueType, setIssueType] = useState<string | undefined>(undefined);
-    const [expenseAccountId, setExpenseAccountId] = useState<string | undefined>(undefined);
+    const [issueDate, setIssueDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [reference, setReference] = useState<string>('');
-    const [notes, setNotes] = useState<string>('');
-    const [issueDate, setIssueDate] = useState<Date | undefined>(new Date());
+    const [selectedGlAccount, setSelectedGlAccount] = useState<string>('');
+
+    // NEW: State for calculated values
+    const [unitCost, setUnitCost] = useState<number>(0);
+    const [totalValue, setTotalValue] = useState<number>(0);
+
     const [isLoading, setIsLoading] = useState(false);
 
-    const canIssueMaterials = user?.role === 'admin' || user?.role === 'staff' || user?.role === 'accountant';
-    const canSeeUnitCost = user?.role === 'admin' || user?.role === 'accountant';
-
-
-    const fetchRawMaterials = useCallback(async () => {
+    // Fetch Raw Materials
+    const fetchMaterials = useCallback(async () => {
         if (!user?.company_id) return;
         try {
-            const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}&item_type=raw_material`);
+            const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}`);
             const data = await response.json();
-            if (data && data.raw_materials) {
-                setMaterials(data.raw_materials);
+            if (data.raw_materials) {
+                // NEW: Ensure we only show materials with stock
+                setMaterials(data.raw_materials.filter((m: RawMaterial) => m.quantity > 0));
             }
         } catch (error) {
+            console.error("Failed to fetch raw materials:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch raw materials.' });
         }
     }, [user?.company_id, toast]);
 
+    // Fetch past material issues
     const fetchMaterialIssues = useCallback(async () => {
         if (!user?.company_id) return;
+        // This endpoint needs to be created, for now, we just mock the fetch
         try {
             const response = await fetch(`https://hariindustries.net/api/clearbook/get-material-issues.php?company_id=${user.company_id}`);
             const data = await response.json();
-            if (data && data.issues) {
-                const mappedIssues: MaterialIssue[] = data.issues.map((issue: any) => ({
-                    id: issue.id,
-                    raw_material_id: issue.raw_material_id,
-                    material_name: issue.material_name,
-                    quantity_issued: parseFloat(issue.quantity_issued),
-                    unit_cost: parseFloat(issue.unit_cost),
-                    issue_type: issue.issue_type,
-                    expense_account_id: issue.expense_account_id,
-                    expense_account_name: issue.expense_account_name, // Assuming API returns this
-                    reference: issue.reference,
-                    notes: issue.notes,
-                    issued_by: issue.issued_by_name, // Assuming API returns user name as issued_by_name
-                    issue_date: issue.issue_date,
-                    created_at: issue.created_at,
-                }));
-                setIssues(mappedIssues);
+            if (data.success) {
+                setIssues(data.issues);
             }
         } catch (error) {
             console.error("Failed to fetch material issues:", error);
-            toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch material issues.' });
+            // toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch material issues.' });
         }
     }, [user?.company_id, toast]);
 
+    // Fetch GL Accounts (Expense type)
     const fetchGlAccounts = useCallback(async () => {
         if (!user?.company_id) return;
-        setIsLoadingGlAccounts(true);
         try {
-            const response = await fetch(`${apiEndpoints.baseUrl}/api/gl/get-chart-of-accounts.php?company_id=${user.company_id}`);
+            const response = await fetch(`https://hariindustries.net/api/clearbook/get-gl-accounts.php?company_id=${user.company_id}`);
             const data = await response.json();
-            if (data && data.success && Array.isArray(data.accounts)) {
+            if (data.success && Array.isArray(data.accounts)) {
                 const expenseAccounts = data.accounts.filter((acc: GLAccount) => acc.account_type === 'Expense');
                 setGlAccounts(expenseAccounts);
-            } else {
-                setGlAccounts([]);
             }
         } catch (error) {
             console.error("Failed to fetch GL accounts:", error);
-            toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch GL accounts.' });
-        } finally {
-            setIsLoadingGlAccounts(false);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch expense accounts.' });
         }
-    }, [user?.company_id, toast, apiEndpoints.baseUrl]);
-
+    }, [user?.company_id, toast]);
 
     useEffect(() => {
-        if (user) {
-            fetchRawMaterials();
-            fetchMaterialIssues();
-            fetchGlAccounts();
-        }
-    }, [user, fetchRawMaterials, fetchMaterialIssues, fetchGlAccounts]);
+        fetchMaterials();
+        fetchMaterialIssues();
+        fetchGlAccounts();
+    }, [fetchMaterials, fetchMaterialIssues, fetchGlAccounts]);
 
-    const handleMaterialSelect = (materialId: string) => {
-        setSelectedMaterialId(materialId);
-        const material = materials.find(m => String(m.id) === materialId);
+    // NEW: Effect to calculate cost and total value dynamically
+    useEffect(() => {
+        const material = materials.find(m => m.id === parseInt(selectedMaterialId));
+        const currentQuantity = parseFloat(quantity);
+
         if (material) {
-            setUnitCost(String(material.unit_cost));
+            setUnitCost(material.unit_cost);
+            if (!isNaN(currentQuantity) && currentQuantity > 0) {
+                setTotalValue(material.unit_cost * currentQuantity);
+            } else {
+                setTotalValue(0);
+            }
         } else {
-            setUnitCost('');
+            setUnitCost(0);
+            setTotalValue(0);
         }
-    };
+    }, [selectedMaterialId, quantity, materials]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!canIssueMaterials) {
-            toast({ variant: 'destructive', title: 'Error', description: 'You are not authorized to perform this action.' });
-            return;
-        }
-
-        if (!selectedMaterialId || !quantity || !issueType || !expenseAccountId || !issueDate) {
-            toast({ variant: 'destructive', title: 'Validation Error', description: 'Please fill in all required fields: Material, Quantity, Issue Type, Expense Account, and Issue Date.' });
-            return;
-        }
-        // Unit Cost is mandatory for admins/accountants if they can see it
-        if (canSeeUnitCost && !unitCost) {
-            toast({ variant: 'destructive', title: 'Validation Error', description: 'Unit Cost is required.' });
-            return;
-        }
-
-
-        const quantityParsed = parseFloat(quantity);
-        const unitCostParsed = parseFloat(unitCost); // Even if hidden, this value needs to be valid if available
-        const selectedMaterial = materials.find(m => String(m.id) === selectedMaterialId);
-
-        if (isNaN(quantityParsed) || quantityParsed <= 0) {
-            toast({ variant: 'destructive', title: 'Validation Error', description: 'Quantity must be a positive number.' });
-            return;
-        }
-        if (selectedMaterial && quantityParsed > selectedMaterial.quantity_on_hand) {
-            toast({ variant: 'destructive', title: 'Validation Error', description: 'Quantity to issue cannot exceed quantity on hand.' });
-            return;
-        }
-        if (canSeeUnitCost && (isNaN(unitCostParsed) || unitCostParsed <= 0)) { // Only validate if visible/editable
-            toast({ variant: 'destructive', title: 'Validation Error', description: 'Unit Cost must be a positive number.' });
-            return;
-        }
-
-
         setIsLoading(true);
 
+        const material = materials.find(m => m.id === parseInt(selectedMaterialId));
+        const qty = parseFloat(quantity);
+
+        // NEW: Comprehensive validation
+        if (!material || !selectedGlAccount || isNaN(qty) || qty <= 0) {
+            toast({ variant: 'destructive', title: 'Invalid Input', description: 'Please select a material, an expense account, and enter a valid quantity.' });
+            setIsLoading(false);
+            return;
+        }
+
+        if (qty > material.quantity) {
+            toast({ variant: 'destructive', title: 'Insufficient Stock', description: `Cannot issue ${qty}. Only ${material.quantity} available.` });
+            setIsLoading(false);
+            return;
+        }
+        
         try {
-            const response = await fetch('https://hariindustries.net/api/clearbook/issue-material.php', {
+            // NEW: API endpoint for issuing material. This needs to be created.
+            const response = await fetch('https://hariindustries.net/api/clearbook/create-material-issuance.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    raw_material_id: parseInt(selectedMaterialId),
-                    quantity_issued: quantityParsed,
-                    unit_cost: unitCostParsed, // Sent regardless, but validated conditionally
-                    issue_type: issueType,
-                    expense_account_id: parseInt(expenseAccountId),
-                    reference: reference || null,
-                    notes: notes || null,
-                    issued_by: user?.id,
-                    issue_date: issueDate ? format(issueDate, 'yyyy-MM-dd') : null,
                     company_id: user?.company_id,
+                    user_id: user?.id,
+                    raw_material_id: material.id,
+                    quantity_issued: qty,
+                    unit_cost: material.unit_cost,
+                    expense_account_code: selectedGlAccount,
+                    issue_date: issueDate,
+                    reference: reference,
                 }),
             });
 
-            const data = await response.json();
+            const result = await response.json();
 
-            if (data.status === 'success') {
+            if (result.success) {
                 toast({ title: 'Success', description: 'Material issued successfully.' });
-                setSelectedMaterialId(undefined);
+                // Reset form and refetch data
+                setSelectedMaterialId('');
                 setQuantity('');
-                setUnitCost('');
-                setIssueType(undefined);
-                setExpenseAccountId(undefined);
                 setReference('');
-                setNotes('');
-                setIssueDate(new Date()); // Reset to current date
-                fetchRawMaterials(); // Refresh the list
-                fetchMaterialIssues(); // Refresh the issues history
+                setSelectedGlAccount('');
+                fetchMaterials();
+                fetchMaterialIssues();
             } else {
-                toast({ variant: 'destructive', title: 'Error', description: data.message || 'Failed to issue material.' });
+                throw new Error(result.message || 'An unknown error occurred.');
             }
-        } catch (error) {
-            console.error("API call failed:", error);
-            toast({ variant: 'destructive', title: 'Error', description: 'An unexpected error occurred.' });
+        } catch (error: any) {
+            console.error("Failed to issue material:", error);
+            toast({ variant: 'destructive', title: 'Submission Failed', description: error.message });
         } finally {
             setIsLoading(false);
         }
     };
-
+    
     return (
         <div className="container mx-auto p-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <h1 className="text-2xl font-bold mb-4">Issue Raw Material</h1>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Issue Raw Material</CardTitle>
+                            <CardTitle>Issue Form</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            {canIssueMaterials ? (
-                                <form onSubmit={handleSubmit} className="space-y-4">
-                                    <div>
-                                        <Label htmlFor="material">Raw Material</Label>
-                                        <Select onValueChange={handleMaterialSelect} value={selectedMaterialId}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select a material" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {materials.map((material) => (
-                                                    <SelectItem key={material.id} value={String(material.id)}>
-                                                        {material.name} (Stock: {material.quantity_on_hand})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="quantity">Quantity to Issue</Label>
-                                        <Input
-                                            id="quantity"
-                                            type="number"
-                                            value={quantity}
-                                            onChange={(e) => setQuantity(e.target.value)}
-                                            placeholder="e.g., 10.5"
-                                        />
-                                    </div>
-                                    {/* Conditional rendering for Unit Cost */}
-                                    {canSeeUnitCost && (
-                                        <div>
-                                            <Label htmlFor="unitCost">Unit Cost at Issue</Label>
-                                            <Input
-                                                id="unitCost"
-                                                type="number"
-                                                value={unitCost}
-                                                onChange={(e) => setUnitCost(e.target.value)}
-                                                placeholder="e.g., 50.00"
-                                                // Removed disabled, as admins/accountants can edit it
-                                            />
-                                        </div>
-                                    )}
-                                    <div>
-                                        <Label htmlFor="issueType">Issue Type</Label>
-                                        <Select onValueChange={setIssueType} value={issueType}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select issue type" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="maintenance">Maintenance</SelectItem>
-                                                <SelectItem value="admin">Administration</SelectItem>
-                                                <SelectItem value="wastage">Wastage</SelectItem>
-                                                <SelectItem value="adjustment">Adjustment</SelectItem>
-                                                <SelectItem value="transfer">Transfer</SelectItem>
-                                                <SelectItem value="other">Other</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="expenseAccount">Expense Account</Label>
-                                        <Select onValueChange={setExpenseAccountId} value={expenseAccountId}>
-                                            <SelectTrigger disabled={isLoadingGlAccounts}>
-                                                <SelectValue placeholder={isLoadingGlAccounts ? "Loading accounts..." : "Select expense account"} />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {glAccounts.map((account) => (
-                                                    <SelectItem key={account.id} value={String(account.id)}>
-                                                        {account.name} ({account.account_code})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="reference">Reference (Optional)</Label>
-                                        <Input
-                                            id="reference"
-                                            type="text"
-                                            value={reference}
-                                            onChange={(e) => setReference(e.target.value)}
-                                            placeholder="e.g., Project X, Job 123"
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="notes">Notes (Optional)</Label>
-                                        <Textarea
-                                            id="notes"
-                                            value={notes}
-                                            onChange={(e) => setNotes(e.target.value)}
-                                            placeholder="Any additional notes about this issuance."
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="issueDate">Issue Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                                <Button
-                                                    variant={"outline"}
-                                                    className={cn(
-                                                        "w-full justify-start text-left font-normal",
-                                                        !issueDate && "text-muted-foreground"
-                                                    )}
-                                                >
-                                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                                    {issueDate ? format(issueDate, "PPP") : <span>Pick a date</span>}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0">
-                                                <Calendar
-                                                    mode="single"
-                                                    selected={issueDate}
-                                                    onSelect={setIssueDate}
-                                                    initialFocus
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
-
-                                    <Button type="submit" disabled={isLoading}>
-                                        {isLoading ? 'Issuing...' : 'Issue Material'}
-                                    </Button>
-                                </form>
-                            ) : (
-                                <div className="text-center py-12 text-muted-foreground">
-                                    <p>You do not have permission to issue materials.</p>
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                <div>
+                                    <Label htmlFor="material">Raw Material</Label>
+                                    <Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a material" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {materials.map((material) => (
+                                                <SelectItem key={material.id} value={String(material.id)}>
+                                                    {material.name} (Stock: {material.quantity})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            )}
+
+                                {/* NEW: Display for Unit Cost */}
+                                <div className="p-2 bg-gray-100 rounded-md">
+                                    <p className="text-sm font-medium text-gray-600">Unit Cost</p>
+                                    <p className="text-lg font-semibold">
+                                        {unitCost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="quantity">Quantity to Issue</Label>
+                                    <Input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="e.g., 10" />
+                                </div>
+                                
+                                {/* NEW: Display for Total Value */}
+                                <div className="p-2 bg-green-100 rounded-md">
+                                    <p className="text-sm font-medium text-green-700">Total Issue Value</p>
+                                    <p className="text-lg font-semibold text-green-800">
+                                        {totalValue.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                    </p>
+                                </div>
+
+                                {/* NEW: GL Account Selector */}
+                                <div>
+                                    <Label htmlFor="gl-account">Charge to Expense Account</Label>
+                                    <Select value={selectedGlAccount} onValueChange={setSelectedGlAccount}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select an expense account" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {glAccounts.map((acc) => (
+                                                <SelectItem key={acc.account_code} value={acc.account_code}>
+                                                    {acc.account_name} ({acc.account_code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="issueDate">Issue Date</Label>
+                                    <Input id="issueDate" type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="reference">Reference / Reason</Label>
+                                    <Textarea id="reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g., For testing purposes" />
+                                </div>
+
+                                <Button type="submit" disabled={isLoading} className="w-full">
+                                    {isLoading ? 'Issuing...' : 'Issue Material'}
+                                </Button>
+                            </form>
                         </CardContent>
                     </Card>
                 </div>
+
                 <div className="lg:col-span-2">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Issuance History</CardTitle>
+                            <CardTitle>Recent Issues</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead>Date</TableHead>
                                         <TableHead>Material</TableHead>
                                         <TableHead>Quantity</TableHead>
-                                        <TableHead>Unit Cost</TableHead>
-                                        <TableHead>Issue Type</TableHead>
-                                        <TableHead>Expense Account</TableHead>
+                                        <TableHead>Total Cost</TableHead>
                                         <TableHead>Reference</TableHead>
-                                        <TableHead>Notes</TableHead>
-                                        <TableHead>Issued By</TableHead>
-                                        <TableHead>Date</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {issues.map((issue) => (
-                                        <TableRow key={issue.id}>
-                                            <TableCell>{issue.material_name}</TableCell>
-                                            <TableCell>{issue.quantity_issued}</TableCell>
-                                            <TableCell>{issue.unit_cost}</TableCell>
-                                            <TableCell>{issue.issue_type}</TableCell>
-                                            <TableCell>{issue.expense_account_name}</TableCell>
-                                            <TableCell>{issue.reference || '-'}</TableCell>
-                                            <TableCell>{issue.notes || '-'}</TableCell>
-                                            <TableCell>{issue.issued_by}</TableCell>
-                                            <TableCell>{new Date(issue.issue_date).toLocaleDateString()}</TableCell>
+                                    {issues.length > 0 ? (
+                                        issues.map((issue) => (
+                                            <TableRow key={issue.id}>
+                                                <TableCell>{new Date(issue.issue_date).toLocaleDateString()}</TableCell>
+                                                <TableCell>{issue.material_name}</TableCell>
+                                                <TableCell>{issue.quantity_issued}</TableCell>
+                                                <TableCell>{issue.total_cost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}</TableCell>
+                                                <TableCell>{issue.reference}</TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={5} className="text-center">No recent issues found.</TableCell>
                                         </TableRow>
-                                    ))}
+                                    )}
                                 </TableBody>
                             </Table>
                         </CardContent>
