@@ -168,7 +168,9 @@ const OrderDetailView = ({ details, onClose }: { details: ProductionOrderDetails
                     <div><strong>Creation Date:</strong> {new Date(header.creation_date).toLocaleDateString()}</div>
                     <div className="font-semibold"><strong>Total Material Cost:</strong> {formatNaira(header.total_material_cost || 0)}</div>
                     <div className="font-semibold"><strong>Total Overhead Cost:</strong> {formatNaira(header.total_overhead_cost || 0)}</div>
-                    <div className="font-bold text-base text-primary"><strong>Total Production Cost:</strong> {formatNaira(header.total_production_cost || 0)}</div>
+                    
+                    <div className="font-bold text-base text-primary"><strong>Total Production Cost:</strong> {formatNaira((parseFloat(header.total_material_cost || '0') + parseFloat(header.total_overhead_cost || '0')))}</div>
+
                 </CardContent>
             </Card>
 

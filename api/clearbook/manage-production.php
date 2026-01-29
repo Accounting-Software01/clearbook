@@ -312,18 +312,83 @@ function handle_production_request($conn) {
                 }
 
                 $total_production_cost = $total_material_cost + $total_overhead_cost;
-                if($total_production_cost > 0) {
-                     array_unshift($sub_entries, ['account' => $fg_account_code, 'type' => 'Debit', 'amount' => $total_production_cost, 'narration' => 'Cost of Goods Manufactured for PO#' . $order_id]);
-                     $db_entry->create_journal_entry($company_id, 'Production', "COGM for PO#{$order_id}", $order_id, $sub_entries, null, $total_production_cost, $user_id);
-                }
-
-                $update_fg_stmt = $conn->prepare("UPDATE products SET quantity_on_hand = quantity_on_hand + ? WHERE id = ? AND company_id = ?");
-
                 
-                $update_fg_stmt->bind_param("dis", $order['quantity_to_produce'], $order['product_id'], $company_id);
+               // --- PASTE THIS NEW CODE IN ITS PLACE ---
+if ($total_production_cost > 0) {
+    // 1. INSERT THE MASTER VOUCHER
+    $jv_narration = "Cost of Goods Manufactured for Production Order #{$order_id}";
+    $jv_number = "PROD-" . $order_id;
+    $entry_date = date('Y-m-d');
+    $user_id_int = intval($user_id);
 
-                $update_fg_stmt->execute();
-                $update_fg_stmt->close();
+    $jv_sql = "INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, reference_id, reference_type, narration, total_debits, total_credits, status) VALUES (?, ?, ?, 'Production', ?, 'PROD', ?, 'Production', ?, ?, ?, 'posted')";
+    $jv_stmt = $conn->prepare($jv_sql);
+    if (!$jv_stmt) throw new Exception("Voucher prepare failed: " . $conn->error);
+    
+    $jv_stmt->bind_param("sissisdd", $company_id, $user_id_int, $jv_number, $entry_date, $order_id, $jv_narration, $total_production_cost, $total_production_cost);
+    if(!$jv_stmt->execute()) throw new Exception("Failed to insert journal voucher: " . $jv_stmt->error);
+    $voucher_id = $jv_stmt->insert_id;
+    $jv_stmt->close();
+
+    // 2. INSERT THE VOUCHER LINES
+    // Add the main debit for Finished Goods to the sub_entries array
+    array_unshift($sub_entries, [
+        'account' => $fg_account_code, 
+        'type' => 'Debit', 
+        'amount' => $total_production_cost, 
+        'narration' => 'Cost of Goods Manufactured for PO#' . $order_id
+    ]);
+
+    $line_sql = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $line_stmt = $conn->prepare($line_sql);
+    if (!$line_stmt) throw new Exception("Line prepare failed: " . $conn->error);
+    
+    foreach ($sub_entries as $line) {
+        $debit = ($line['type'] === 'Debit') ? $line['amount'] : 0.00;
+        $credit = ($line['type'] === 'Credit') ? $line['amount'] : 0.00;
+        $line_stmt->bind_param("siisdds", $company_id, $user_id_int, $voucher_id, $line['account'], $debit, $credit, $line['narration']);
+        if(!$line_stmt->execute()) throw new Exception("Failed to insert journal voucher line: " . $line_stmt->error);
+    }
+    $line_stmt->close();
+}
+// --- END PASTE ---
+
+
+                // --- PASTE THIS NEW BLOCK IN ITS PLACE ---
+
+// CRITICAL: Update finished good inventory and re-calculate weighted average cost
+$product_id = (int)$order['product_id'];
+$quantity_produced = (float)$order['quantity_to_produce'];
+
+if ($quantity_produced > 0) {
+    // 1. Get current stock values, locking the row for safety
+    $prod_stmt = $conn->prepare("SELECT quantity_on_hand, average_unit_cost FROM products WHERE id=? AND company_id=? FOR UPDATE");
+    if (!$prod_stmt) throw new Exception("Prepare failed (get product): " . $conn->error);
+    $prod_stmt->bind_param("is", $product_id, $company_id);
+    $prod_stmt->execute();
+    $prod_row = $prod_stmt->get_result()->fetch_assoc();
+    $prod_stmt->close();
+    
+    $old_qty = (float)($prod_row['quantity_on_hand'] ?? 0);
+    $old_avg_cost = (float)($prod_row['average_unit_cost'] ?? 0);
+
+    // 2. Calculate new total quantity and new weighted average cost
+    $new_qty = $old_qty + $quantity_produced;
+    $new_avg_cost = 0;
+    if ($new_qty > 0) {
+        // New Average Cost = (Value of Old Stock + Value of New Stock) / New Total Quantity
+        $new_avg_cost = (($old_qty * $old_avg_cost) + $total_production_cost) / $new_qty;
+    }
+
+    // 3. Update the products table with both the new quantity and the new average cost
+    $update_prod_stmt = $conn->prepare("UPDATE products SET quantity_on_hand = ?, average_unit_cost = ? WHERE id = ? AND company_id = ?");
+    if (!$update_prod_stmt) throw new Exception("Prepare failed (update product): " . $conn->error);
+    $update_prod_stmt->bind_param("ddis", $new_qty, $new_avg_cost, $product_id, $company_id);
+    if (!$update_prod_stmt->execute()) throw new Exception("DB Error updating finished good inventory: " . $update_prod_stmt->error);
+    $update_prod_stmt->close();
+}
+// --- END PASTE ---
+
                 
               
               
