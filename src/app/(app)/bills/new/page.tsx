@@ -124,6 +124,10 @@ const CreateNewBillPage = () => {
         setIsSubmitting(true);
 
         const payload = {
+            user_id: user.uid,
+            company_id: user.company_id,
+        
+
             supplier_id: selectedSupplier,
             bill_date: billDate.toISOString().split('T')[0],
             due_date: dueDate.toISOString().split('T')[0],

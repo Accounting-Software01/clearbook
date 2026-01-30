@@ -10,14 +10,17 @@ import { PlusCircle, MoreHorizontal } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 
+
+
+
 type Bill = {
     id: number;
     bill_date: string;
-    reference: string;
-    supplier: string;
     due_date: string;
     total_amount: number;
+    supplier_name: string;
 };
+
 
 const AllBillsPage = () => {
     const router = useRouter();
@@ -31,13 +34,19 @@ const AllBillsPage = () => {
             if (!user) return;
             setLoading(true);
             try {
-                const res = await fetch(`https://hariindustries.net/api/clearbook/get_bills.php?company_id=${user.company_id}`);
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    setBills(data.bills);
-                } else {
-                    console.error(data.message);
-                }
+                const res = await fetch(
+                    `https://hariindustries.net/api/clearbook/get_bills.php?company_id=${user.company_id}`,
+                    { credentials: 'include' }
+                  );
+                  
+                  const data = await res.json();
+                  
+                  if (res.ok && data.success) {
+                      setBills(data.data);
+                  } else {
+                      console.error(data.message);
+                  }
+                  
             } catch (error) {
                 console.error('Failed to fetch bills', error);
             } finally {
@@ -51,9 +60,10 @@ const AllBillsPage = () => {
     }, [user]);
 
     const filteredBills = bills.filter(bill =>
-        bill.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        bill.supplier.toLowerCase().includes(searchTerm.toLowerCase())
+        `BILL-${bill.id}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        bill.supplier_name.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    
 
     return (
         <div className="p-4">
@@ -104,17 +114,16 @@ const AllBillsPage = () => {
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="start">
-                                                    <DropdownMenuItem>View Details</DropdownMenuItem>
-                                                    <DropdownMenuItem>Print A5</DropdownMenuItem>
-                                                    <DropdownMenuItem>Print POS</DropdownMenuItem>
-                                                    <DropdownMenuItem>Reverse Bill</DropdownMenuItem>
-                                                    <DropdownMenuItem className="text-red-600">Cancel Bill</DropdownMenuItem>
+                                                    
+                                                    <DropdownMenuItem onClick={() => router.push(`/bills/${bill.id}`)}>View Details</DropdownMenuItem>
+                                                    
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
                                         <TableCell>{new Date(bill.bill_date).toLocaleDateString()}</TableCell>
-                                        <TableCell>{bill.reference}</TableCell>
-                                        <TableCell>{bill.supplier}</TableCell>
+                                        <TableCell>BILL-{bill.id}</TableCell>
+<TableCell>{bill.supplier_name}</TableCell>
+
                                         <TableCell>{new Date(bill.due_date).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">{bill.total_amount}</TableCell>
                                     </TableRow>
