@@ -1,30 +1,30 @@
 <?php
+$allowed_origins = [
+    "https://9000-firebase-clearbookgit-1767005762274.cluster-64pjnskmlbaxowh5lzq6i7v4ra.cloudworkstations.dev",
+    "https://clearbook-olive.vercel.app"
+];
 
-CREATE TABLE `material_issuances` (
-    `id` INT NOT NULL AUTO_INCREMENT,
-    `company_id` VARCHAR(20) NOT NULL,
-    `user_id` INT,
-    `raw_material_id` INT NOT NULL,
-    `quantity_issued` DECIMAL(15, 4) NOT NULL,
-    `unit_cost` DECIMAL(15, 4) NOT NULL,
-    `total_cost` DECIMAL(15, 4) NOT NULL,
-    `expense_account_code` VARCHAR(20) NOT NULL,
-    `issue_date` DATE NOT NULL,
-    `reference` TEXT,
-    `journal_entry_id` INT,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    FOREIGN KEY (`raw_material_id`) REFERENCES `raw_materials`(`id`),
-    FOREIGN KEY (`journal_entry_id`) REFERENCES `journal_entries`(`id`) ON DELETE SET NULL)
-    
-header('Access-Control-Allow-Origin: *');
-header('Content-Type: application/json');
-header('Access-Control-Allow-Methods: POST, PUT, DELETE');
-header('Access-Control-Allow-Headers: Access-Control-Allow-Headers,Content-Type,Access-Control-Allow-Methods, Authorization, X-Requested-With');
+if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins)) {
+    header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
+}
+
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+header("Content-Type: application/json");
+
+// 🔴 THIS IS THE FIX
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 require_once __DIR__ . '/db_connect.php';
 
-$db_entry = new DBEntry($conn);
 $method = $_SERVER['REQUEST_METHOD'];
 
 function get_account_code_by_name($conn, $account_name, $company_id) {
@@ -40,13 +40,13 @@ function get_account_code_by_name($conn, $account_name, $company_id) {
 
 switch ($method) {
     case 'POST':
-        handle_create($conn, $db_entry);
+        handle_create($conn);
         break;
     case 'PUT':
-        handle_update($conn, $db_entry);
+        handle_update($conn);
         break;
     case 'DELETE':
-        handle_delete($conn, $db_entry);
+        handle_delete($conn);
         break;
     default:
         header('HTTP/1.0 405 Method Not Allowed');
@@ -54,7 +54,7 @@ switch ($method) {
         break;
 }
 
-function handle_create($conn, $db_entry) {
+function handle_create($conn) {
     $data = json_decode(file_get_contents("php://input"));
 
     if (!isset($data->company_id, $data->user_id, $data->raw_material_id, $data->quantity_issued, $data->unit_cost, $data->expense_account_code, $data->issue_date) || $data->quantity_issued <= 0) {
@@ -97,25 +97,38 @@ function handle_create($conn, $db_entry) {
         }
         
         $narration = "Material Issuance #{$issuance_id}. Ref: " . ($data->reference ?: 'N/A');
-        $sub_entries = [
-            ['account' => $data->expense_account_code, 'type' => 'Debit', 'amount' => $total_cost, 'narration' => 'Expense for issued materials'],
-            ['account' => $rm_account_code, 'type' => 'Credit', 'amount' => $total_cost, 'narration' => 'Reduction in raw material inventory']
-        ];
-        
-        $journal_entry_id = $db_entry->create_journal_entry($data->company_id, $data->issue_date, $narration, 'Material Issuance', $issuance_id, $sub_entries, $total_cost, $data->user_id);
 
-        if (!$journal_entry_id) {
-            throw new Exception("Failed to create journal entry.");
+        // Create Journal Voucher
+        $voucher_number = 'MI-' . $issuance_id;
+        $jv_stmt = $conn->prepare("INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, reference_id, reference_type, narration, total_debits, total_credits, status) VALUES (?, ?, ?, 'Material Issuance', ?, 'Journal Voucher', ?, 'material_issuances', ?, ?, ?, 'posted')");
+        $jv_stmt->bind_param("sisssidd", $data->company_id, $data->user_id, $voucher_number, $data->issue_date, $issuance_id, $narration, $total_cost, $total_cost);
+        if(!$jv_stmt->execute()){
+             throw new Exception("Failed to create journal voucher: " . $jv_stmt->error);
+        }
+        $voucher_id = $conn->insert_id;
+        
+        // Debit Expense Account
+        $jvl_debit_stmt = $conn->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, description) VALUES (?, ?, ?, ?, ?, 'Expense for issued materials')");
+        $jvl_debit_stmt->bind_param("siisd", $data->company_id, $data->user_id, $voucher_id, $data->expense_account_code, $total_cost);
+        if(!$jvl_debit_stmt->execute()){
+            throw new Exception("Failed to create debit line: " . $jvl_debit_stmt->error);
         }
 
+        // Credit Inventory Account
+        $jvl_credit_stmt = $conn->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, credit, description) VALUES (?, ?, ?, ?, ?, 'Reduction in raw material inventory')");
+        $jvl_credit_stmt->bind_param("siisd", $data->company_id, $data->user_id, $voucher_id, $rm_account_code, $total_cost);
+        if(!$jvl_credit_stmt->execute()){
+            throw new Exception("Failed to create credit line: " . $jvl_credit_stmt->error);
+        }
+        
         $link_journal_stmt = $conn->prepare("UPDATE material_issuances SET journal_entry_id = ? WHERE id = ?");
-        $link_journal_stmt->bind_param("ii", $journal_entry_id, $issuance_id);
+        $link_journal_stmt->bind_param("ii", $voucher_id, $issuance_id);
         if (!$link_journal_stmt->execute()) {
              throw new Exception("Failed to link journal entry to issuance: " . $link_journal_stmt->error);
         }
 
         $conn->commit();
-        echo json_encode(['success' => true, 'message' => 'Material issued successfully.', 'id' => $issuance_id, 'journal_id' => $journal_entry_id]);
+        echo json_encode(['success' => true, 'message' => 'Material issued successfully.', 'id' => $issuance_id, 'journal_id' => $voucher_id]);
 
     } catch (Exception $e) {
         $conn->rollback();
@@ -124,7 +137,7 @@ function handle_create($conn, $db_entry) {
     }
 }
 
-function handle_delete($conn, $db_entry) {
+function handle_delete($conn) {
     $data = json_decode(file_get_contents("php://input"));
     
     if (!isset($data->id, $data->company_id)) {
@@ -152,7 +165,14 @@ function handle_delete($conn, $db_entry) {
         }
 
         if ($issuance['journal_entry_id']) {
-            if (!$db_entry->delete_journal_entry($issuance['journal_entry_id'], $issuance['company_id'])) {
+            $delete_jvl_stmt = $conn->prepare("DELETE FROM journal_voucher_lines WHERE voucher_id = ? AND company_id = ?");
+            $delete_jvl_stmt->bind_param("is", $issuance['journal_entry_id'], $issuance['company_id']);
+            if(!$delete_jvl_stmt->execute()){
+                throw new Exception('Failed to delete journal voucher lines.');
+            }
+            $delete_jv_stmt = $conn->prepare("DELETE FROM journal_vouchers WHERE id = ? AND company_id = ?");
+            $delete_jv_stmt->bind_param("is", $issuance['journal_entry_id'], $issuance['company_id']);
+             if (!$delete_jv_stmt->execute()) {
                 throw new Exception('Failed to delete corresponding journal entry.');
             }
         }
@@ -173,7 +193,7 @@ function handle_delete($conn, $db_entry) {
     }
 }
 
-function handle_update($conn, $db_entry) {
+function handle_update($conn) {
     $data = json_decode(file_get_contents("php://input"));
 
     if (!isset($data->id, $data->company_id)) {
@@ -194,16 +214,22 @@ function handle_update($conn, $db_entry) {
             throw new Exception('Original material issuance record not found.');
         }
 
+        // Reverse old transaction
         $restore_stock_stmt = $conn->prepare("UPDATE raw_materials SET quantity_on_hand = quantity_on_hand + ? WHERE id = ?");
         $restore_stock_stmt->bind_param("di", $old_issuance['quantity_issued'], $old_issuance['raw_material_id']);
         if (!$restore_stock_stmt->execute()) throw new Exception('Failed to reverse old inventory.');
 
         if ($old_issuance['journal_entry_id']) {
-            if (!$db_entry->delete_journal_entry($old_issuance['journal_entry_id'], $old_issuance['company_id'])) {
-                throw new Exception('Failed to delete old journal entry.');
-            }
+            $delete_jvl_stmt = $conn->prepare("DELETE FROM journal_voucher_lines WHERE voucher_id = ? AND company_id = ?");
+            $delete_jvl_stmt->bind_param("is", $old_issuance['journal_entry_id'], $old_issuance['company_id']);
+            $delete_jvl_stmt->execute();
+            
+            $delete_jv_stmt = $conn->prepare("DELETE FROM journal_vouchers WHERE id = ? AND company_id = ?");
+            $delete_jv_stmt->bind_param("is", $old_issuance['journal_entry_id'], $old_issuance['company_id']);
+            $delete_jv_stmt->execute();
         }
 
+        // Create new transaction
         $raw_material_id = $data->raw_material_id ?? $old_issuance['raw_material_id'];
         $quantity_issued = $data->quantity_issued ?? $old_issuance['quantity_issued'];
         $unit_cost = $data->unit_cost ?? $old_issuance['unit_cost'];
@@ -230,18 +256,25 @@ function handle_update($conn, $db_entry) {
         if (!$rm_account_code) throw new Exception("'Inventory - Raw Materials' account not found.");
         
         $narration = "Updated Material Issuance #{$data->id}. Ref: " . ($reference ?: 'N/A');
-        $sub_entries = [
-            ['account' => $expense_account_code, 'type' => 'Debit', 'amount' => $total_cost, 'narration' => 'Expense for issued materials'],
-            ['account' => $rm_account_code, 'type' => 'Credit', 'amount' => $total_cost, 'narration' => 'Reduction in raw material inventory']
-        ];
         
-        $journal_entry_id = $db_entry->create_journal_entry($data->company_id, $issue_date, $narration, 'Material Issuance', $data->id, $sub_entries, $total_cost, $user_id);
-        if (!$journal_entry_id) throw new Exception("Failed to create new journal entry.");
+        $voucher_number = 'MI-U-' . $data->id;
+        $jv_stmt = $conn->prepare("INSERT INTO journal_vouchers (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, reference_id, reference_type, narration, total_debits, total_credits, status) VALUES (?, ?, ?, 'Material Issuance', ?, 'Journal Voucher', ?, 'material_issuances', ?, ?, ?, 'posted')");
+        $jv_stmt->bind_param("sisssidd", $data->company_id, $user_id, $voucher_number, $issue_date, $data->id, $narration, $total_cost, $total_cost);
+        if(!$jv_stmt->execute()) throw new Exception("Failed to create new journal voucher: " . $jv_stmt->error);
+        $voucher_id = $conn->insert_id;
+
+        $jvl_debit_stmt = $conn->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, description) VALUES (?, ?, ?, ?, ?, 'Expense for issued materials')");
+        $jvl_debit_stmt->bind_param("siisd", $data->company_id, $user_id, $voucher_id, $expense_account_code, $total_cost);
+        if(!$jvl_debit_stmt->execute()) throw new Exception("Failed to create new debit line: " . $jvl_debit_stmt->error);
+
+        $jvl_credit_stmt = $conn->prepare("INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, credit, description) VALUES (?, ?, ?, ?, ?, 'Reduction in raw material inventory')");
+        $jvl_credit_stmt->bind_param("siisd", $data->company_id, $user_id, $voucher_id, $rm_account_code, $total_cost);
+        if(!$jvl_credit_stmt->execute()) throw new Exception("Failed to create new credit line: " . $jvl_credit_stmt->error);
 
         $update_issuance_stmt = $conn->prepare(
             "UPDATE material_issuances SET raw_material_id=?, quantity_issued=?, unit_cost=?, total_cost=?, expense_account_code=?, issue_date=?, reference=?, journal_entry_id=? WHERE id=?"
         );
-        $update_issuance_stmt->bind_param("idddsssii", $raw_material_id, $quantity_issued, $unit_cost, $total_cost, $expense_account_code, $issue_date, $reference, $journal_entry_id, $data->id);
+        $update_issuance_stmt->bind_param("idddsssii", $raw_material_id, $quantity_issued, $unit_cost, $total_cost, $expense_account_code, $issue_date, $reference, $voucher_id, $data->id);
         if (!$update_issuance_stmt->execute()) throw new Exception("Failed to update issuance record.");
 
         $conn->commit();

@@ -155,7 +155,7 @@ const { toast } = useToast();
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     company_id: user?.company_id,
-                    user_id: user?.id,
+                    user_id: user?.uid,
                     raw_material_id: material.id,
                     quantity_issued: qty,
                     unit_cost: material.unit_cost,
