@@ -69,17 +69,17 @@ export const allNavItems = [
                     { href: '/reconciliation', label: 'Reconciliation', icon: GitCompare, permission: 'view_reconciliation' },
                 ]
             },
-            {
-                label: 'Budgets',
-                icon: PiggyBank,
-                subItems: [
-                    { href: '/budget-overview', label: 'Budget Overview', icon: CircleDollarSign, permission: 'view_budget_overview' },
-                    { href: '/all-budgets', label: 'All Budgets', icon: Archive, permission: 'view_reports_budgets' },
-                    { href: '/budget-vs-actual', label: 'Budget vs Actual', icon: BarChart, permission: 'view_budget_vs_actual' },
-                    { href: '/budget-categories', label: 'Budget Categories', icon: LayoutGrid, permission: 'view_budget_categories' },
-                    { href: '/budget-alerts', label: 'Budget Alerts', icon: Bell, permission: 'view_budget_alerts' },
-                ]
-            },
+          //  {
+          //      label: 'Budgets',
+          //      icon: PiggyBank,
+            //    subItems: [
+              //      { href: '/budget-overview', label: 'Budget Overview', icon: CircleDollarSign, permission: 'view_budget_overview' },
+                //    { href: '/all-budgets', label: 'All Budgets', icon: Archive, permission: 'view_reports_budgets' },
+                  //  { href: '/budget-vs-actual', label: 'Budget vs Actual', icon: BarChart, permission: 'view_budget_vs_actual' },
+              //      { href: '/budget-categories', label: 'Budget Categories', icon: LayoutGrid, permission: 'view_budget_categories' },
+                //    { href: '/budget-alerts', label: 'Budget Alerts', icon: Bell, permission: 'view_budget_alerts' },
+              //  ]
+           // },
             {
                 label: 'Reports',
                 icon: FileBarChart2,
@@ -103,24 +103,24 @@ export const allNavItems = [
                         label: 'Transaction Reports',
                         icon: ClipboardList,
                         subItems: [
-                            { href: '/reports/transaction-history', label: 'Transaction History', icon: History, permission: 'view_reports_transactions' },
+                           // { href: '/reports/transaction-history', label: 'Transaction History', icon: History, permission: 'view_reports_transactions' },
                             { href: '/reports/expense-analysis', label: 'Expense Analysis', icon: TrendingDown, permission: 'view_reports_transactions' },
                             { href: '/reports/liability-analysis', label: 'Liability Analysis', icon: ShieldAlert, permission: 'view_reports_transactions' },
                             { href: '/reports/cash-outflow', label: 'Cash Outflow', icon: ArrowDown, permission: 'view_reports_transactions' },
                             { href: '/reports/cash-inflow', label: 'Cash Inflow', icon: ArrowUp, permission: 'view_reports_transactions' },
-                            { href: '/reports/income-analysis', label: 'Income Analysis', icon: TrendingUp, permission: 'view_reports_transactions' },
-                            { href: '/reports/bank-reconciliation-report', label: 'Bank Reconciliation Report', icon: RefreshCw, permission: 'view_reports_transactions' },
+                          //  { href: '/reports/income-analysis', label: 'Income Analysis', icon: TrendingUp, permission: 'view_reports_transactions' },
+                          //  { href: '/reports/bank-reconciliation-report', label: 'Bank Reconciliation Report', icon: RefreshCw, permission: 'view_reports_transactions' },
                         ]
                     },
-                    {
-                        label: 'Budget Reports',
-                        icon: PiggyBank,
-                        subItems: [
-                            { href: '/reports/budget-vs-actual', label: 'Budget vs Actual', icon: BarChart, permission: 'view_reports' },
-                            { href: '/reports/budget-variance-analysis', label: 'Budget Variance Analysis', icon: AreaChart, permission: 'view_reports' },
-                            { href: '/reports/budget-performance', label: 'Budget Performance', icon: Target, permission: 'view_reports' },
-                        ]
-                    }
+                    // {
+                      //  label: 'Budget Reports',
+                      //  icon: PiggyBank,
+                      //  subItems: [
+                      //      { href: '/reports/budget-vs-actual', label: 'Budget vs Actual', icon: BarChart, permission: 'view_reports' },
+                       //     { href: '/reports/budget-variance-analysis', label: 'Budget Variance Analysis', icon: AreaChart, permission: 'view_reports' },
+                         //   { href: '/reports/budget-performance', label: 'Budget Performance', icon: Target, permission: 'view_reports' },
+                      //  ]
+                 //   }
                 ]
             },
             {
@@ -168,24 +168,25 @@ export const allNavItems = [
                           icon: Layers, // stacked layers
                           permission: 'view_inventory_raw_materials'
                         },
-                        {
-                          href: '/inventory/work-in-progress',
-                          label: 'Work-in-Progress',
-                          icon: Factory, // factory icon
-                          permission: 'view_inventory_wip'
-                        },
+                        // {
+                         // href: '/inventory/work-in-progress',
+                          // label: 'Work-in-Progress',
+                         // icon: Factory, // factory icon
+                         // permission: 'view_inventory_wip'
+                        // },
                         {
                           href: '/inventory/packaging-materials',
                           label: 'Packaging Materials',
                           icon: Package,
                           permission: 'view_inventory_packaging'
                         },
-                        {
-                          href: '/inventory/consumables',
-                          label: 'Consumables & Supplies',
-                          icon: ShoppingCart, // cart icon
-                          permission: 'view_inventory_consumables'
-                        },
+                        // {
+                        //  href: '/inventory/consumables',
+                        //  label: 'Consumables & Supplies',
+                        //  icon: 
+                        // ShoppingCart, // cart icon
+                        //  permission: 'view_inventory_consumables'
+                        // },
                         {
                           href: '/inventory/spare-parts',
                           label: 'Spare Parts',
@@ -274,7 +275,7 @@ export const allNavItems = [
                     { href: '/production', label: 'Production', icon: Factory, permission: 'view_production' },
                     { href: '/production/boms', label: 'BOM Settings', icon: Users, permission: 'view_production_reports' },
                     
-                    { href: '/products/reports', label: 'Reports', icon: BarChart, permission: 'view_production_reports' },
+                    { href: '/production/reports', label: 'Reports', icon: BarChart, permission: 'view_production_reports' },
               ]
             },
           

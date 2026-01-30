@@ -22,8 +22,8 @@ interface RawMaterial {
 interface GLAccount {
     account_code: string;
     account_name: string;
-    account_type: string;
 }
+
 
 interface MaterialIssue {
     id: number;
@@ -95,9 +95,9 @@ const { toast } = useToast();
             const response = await fetch(`https://hariindustries.net/api/clearbook/get-gl-accounts.php?company_id=${user.company_id}`);
             const data = await response.json();
             if (data.success && Array.isArray(data.accounts)) {
-                const expenseAccounts = data.accounts.filter((acc: GLAccount) => acc.account_type === 'Expense');
-                setGlAccounts(expenseAccounts);
+                setGlAccounts(data.accounts);
             }
+            
         } catch (error) {
             console.error("Failed to fetch GL accounts:", error);
             toast({ variant: 'destructive', title: 'Error', description: 'Failed to fetch expense accounts.' });
