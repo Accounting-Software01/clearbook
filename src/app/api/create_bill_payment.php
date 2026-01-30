@@ -1,9 +1,20 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
+// --- CORS and Header config ---
+$allowed_origins = ["https://9000-firebase-clearbookgit-1767005762274.cluster-64pjnskmlbaxowh5lzq6i7v4ra.cloudworkstations.dev", "https://clearbook-olive.vercel.app"];
+if (isset($_SERVER['HTTP_ORIGIN']) && in_array($_SERVER['HTTP_ORIGIN'], $allowed_origins, true)) {
+    header("Access-Control-Allow-Origin: " . $_SERVER['HTTP_ORIGIN']);
+    header("Vary: Origin");
+}
+header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+header("Content-Type: application/json; charset=utf-8");
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
+
+// --- Includes and Setup ---
 require_once __DIR__ . '/db_connect.php';
 require_once __DIR__ . '/get_chart_of_account_id.php';
 
@@ -28,48 +39,76 @@ foreach ($required_fields as $field) {
 $conn->begin_transaction();
 
 try {
-    // --- 1. Get Accounts Payable Account ID ---
-    $accounts_payable_id = get_chart_of_account_id_by_name($conn, $data->company_id, 'Accounts Payable');
-    if (!$accounts_payable_id) {
-        throw new Exception('Accounts Payable account not found.');
+    // --- 1. Get Account Details ---
+    $ap_account_details = get_account_details($conn, $data->company_id, null, null, 'accounts_payable');
+    if (!$ap_account_details || !isset($ap_account_details['id'])) {
+        throw new Exception('CRITICAL: The system role "accounts_payable" has not been assigned to any account, or the account ID is missing.');
     }
 
-    // --- 2. Create Journal Voucher Header ---
+    $payment_account_info = get_account_details($conn, $data->company_id, null, $data->payment_account_id, null);
+    if (!$payment_account_info || !isset($payment_account_info['id'])) {
+        throw new Exception("The selected payment account (Code: {$data->payment_account_id}) could not be found or has no ID.");
+    }
+
+    // --- 2. Generate a unique Voucher Number ---
+    $voucher_number = 'CPV-' . time() . '-' . $data->bill_id; // CPV for "Cash Payment Voucher"
+
+    // --- 3. Create Journal Voucher Header (using correct schema) ---
     $jv_narration = "Payment for Bill #{$data->bill_id}";
-    $jv_sql = "INSERT INTO journal_vouchers (company_id, voucher_date, narration, created_by) VALUES (?, ?, ?, ?)";
+    $debit_credit_total = floatval($data->amount);
+    
+    $jv_sql = "INSERT INTO journal_vouchers 
+                (company_id, created_by_id, voucher_number, source, entry_date, voucher_type, reference_id, reference_type, narration, total_debits, total_credits, status) 
+              VALUES (?, ?, ?, 'Bill Payment', ?, 'PAY', ?, 'bills', ?, ?, ?, 'posted')";
+
     $jv_stmt = $conn->prepare($jv_sql);
-    $jv_stmt->bind_param("sssi", $data->company_id, $data->payment_date, $jv_narration, $data->user_id);
+    if ($jv_stmt === false) {
+        throw new Exception("Failed to prepare JV header statement: " . $conn->error);
+    }
+
+    $user_id_int = intval($data->user_id);
+    $bill_id_int = intval($data->bill_id);
+
+    // FIXED: Corrected the type definition string to have 8 characters, matching the 8 placeholders.
+    $jv_stmt->bind_param("sisssidd", 
+        $data->company_id, 
+        $user_id_int,
+        $voucher_number,
+        $data->payment_date, 
+        $bill_id_int, // reference_id
+        $jv_narration, 
+        $debit_credit_total, 
+        $debit_credit_total
+    );
     $jv_stmt->execute();
     $jv_id = $jv_stmt->insert_id;
     $jv_stmt->close();
 
-    if (!$jv_id) {
-        throw new Exception("Failed to create journal voucher header.");
-    }
+    // --- 4. Create Journal Voucher Lines (using correct schema) ---
+    $jvl_sql = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description, payee_id, payee_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    // --- 3. Create Journal Voucher Lines (Double Entry) ---
-    $jvl_sql = "INSERT INTO journal_voucher_lines (jv_id, account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?)";
-    $jvl_stmt = $conn->prepare($jvl_sql);
+    // DEBIT ENTRY: Reduce Accounts Payable, linked to the supplier
+    $jvl_stmt_debit = $conn->prepare($jvl_sql);
+    if ($jvl_stmt_debit === false) throw new Exception('Failed to prepare debit line: ' . $conn->error);
+    $debit_desc = "Payment to supplier for Bill #{$data->bill_id}";
+    $payee_type_supplier = 'supplier';
+    $supplier_id_int = intval($data->supplier_id);
+    $credit_amount_for_debit = 0.00; // FIXED: Stored literal value in a variable.
+    $jvl_stmt_debit->bind_param("siiiddsis", $data->company_id, $user_id_int, $jv_id, $ap_account_details['id'], $data->amount, $credit_amount_for_debit, $debit_desc, $supplier_id_int, $payee_type_supplier);
+    $jvl_stmt_debit->execute();
+    $jvl_stmt_debit->close();
 
-    // Debit Entry: Reduce liability to the supplier
-    $debit_desc = "Debit Accounts Payable for Bill #{$data->bill_id}";
-    $debit_amount = $data->amount;
-    $credit_amount_for_debit = 0;
-    $jvl_stmt->bind_param("isdds", $jv_id, $accounts_payable_id, $debit_amount, $credit_amount_for_debit, $debit_desc);
-    $jvl_stmt->execute();
-
-    // Credit Entry: Reduce cash/bank asset
-    $payment_account_info = get_chart_of_account_id_by_name($conn, $data->company_id, null, $data->payment_account_id);
-    $credit_desc = "Credit from {$payment_account_info['account_name']} for Bill payment";
-    $debit_amount_for_credit = 0;
-    $credit_amount = $data->amount;
-    $jvl_stmt->bind_param("isdds", $jv_id, $payment_account_info['id'], $debit_amount_for_credit, $credit_amount, $credit_desc);
-    $jvl_stmt->execute();
-
-    $jvl_stmt->close();
+    // CREDIT ENTRY: Decrease the Cash/Bank account (No payee needed)
+    $jvl_sql_credit = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    $jvl_stmt_credit = $conn->prepare($jvl_sql_credit);
+    if ($jvl_stmt_credit === false) throw new Exception('Failed to prepare credit line: ' . $conn->error);
+    $credit_desc = "Credit from {$payment_account_info['account_name']} for Bill #{$data->bill_id}";
+    $debit_amount_for_credit = 0.00; // FIXED: Stored literal value in a variable.
+    $jvl_stmt_credit->bind_param("siiidds", $data->company_id, $user_id_int, $jv_id, $payment_account_info['id'], $debit_amount_for_credit, $data->amount, $credit_desc);
+    $jvl_stmt_credit->execute();
+    $jvl_stmt_credit->close();
     
-    // --- 4. Update Bill Status ---
-    // First, get the current total paid amount and total bill amount
+    // --- 5. Update Bill Status ---
     $bill_info_sql = "SELECT total_amount, amount_paid FROM bills WHERE id = ? AND company_id = ?";
     $bill_info_stmt = $conn->prepare($bill_info_sql);
     $bill_info_stmt->bind_param("is", $data->bill_id, $data->company_id);
@@ -90,12 +129,15 @@ try {
 
     // --- Commit and Respond ---
     $conn->commit();
-    echo json_encode(['success' => true, 'message' => 'Payment recorded successfully.', 'jv_id' => $jv_id]);
+    echo json_encode(['success' => true, 'message' => 'Payment recorded successfully and journal posted.', 'jv_id' => $jv_id]);
 
 } catch (Exception $e) {
     $conn->rollback();
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Transaction failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Transaction failed: ' . $e->getMessage(), 'line' => $e->getLine()]);
 } finally {
-    $conn->close();
+    if (isset($conn) && $conn->ping()) {
+        $conn->close();
+    }
 }
+?>

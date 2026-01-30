@@ -27,6 +27,7 @@ type BillItem = {
 
 type BillDetails = {
     id: number;
+    supplier_id: number; // <-- FIXED: Added this required field
     bill_date: string;
     due_date: string;
     supplier_name: string;
@@ -49,7 +50,7 @@ interface PayBillDialogProps {
     billId: string;
     companyId: string;
     userId: number;
-    supplierId: number; // Assuming we can get this
+    supplierId: number;
     totalAmount: number;
     onPaymentSuccess: () => void;
 }
@@ -289,12 +290,12 @@ const BillDetailsPage = () => {
                 </CardContent>
                 <CardFooter className="flex justify-end space-x-2 mt-6">
                     <Button variant="outline">Print</Button>
-                    {billDetails.status !== 'Paid' && (
+                    {billDetails.status !== 'paid' && (
                         <PayBillDialog
                             billId={billId as string}
                             companyId={user?.company_id ?? ''}
                             userId={user?.uid ?? 0}
-                            supplierId={billDetails.supplier_id} // You need to pass supplier_id from backend
+                            supplierId={billDetails.supplier_id}
                             totalAmount={parseFloat(billDetails.total_amount)}
                             onPaymentSuccess={handlePaymentSuccess}
                         />
