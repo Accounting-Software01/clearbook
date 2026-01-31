@@ -9,6 +9,8 @@ import { format } from 'date-fns';
 import { Loader2, AlertCircle, FileText, Download, Printer, ClipboardList } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import useSWR from 'swr';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -58,6 +60,8 @@ const AccountStatementPage = () => {
     const [data, setData] = useState<StatementData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [chartData, setChartData] = useState<{ date: string; balance: number }[]>([]);
+
 
     const accounts: GLAccount[] = accountsResponse || [];
 
@@ -85,6 +89,17 @@ const AccountStatementPage = () => {
             }
             
             setData(result.statement);
+            let balance = result.statement.openingBalance;
+            const trendData = result.statement.transactions.map((tx: Transaction) => {
+                balance += (tx.debit - tx.credit);
+                return { date: tx.date, balance: balance };
+            });
+            // Add opening balance as the first point for a complete trend
+            setChartData([
+                { date: format(startDate, 'yyyy-MM-dd'), balance: result.statement.openingBalance },
+                ...trendData
+            ]);
+
             if (result.statement.transactions.length === 0) {
                  toast({ title: "No Transactions", description: "There are no transactions for this account in the selected period." });
             }
@@ -196,51 +211,80 @@ const AccountStatementPage = () => {
             {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <span className="ml-4">Generating statement...</span></div>}
             {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
 
-            {data && (
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}</CardTitle>
-                        <p className="text-sm text-muted-foreground">Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}</p>
-                    </CardHeader>
-                    <CardContent>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Debit</TableHead>
-                                    <TableHead className="text-right">Credit</TableHead>
-                                    <TableHead className="text-right">Balance</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow className="font-semibold">
-                                    <TableCell colSpan={4}>Opening Balance</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(data.openingBalance)}</TableCell>
-                                </TableRow>
-                                {data.transactions.length > 0 ? (
-                                    data.transactions.map((tx, index) => (
-                                        <TableRow key={index}>
-                                            <TableCell>{format(new Date(tx.date), 'yyyy-MM-dd')}</TableCell>
-                                            <TableCell>{tx.description}</TableCell>
-                                            <TableCell className="text-right font-mono text-green-600">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</TableCell>
-                                            <TableCell className="text-right font-mono text-red-600">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</TableCell>
-                                            <TableCell className="text-right font-mono">{formatCurrency(runningBalance[index])}</TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : (
-                                    <TableRow><TableCell colSpan={5} className="text-center h-24">No transactions found for the selected period.</TableCell></TableRow>
-                                )}
-                            </TableBody>
-                            <TableFooter>
-                                <TableRow className="font-extrabold text-lg bg-gray-50">
-                                    <TableCell colSpan={4}>Closing Balance</TableCell>
-                                    <TableCell className="text-right font-mono">{formatCurrency(data.closingBalance)}</TableCell>
-                                </TableRow>
-                            </TableFooter>
-                        </Table>
-                    </CardContent>
-                </Card>
+                        {data && (
+                <div className="space-y-6">
+                    {/* NEW: Trend Chart Card */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Balance Trend</CardTitle>
+                        </CardHeader>
+                        <CardContent className="h-[250px] w-full">
+                            <ResponsiveContainer>
+                                <ChartContainer config={{}}>
+                                    <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="date" tickFormatter={(str) => format(new Date(str), 'MMM d')} />
+                                        <YAxis width={80} tickFormatter={(val) => `₦${(val/1000).toFixed(0)}k`} />
+                                        <ChartTooltip 
+                                            cursor={false}
+                                            content={<ChartTooltipContent 
+                                                labelFormatter={(label) => format(new Date(label), 'MMM dd, yyyy')}
+                                                formatter={(value) => formatCurrency(value as number)} 
+                                            />} 
+                                        />
+                                        <Area type="monotone" dataKey="balance" stroke="#2563eb" fill="#bfdbfe" />
+                                    </AreaChart>
+                                </ChartContainer>
+                            </ResponsiveContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* Existing Statement Details Card */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}</CardTitle>
+                            <p className="text-sm text-muted-foreground">Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}</p>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead className="text-right">Debit</TableHead>
+                                        <TableHead className="text-right">Credit</TableHead>
+                                        <TableHead className="text-right">Balance</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow className="font-semibold">
+                                        <TableCell colSpan={4}>Opening Balance</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(data.openingBalance)}</TableCell>
+                                    </TableRow>
+                                    {data.transactions.length > 0 ? (
+                                        data.transactions.map((tx, index) => (
+                                            <TableRow key={index}>
+                                                <TableCell>{format(new Date(tx.date), 'yyyy-MM-dd')}</TableCell>
+                                                <TableCell>{tx.description}</TableCell>
+                                                <TableCell className="text-right font-mono text-green-600">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</TableCell>
+                                                <TableCell className="text-right font-mono text-red-600">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(runningBalance[index])}</TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow><TableCell colSpan={5} className="text-center h-24">No transactions found for the selected period.</TableCell></TableRow>
+                                    )}
+                                </TableBody>
+                                <TableFooter>
+                                    <TableRow className="font-extrabold text-lg bg-gray-50">
+                                        <TableCell colSpan={4}>Closing Balance</TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(data.closingBalance)}</TableCell>
+                                    </TableRow>
+                                </TableFooter>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </div>
             )}
         </div>
     );

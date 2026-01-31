@@ -8,6 +8,8 @@ import { format } from 'date-fns';
 import { Loader2, AlertCircle, FileText, Download, Printer } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -197,6 +199,28 @@ const CashInflowPage = () => {
     };
     
     const totalInflow = useMemo(() => data ? data.totalOperating + data.totalInvesting + data.totalFinancing : 0, [data]);
+    const { chartData, chartConfig } = useMemo(() => {
+        if (!data) {
+            return { chartData: [], chartConfig: {} };
+        }
+
+        const inflowData = [
+            { name: 'Operating Activities', value: data.totalOperating },
+            { name: 'Investing Activities', value: data.totalInvesting },
+            { name: 'Financing Activities', value: data.totalFinancing },
+        ].filter(d => d.value > 0.01); // Filter out categories with no inflow
+
+        const COLORS = ['#00C49F', '#0088FE', '#FFBB28']; // Green/Blue colors for inflow
+        const config = {};
+        inflowData.forEach((item, index) => {
+            config[item.name] = {
+                label: item.name,
+                color: COLORS[index % COLORS.length]
+            };
+        });
+
+        return { chartData: inflowData, chartConfig: config };
+    }, [data]);
 
     return (
         <div className="space-y-6">
@@ -225,44 +249,70 @@ const CashInflowPage = () => {
             {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
 
             {data && (
-                 <div className="space-y-4">
-                    <Card>
-                         <CardContent className="p-6">
-                            <div className="text-center"><p className="text-sm text-muted-foreground">Total Cash Inflow</p><p className="text-3xl font-bold">{formatCurrency(totalInflow)}</p></div>
-                        </CardContent>
-                    </Card>
+                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    {/* Left Column: Details */}
+                    <div className="lg:col-span-3 space-y-6">
+                        <Card>
+                             <CardContent className="p-6">
+                                <div className="text-center"><p className="text-sm text-muted-foreground">Total Cash Inflow</p><p className="text-3xl font-bold">{formatCurrency(totalInflow)}</p></div>
+                            </CardContent>
+                        </Card>
 
-                    <Card>
-                        <CardHeader><CardTitle>Inflow Details</CardTitle></CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-                                <TableBody>
-                                    <TableRow className="font-bold"><TableCell colSpan={2}>OPERATING ACTIVITIES</TableCell></TableRow>
-                                    {data.netIncome > 0 && <TableRow><TableCell className="pl-8">Net Income</TableCell><TableCell className="text-right">{formatCurrency(data.netIncome)}</TableCell></TableRow>}
-                                    {data.operatingActivities.map((item, i) => item.amount > 0 && <TableRow key={i}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)}
-                                    <TableRow className="font-semibold bg-gray-50"><TableCell>Net Cash Inflow from Operating Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalOperating)}</TableCell></TableRow>
+                        <Card>
+                            <CardHeader><CardTitle>Inflow Details</CardTitle></CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        <TableRow className="font-bold"><TableCell colSpan={2}>OPERATING ACTIVITIES</TableCell></TableRow>
+                                        {data.netIncome > 0 && <TableRow><TableCell className="pl-8">Net Income</TableCell><TableCell className="text-right">{formatCurrency(data.netIncome)}</TableCell></TableRow>}
+                                        {data.operatingActivities.map((item, i) => item.amount > 0 && <TableRow key={`op-${i}`}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)}
+                                        <TableRow className="font-semibold bg-secondary/50"><TableCell>Net Cash Inflow from Operating Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalOperating)}</TableCell></TableRow>
 
-                                    <TableRow className="font-bold pt-4"><TableCell colSpan={2}>INVESTING ACTIVITIES</TableCell></TableRow>
-                                    {data.investingActivities.length > 0 ? 
-                                        data.investingActivities.map((item, i) => item.amount > 0 && <TableRow key={i}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)
-                                        : <TableRow><TableCell className="pl-8 text-muted-foreground" colSpan={2}>No investing inflows in this period</TableCell></TableRow>}
-                                    <TableRow className="font-semibold bg-gray-50"><TableCell>Net Cash Inflow from Investing Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalInvesting)}</TableCell></TableRow>
+                                        <TableRow className="font-bold pt-4"><TableCell colSpan={2}>INVESTING ACTIVITIES</TableCell></TableRow>
+                                        {data.investingActivities.filter(i => i.amount > 0).length > 0 ? 
+                                            data.investingActivities.map((item, i) => item.amount > 0 && <TableRow key={`inv-${i}`}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)
+                                            : <TableRow><TableCell className="pl-8 text-muted-foreground" colSpan={2}>No investing inflows in this period</TableCell></TableRow>}
+                                        <TableRow className="font-semibold bg-secondary/50"><TableCell>Net Cash Inflow from Investing Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalInvesting)}</TableCell></TableRow>
 
-                                    <TableRow className="font-bold pt-4"><TableCell colSpan={2}>FINANCING ACTIVITIES</TableCell></TableRow>
-                                    {data.financingActivities.length > 0 ?
-                                        data.financingActivities.map((item, i) => item.amount > 0 && <TableRow key={i}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)
-                                        : <TableRow><TableCell className="pl-8 text-muted-foreground" colSpan={2}>No financing inflows in this period</TableCell></TableRow>}
-                                    <TableRow className="font-semibold bg-gray-50"><TableCell>Net Cash Inflow from Financing Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalFinancing)}</TableCell></TableRow>
-                                </TableBody>
-                                <TableFooter>
-                                    <TableRow className="font-bold text-lg"><TableCell>TOTAL CASH INFLOW</TableCell><TableCell className="text-right">{formatCurrency(totalInflow)}</TableCell></TableRow>
-                                </TableFooter>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                        <TableRow className="font-bold pt-4"><TableCell colSpan={2}>FINANCING ACTIVITIES</TableCell></TableRow>
+                                        {data.financingActivities.filter(i => i.amount > 0).length > 0 ?
+                                            data.financingActivities.map((item, i) => item.amount > 0 && <TableRow key={`fin-${i}`}><TableCell className="pl-8">{item.name}</TableCell><TableCell className="text-right">{formatCurrency(item.amount)}</TableCell></TableRow>).filter(Boolean)
+                                            : <TableRow><TableCell className="pl-8 text-muted-foreground" colSpan={2}>No financing inflows in this period</TableCell></TableRow>}
+                                        <TableRow className="font-semibold bg-secondary/50"><TableCell>Net Cash Inflow from Financing Activities</TableCell><TableCell className="text-right">{formatCurrency(data.totalFinancing)}</TableCell></TableRow>
+                                    </TableBody>
+                                    <TableFooter>
+                                        <TableRow className="font-bold text-lg"><TableCell>TOTAL CASH INFLOW</TableCell><TableCell className="text-right">{formatCurrency(totalInflow)}</TableCell></TableRow>
+                                    </TableFooter>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Right Column: Chart */}
+                    <div className="lg:col-span-2">
+                        <Card className="h-fit sticky top-4">
+                            <CardHeader><CardTitle>Inflow Composition</CardTitle></CardHeader>
+                            <CardContent className="h-[350px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <ChartContainer config={chartConfig}>
+                                        <PieChart>
+                                            <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
+                                            <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} labelLine={false} label={({ percent }) => `${(percent * 100).toFixed(0)}%`}>
+                                                {chartData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={chartConfig[entry.name]?.color} />
+                                                ))}
+                                            </Pie>
+                                            <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+                                        </PieChart>
+                                    </ChartContainer>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
             )}
+
              {!isLoading && !data && !error && <div className="text-center py-12 text-muted-foreground">Please generate a report to view the cash inflow.</div>}
         </div>
     );
