@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, AlertCircle } from 'lucide-react';
 
-// --- Type Definitions ---
+// --- Type Definitions (Expanded) ---
 interface ManufacturingData {
     opening_stock_raw_materials: number;
     purchases: number;
@@ -23,23 +23,37 @@ interface ManufacturingData {
         power: number;
         indirect_materials: number;
     };
+    // NEW FIELDS for the complete cycle
+    opening_stock_wip: number;
+    closing_stock_wip: number;
+    opening_stock_finished_goods: number;
+    closing_stock_finished_goods: number;
 }
 
-// --- Helper Functions ---
+// --- Helper Functions (Expanded) ---
 const calculateCosts = (data?: ManufacturingData) => {
     if (!data) {
-        return { cost_of_raw_materials_consumed: 0, prime_cost: 0, total_factory_overhead: 0, factory_production_cost: 0 };
+        return { cost_of_raw_materials_consumed: 0, prime_cost: 0, total_factory_overhead: 0, factory_production_cost: 0, cost_of_goods_manufactured: 0, cost_of_goods_sold: 0 };
     }
+    // Existing calculations
     const cost_of_raw_materials_consumed = data.opening_stock_raw_materials + data.purchases + data.carriage_inwards - data.return_outwards - data.closing_stock_raw_materials;
     const prime_cost = cost_of_raw_materials_consumed + data.direct_labor;
     const total_factory_overhead = Object.values(data.factory_overhead).reduce((acc, value) => acc + value, 0);
     const factory_production_cost = prime_cost + total_factory_overhead;
-    return { cost_of_raw_materials_consumed, prime_cost, total_factory_overhead, factory_production_cost };
+
+    // NEW: Complete the cycle
+    const cost_of_goods_manufactured = factory_production_cost + data.opening_stock_wip - data.closing_stock_wip;
+    const cost_of_goods_sold = cost_of_goods_manufactured + data.opening_stock_finished_goods - data.closing_stock_finished_goods;
+    
+    return { cost_of_raw_materials_consumed, prime_cost, total_factory_overhead, factory_production_cost, cost_of_goods_manufactured, cost_of_goods_sold };
 }
 
+
+
 const formatNumber = (num: number | null) => {
-    if (num === null || num === undefined) return '0.00';
-    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (num === null || num === undefined || isNaN(num)) return '0.00';
+    const formatted = new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(num));
+    return num < 0 ? `(${formatted})` : formatted;
 };
 
 
@@ -48,7 +62,6 @@ const ManufacturingAccountPage = () => {
     const { user } = useAuth();
     const [year, setYear] = useState<string>(new Date().getFullYear().toString());
     
-    // State for API data
     const [reportData, setReportData] = useState<ManufacturingData | null>(null);
     const [previousYearData, setPreviousYearData] = useState<ManufacturingData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -63,7 +76,6 @@ const ManufacturingAccountPage = () => {
         const prevYear = currentYear - 1;
 
         try {
-            // Fetch data for both years concurrently
             const [currentYearRes, prevYearRes] = await Promise.all([
                 fetch(`https://hariindustries.net/api/clearbook/manufacturing-report.php?company_id=${user.company_id}&year=${currentYear}`),
                 fetch(`https://hariindustries.net/api/clearbook/manufacturing-report.php?company_id=${user.company_id}&year=${prevYear}`)
@@ -81,8 +93,7 @@ const ManufacturingAccountPage = () => {
             if (prevYearResult.success) {
                 setPreviousYearData(prevYearResult.data);
             } else {
-                // It's not a critical error if previous year fails, so we just set it to null
-                setPreviousYearData(null); 
+                setPreviousYearData(null);
                 console.warn(prevYearResult.message || `Could not fetch data for previous year ${prevYear}`);
             }
 
@@ -99,24 +110,20 @@ const ManufacturingAccountPage = () => {
         fetchReportData(year);
     }, [year, fetchReportData]);
     
-    // --- Calculated Costs ---
     const calculatedCosts = calculateCosts(reportData!);
     const previousYearCalculatedCosts = calculateCosts(previousYearData!);
     const prevYearLabel = (parseInt(year, 10) - 1).toString();
 
-    // --- Render Logic ---
     return (
         <div className="container mx-auto p-4">
             <Card className="mb-4">
                 <CardHeader>
-                    <CardTitle>Manufacturing Account</CardTitle>
-                    <CardDescription>Select a year to view the manufacturing report.</CardDescription>
+                    <CardTitle>Production Cost Report</CardTitle>
+                    <CardDescription>Full manufacturing cycle from raw materials to cost of goods sold.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Select value={year} onValueChange={setYear}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Select a year" />
-                        </SelectTrigger>
+                        <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select a year" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="2025">2025</SelectItem>
                             <SelectItem value="2024">2024</SelectItem>
@@ -126,28 +133,12 @@ const ManufacturingAccountPage = () => {
                 </CardContent>
             </Card>
             
-            {loading && (
-                <div className="flex items-center justify-center h-64">
-                    <Loader2 className="h-8 w-8 animate-spin" />
-                    <span className="ml-4 text-muted-foreground">Loading report data...</span>
-                </div>
-            )}
-            
-            {error && (
-                <Card className="border-destructive">
-                    <CardHeader><CardTitle className="text-destructive">Error</CardTitle></CardHeader>
-                    <CardContent className="flex items-center">
-                        <AlertCircle className="h-8 w-8 text-destructive mr-4" />
-                        <p>{error}</p>
-                    </CardContent>
-                </Card>
-            )}
+            {loading && <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /><span className="ml-4 text-muted-foreground">Loading report data...</span></div>}
+            {error && <Card className="border-destructive"><CardHeader><CardTitle className="text-destructive">Error</CardTitle></CardHeader><CardContent className="flex items-center"><AlertCircle className="h-8 w-8 text-destructive mr-4" /><p>{error}</p></CardContent></Card>}
 
             {!loading && !error && reportData && (
                  <Card>
-                    <CardHeader>
-                        <CardTitle>Presentation of Manufacturing Account</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>Statement of Production Cost</CardTitle></CardHeader>
                     <CardContent>
                          <Table>
                             <TableHeader>
@@ -158,40 +149,34 @@ const ManufacturingAccountPage = () => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                <TableRow><TableCell className='font-semibold'>Raw materials</TableCell><TableCell></TableCell><TableCell></TableCell></TableRow>
-                                <TableRow><TableCell className="pl-8">Opening stock</TableCell><TableCell className="text-right">{formatNumber(reportData.opening_stock_raw_materials)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.opening_stock_raw_materials)}</TableCell></TableRow>
+                                {/* --- Raw Materials Section --- */}
+                                <TableRow><TableCell className='font-semibold'>Raw Materials</TableCell><TableCell></TableCell><TableCell></TableCell></TableRow>
+                                <TableRow><TableCell className="pl-8">Opening Stock</TableCell><TableCell className="text-right">{formatNumber(reportData.opening_stock_raw_materials)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.opening_stock_raw_materials)}</TableCell></TableRow>
                                 <TableRow><TableCell className="pl-8">Purchases</TableCell><TableCell className="text-right">{formatNumber(reportData.purchases)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.purchases)}</TableCell></TableRow>
-                                <TableRow><TableCell className="pl-8">Add carriage inwards</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.carriage_inwards)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.carriage_inwards)}</TableCell></TableRow>
-                                <TableRow><TableCell className="pl-8">Less return outwards</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.return_outwards)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.return_outwards)}</TableCell></TableRow>
-                                <TableRow>
-                                    <TableCell className="pl-8">Raw materials available</TableCell>
-                                    <TableCell className="text-right">{formatNumber(reportData.opening_stock_raw_materials + reportData.purchases + reportData.carriage_inwards - reportData.return_outwards)}</TableCell>
-                                    <TableCell className="text-right">{formatNumber((previousYearData?.opening_stock_raw_materials ?? 0) + (previousYearData?.purchases ?? 0) + (previousYearData?.carriage_inwards ?? 0) - (previousYearData?.return_outwards ?? 0))}</TableCell>
-                                </TableRow>
-                                <TableRow><TableCell className="pl-8">Less closing stock</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.closing_stock_raw_materials)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.closing_stock_raw_materials)}</TableCell></TableRow>
-                                <TableRow className="font-bold"><TableCell>Cost of raw materials used</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.cost_of_raw_materials_consumed)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.cost_of_raw_materials_consumed)}</TableCell></TableRow>
-                                <TableRow><TableCell>Direct labor</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.direct_labor)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.direct_labor)}</TableCell></TableRow>
-                                <TableRow className="font-bold"><TableCell>Prime cost</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.prime_cost)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.prime_cost)}</TableCell></TableRow>
+                                <TableRow><TableCell className="pl-8">Add: Carriage Inwards</TableCell><TableCell className="text-right">{formatNumber(reportData.carriage_inwards)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.carriage_inwards)}</TableCell></TableRow>
+                                <TableRow><TableCell className="pl-8">Less: Return Outwards</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.return_outwards)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.return_outwards)}</TableCell></TableRow>
+                                <TableRow><TableCell className="pl-8">Less: Closing Stock</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.closing_stock_raw_materials)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.closing_stock_raw_materials)}</TableCell></TableRow>
+                                <TableRow className="font-bold"><TableCell>Cost of Raw Materials Consumed</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.cost_of_raw_materials_consumed)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.cost_of_raw_materials_consumed)}</TableCell></TableRow>
                                 
-                                <TableRow><TableCell className='font-semibold pt-4'>Factory overhead</TableCell><TableCell></TableCell><TableCell></TableCell></TableRow>
-                                {Object.entries(reportData.factory_overhead).map(([key, value]) => (
-                                    <TableRow key={key}>
-                                        <TableCell className="pl-8">{key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}</TableCell>
-                                        <TableCell className="text-right">{formatNumber(value)}</TableCell>
-                                        <TableCell className="text-right">{formatNumber(previousYearData?.factory_overhead[key as keyof typeof reportData.factory_overhead])}</TableCell>
-                                    </TableRow>
-                                ))}
-                                <TableRow>
-                                    <TableCell className='pl-8 font-semibold'>Total factory overhead</TableCell>
-                                    <TableCell className="text-right border-b">{formatNumber(calculatedCosts.total_factory_overhead)}</TableCell>
-                                    <TableCell className="text-right border-b">{formatNumber(previousYearCalculatedCosts.total_factory_overhead)}</TableCell>
-                                </TableRow>
-
-                                <TableRow className="font-extrabold text-lg bg-secondary/50">
-                                    <TableCell>Factory or Production Cost</TableCell>
-                                    <TableCell className="text-right">{formatNumber(calculatedCosts.factory_production_cost)}</TableCell>
-                                    <TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.factory_production_cost)}</TableCell>
-                                </TableRow>
+                                {/* --- Prime Cost Section --- */}
+                                <TableRow><TableCell>Direct Labor</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.direct_labor)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.direct_labor)}</TableCell></TableRow>
+                                <TableRow className="font-bold"><TableCell>Prime Cost</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.prime_cost)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.prime_cost)}</TableCell></TableRow>
+                                
+                                {/* --- Factory Overhead Section --- */}
+                                <TableRow><TableCell className='font-semibold pt-4'>Factory Overheads</TableCell><TableCell></TableCell><TableCell></TableCell></TableRow>
+                                {Object.entries(reportData.factory_overhead).map(([key, value]) => (<TableRow key={key}><TableCell className="pl-8">{key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')}</TableCell><TableCell className="text-right">{formatNumber(value)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.factory_overhead[key as keyof typeof reportData.factory_overhead])}</TableCell></TableRow>))}
+                                <TableRow><TableCell className='pl-8 font-semibold'>Total Factory Overheads</TableCell><TableCell className="text-right border-b">{formatNumber(calculatedCosts.total_factory_overhead)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearCalculatedCosts.total_factory_overhead)}</TableCell></TableRow>
+                                <TableRow className="font-bold"><TableCell>Factory / Production Cost</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.factory_production_cost)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.factory_production_cost)}</TableCell></TableRow>
+                                
+                                {/* --- NEW: WIP & COGM Section --- */}
+                                <TableRow><TableCell className='pl-8 pt-4'>Add: Opening Work-in-Progress</TableCell><TableCell className="text-right">{formatNumber(reportData.opening_stock_wip)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.opening_stock_wip)}</TableCell></TableRow>
+                                <TableRow><TableCell className='pl-8'>Less: Closing Work-in-Progress</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.closing_stock_wip)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.closing_stock_wip)}</TableCell></TableRow>
+                                <TableRow className="font-bold text-lg bg-secondary/30"><TableCell>Cost of Goods Manufactured</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.cost_of_goods_manufactured)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.cost_of_goods_manufactured)}</TableCell></TableRow>
+                                
+                                {/* --- NEW: Finished Goods & COGS Section --- */}
+                                <TableRow><TableCell className='pl-8 pt-4'>Add: Opening Finished Goods</TableCell><TableCell className="text-right">{formatNumber(reportData.opening_stock_finished_goods)}</TableCell><TableCell className="text-right">{formatNumber(previousYearData?.opening_stock_finished_goods)}</TableCell></TableRow>
+                                <TableRow><TableCell className='pl-8'>Less: Closing Finished Goods</TableCell><TableCell className="text-right border-b">{formatNumber(reportData.closing_stock_finished_goods)}</TableCell><TableCell className="text-right border-b">{formatNumber(previousYearData?.closing_stock_finished_goods)}</TableCell></TableRow>
+                                <TableRow className="font-extrabold text-xl bg-secondary/50"><TableCell>Cost of Goods Sold (COGS)</TableCell><TableCell className="text-right">{formatNumber(calculatedCosts.cost_of_goods_sold)}</TableCell><TableCell className="text-right">{formatNumber(previousYearCalculatedCosts.cost_of_goods_sold)}</TableCell></TableRow>
                             </TableBody>
                         </Table>
                     </CardContent>
