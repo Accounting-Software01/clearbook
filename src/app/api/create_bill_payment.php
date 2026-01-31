@@ -39,21 +39,27 @@ foreach ($required_fields as $field) {
 $conn->begin_transaction();
 
 try {
-    // --- 1. Get Account Details ---
+    // --- 1. Get Account Details (using the correct identifiers) ---
+    // Get the Accounts Payable account details by its system role.
     $ap_account_details = get_account_details($conn, $data->company_id, null, null, 'accounts_payable');
-    if (!$ap_account_details || !isset($ap_account_details['id'])) {
-        throw new Exception('CRITICAL: The system role "accounts_payable" has not been assigned to any account, or the account ID is missing.');
+    if (!$ap_account_details || !isset($ap_account_details['account_code'])) {
+        throw new Exception('CRITICAL: The system role "accounts_payable" has not been assigned or has no account_code.');
     }
+    // CORRECTED: We need the account_code, not the internal ID.
+    $ap_account_code = $ap_account_details['account_code'];
 
+    // Get the payment account name for the narration string.
     $payment_account_info = get_account_details($conn, $data->company_id, null, $data->payment_account_id, null);
-    if (!$payment_account_info || !isset($payment_account_info['id'])) {
-        throw new Exception("The selected payment account (Code: {$data->payment_account_id}) could not be found or has no ID.");
+    if (!$payment_account_info) {
+        throw new Exception("The selected payment account (Code: {$data->payment_account_id}) could not be found.");
     }
+    // CORRECTED: The account_id to be inserted is the code sent from the frontend.
+    $payment_account_code = $data->payment_account_id;
 
     // --- 2. Generate a unique Voucher Number ---
-    $voucher_number = 'CPV-' . time() . '-' . $data->bill_id; // CPV for "Cash Payment Voucher"
+    $voucher_number = 'CPV-' . time() . '-' . $data->bill_id;
 
-    // --- 3. Create Journal Voucher Header (using correct schema) ---
+    // --- 3. Create Journal Voucher Header ---
     $jv_narration = "Payment for Bill #{$data->bill_id}";
     $debit_credit_total = floatval($data->amount);
     
@@ -69,42 +75,35 @@ try {
     $user_id_int = intval($data->user_id);
     $bill_id_int = intval($data->bill_id);
 
-    // FIXED: Corrected the type definition string to have 8 characters, matching the 8 placeholders.
-    $jv_stmt->bind_param("sisssidd", 
-        $data->company_id, 
-        $user_id_int,
-        $voucher_number,
-        $data->payment_date, 
-        $bill_id_int, // reference_id
-        $jv_narration, 
-        $debit_credit_total, 
-        $debit_credit_total
-    );
+    $jv_stmt->bind_param("sisssidd", $data->company_id, $user_id_int, $voucher_number, $data->payment_date, $bill_id_int, $jv_narration, $debit_credit_total, $debit_credit_total);
     $jv_stmt->execute();
     $jv_id = $jv_stmt->insert_id;
     $jv_stmt->close();
 
-    // --- 4. Create Journal Voucher Lines (using correct schema) ---
+    // --- 4. Create Journal Voucher Lines ---
     $jvl_sql = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description, payee_id, payee_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    // DEBIT ENTRY: Reduce Accounts Payable, linked to the supplier
+    $zero_amount = 0.00;
+
+    // DEBIT ENTRY: Reduce Accounts Payable
     $jvl_stmt_debit = $conn->prepare($jvl_sql);
     if ($jvl_stmt_debit === false) throw new Exception('Failed to prepare debit line: ' . $conn->error);
     $debit_desc = "Payment to supplier for Bill #{$data->bill_id}";
     $payee_type_supplier = 'supplier';
     $supplier_id_int = intval($data->supplier_id);
-    $credit_amount_for_debit = 0.00; // FIXED: Stored literal value in a variable.
-    $jvl_stmt_debit->bind_param("siiiddsis", $data->company_id, $user_id_int, $jv_id, $ap_account_details['id'], $data->amount, $credit_amount_for_debit, $debit_desc, $supplier_id_int, $payee_type_supplier);
+    // CORRECTED: Changed bind_param type from 'i' to 's' for account_id and used the account_code.
+    $jvl_stmt_debit->bind_param("siisddsis", $data->company_id, $user_id_int, $jv_id, $ap_account_code, $data->amount, $zero_amount, $debit_desc, $supplier_id_int, $payee_type_supplier);
     $jvl_stmt_debit->execute();
     $jvl_stmt_debit->close();
 
-    // CREDIT ENTRY: Decrease the Cash/Bank account (No payee needed)
-    $jvl_sql_credit = "INSERT INTO journal_voucher_lines (company_id, user_id, voucher_id, account_id, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?, ?)";
-    $jvl_stmt_credit = $conn->prepare($jvl_sql_credit);
+    // CREDIT ENTRY: Decrease Cash/Bank
+    $jvl_stmt_credit = $conn->prepare($jvl_sql);
     if ($jvl_stmt_credit === false) throw new Exception('Failed to prepare credit line: ' . $conn->error);
     $credit_desc = "Credit from {$payment_account_info['account_name']} for Bill #{$data->bill_id}";
-    $debit_amount_for_credit = 0.00; // FIXED: Stored literal value in a variable.
-    $jvl_stmt_credit->bind_param("siiidds", $data->company_id, $user_id_int, $jv_id, $payment_account_info['id'], $debit_amount_for_credit, $data->amount, $credit_desc);
+    $null_payee_id = null;
+    $null_payee_type = null;
+    // CORRECTED: Changed bind_param type from 'i' to 's' for account_id and used the account_code.
+    $jvl_stmt_credit->bind_param("siisddsis", $data->company_id, $user_id_int, $jv_id, $payment_account_code, $zero_amount, $data->amount, $credit_desc, $null_payee_id, $null_payee_type);
     $jvl_stmt_credit->execute();
     $jvl_stmt_credit->close();
     
