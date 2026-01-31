@@ -42,17 +42,42 @@ const ExpenseAnalysisPage = () => {
 
     const processData = (apiData: any): ProcessedExpenseData => {
         const expenseData = apiData.processedData?.expenses;
-        if (!expenseData) return { categories: [], totalExpenses: 0 };
-
+        const costOfGoodsSoldData = apiData.processedData?.costOfGoodsSold;
+    
+        // Start with an empty array for our categories
+        let allCategories: ExpenseCategory[] = [];
+    
+        // Process the main "Expenses" section from the API
+        if (expenseData && Array.isArray(expenseData.accounts)) {
+            const operatingExpenses = expenseData.accounts.map((acc: any) => ({
+                name: acc.name, // Treat each account as its own category
+                amount: Math.abs(acc.amount), // Use absolute value for consistent charting
+                // It has one "sub-account", which is itself
+                subAccounts: [{ name: acc.name, amount: Math.abs(acc.amount) }]
+            }));
+            allCategories = allCategories.concat(operatingExpenses);
+        }
+        
+        // Process the "Cost of Goods Sold" section and add it to our categories
+        if (costOfGoodsSoldData && Array.isArray(costOfGoodsSoldData.accounts)) {
+            const cogsExpenses = costOfGoodsSoldData.accounts.map((acc: any) => ({
+                name: acc.name,
+                amount: Math.abs(acc.amount),
+                subAccounts: [{ name: acc.name, amount: Math.abs(acc.amount) }]
+            }));
+            // Add COGS to the list of categories
+            allCategories = cogsExpenses.concat(allCategories);
+        }
+    
+        // Recalculate the total based on the categories we've actually processed
+        const totalExpenses = allCategories.reduce((sum, cat) => sum + cat.amount, 0);
+    
         return {
-            categories: expenseData.subGroups.map((group: any) => ({
-                name: group.groupName,
-                amount: group.total,
-                subAccounts: group.accounts.map((acc: any) => ({ name: acc.accountName, amount: acc.balance }))
-            })),
-            totalExpenses: expenseData.total,
+            categories: allCategories,
+            totalExpenses: totalExpenses,
         };
     };
+    
 
     const generateReport = useCallback(async () => {
         if (!fromDate || !toDate || !user?.company_id) {
@@ -111,6 +136,20 @@ const ExpenseAnalysisPage = () => {
           .map((item, index) => ({...item, fill: COLORS[index % COLORS.length]}));
     }, [data]);
 
+    const chartConfig = useMemo(() => {
+        if (!data) return {};
+        
+        const config = {};
+        data.categories.forEach((category, index) => {
+            config[category.name] = {
+                label: category.name,
+                color: COLORS[index % COLORS.length]
+            };
+        });
+        
+        return config;
+    }, [data]);
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -149,11 +188,14 @@ const ExpenseAnalysisPage = () => {
                             </div>
                             <div className="h-[250px]">
                                 <ResponsiveContainer width="100%" height="100%">
+                                <ChartContainer config={chartConfig}>
+
                                     <PieChart>
                                         <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
                                         <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} />
                                         <ChartLegend content={<ChartLegendContent nameKey="name" />} />
                                     </PieChart>
+                                    </ChartContainer>
                                 </ResponsiveContainer>
                             </div>
                         </CardContent>
