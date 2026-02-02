@@ -68,11 +68,11 @@ export default function AppLayout({
     const title = currentNavItem?.label || 'ClearBooks';
 
     return (
-        <div className="relative z-10 flex h-[90vh] w-full max-w-7xl mx-auto gap-4 p-4">
+         <div className="relative z-10 flex h-[100vh] w-full gap-4 p-4">
             <Sidebar />
             <main className="flex-1 h-full overflow-hidden">
                 <Card className="w-full h-full flex flex-col shadow-2xl bg-card/80 backdrop-blur-xl transition-all duration-300">
-                    <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
+                    <CardHeader className="flex flex-row items-center justify-between p-2 border-b">
                         <div className="flex items-center gap-4">
                            <div className="flex items-center gap-2 group">
                                 <Button size="icon-sm" variant="ghost" className="rounded-full bg-red-500 hover:bg-red-600 text-red-900" onClick={() => setIsCardCollapsed(!isCardCollapsed)}>
@@ -84,7 +84,7 @@ export default function AppLayout({
                                <button className="h-3 w-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors"></button>
                            </div>
                            <div className="flex items-center gap-4 border-l pl-4">
-                                <h1 className="text-base font-semibold">{title}</h1>
+                                <h1 className="text-sm font-semibold">{title}</h1>
                                 <RecentActivities currentTitle={title} />
                             </div>
                         </div>
