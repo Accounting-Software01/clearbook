@@ -32,6 +32,12 @@ const inventoryCategories = {
         'Rejected / Quality-Hold Inventory',
         'Third-Party / Consignment Inventory',
     ],
+    semi_finished: [
+        'Sub-assemblies',
+        'Semi_finished',
+        'Intermediate Products',
+    ],
+    
     finished_good: [
         'Finished Goods Inventory',
         'Work-in-Progress (WIP) Inventory',
@@ -125,6 +131,8 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                             <SelectContent>
                                 <SelectItem value="raw_material">Raw Material</SelectItem>
                                 <SelectItem value="finished_good">Finished Good</SelectItem>
+                                <SelectItem value="semi_finished">Semi-Finished Good</SelectItem>
+
                             </SelectContent>
                         </Select>
                     </div>

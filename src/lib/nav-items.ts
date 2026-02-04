@@ -46,7 +46,8 @@ import {
     Scale,
     CircleDollarSign,
     Archive,
-    FileClock
+    FileClock,
+    PillBottle
 } from 'lucide-react';
 
 export const allNavItems = [
@@ -274,7 +275,7 @@ export const allNavItems = [
                 subItems: [
                     { href: '/production', label: 'Production', icon: Factory, permission: 'view_production' },
                     { href: '/production/boms', label: 'BOM Settings', icon: Users, permission: 'view_production_reports' },
-                    
+                    { href: '/production/pet-manufacturing', label: 'Pet Making', icon: PillBottle, permission: 'view_production_reports' },
                     { href: '/production/reports', label: 'Reports', icon: BarChart, permission: 'view_production_reports' },
               ]
             },

@@ -1,68 +1,93 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Max-Age: 3600");
-header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With");
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-include_once '../config/database.php';
+// Set headers for CORS and JSON response
+header('Access-Control-Allow-Origin: *');
+header('Content-Type: application/json');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-$database = new Database();
-$db = $database->getConnection();
+// Handle preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
 
+// Include the database connection script
+require_once __DIR__ . '/db_connect.php';
+
+// Function to send a standardized JSON response and exit
+function send_json_response($data, $statusCode = 200) {
+    http_response_code($statusCode);
+    echo json_encode($data);
+    exit;
+}
+
+// Get the posted data
 $data = json_decode(file_get_contents("php://input"));
 
+// Validate incoming data
 if (
     !isset($data->company_id) ||
     !isset($data->bom_name) ||
     !isset($data->output_item_id) ||
     !isset($data->production_stage) ||
     !isset($data->components) ||
-    !is_array($data->components)
+    !is_array($data->components) ||
+    empty($data->components)
 ) {
-    http_response_code(400);
-    echo json_encode(array("message" => "Incomplete data for BOM creation."));
-    return;
+    send_json_response(['message' => 'Incomplete or invalid data for BOM creation.'], 400);
 }
 
-$db->begin_transaction();
+// Begin transaction for atomicity
+$conn->begin_transaction();
 
 try {
-    // 1. Insert into pet_boms
+    // 1. Insert into the main pet_boms table
     $bom_query = "INSERT INTO pet_boms (company_id, bom_name, output_item_id, production_stage) VALUES (?, ?, ?, ?)";
-    $bom_stmt = $db->prepare($bom_query);
-    $bom_stmt->bind_param("ssis", $data->company_id, $data->bom_name, $data->output_item_id, $data->production_stage);
-    
+    $bom_stmt = $conn->prepare($bom_query);
+    // Corrected bind_param types: company_id is an integer (i)
+    $bom_stmt->bind_param("ssss", $data->company_id, $data->bom_name, $data->output_item_id, $data->production_stage);
+
     if (!$bom_stmt->execute()) {
         throw new Exception("Failed to create BOM: " . $bom_stmt->error);
     }
 
-    $pet_bom_id = $db->insert_id;
+    $pet_bom_id = $conn->insert_id;
+    $bom_stmt->close();
 
-    // 2. Insert into pet_bom_components
-    $comp_query = "INSERT INTO pet_bom_components (pet_bom_id, component_item_id, quantity_required) VALUES (?, ?, ?)";
-    $comp_stmt = $db->prepare($comp_query);
+    // 2. Insert into the pet_bom_components table
+    // Added unit_of_measure column
+    $comp_query = "INSERT INTO pet_bom_components (pet_bom_id, component_item_id, quantity_required, unit_of_measure) VALUES (?, ?, ?, ?)";
+    $comp_stmt = $conn->prepare($comp_query);
 
     foreach ($data->components as $component) {
-        if (!isset($component->component_item_id) || !isset($component->quantity_required)) {
-            throw new Exception("Incomplete data for a component.");
+        // Validate each component object
+        if (!isset($component->component_item_id) || !isset($component->quantity_required) || !isset($component->unit_of_measure)) {
+            throw new Exception("Incomplete data for a component. All fields are required.");
         }
-        $comp_stmt->bind_param("iid", $pet_bom_id, $component->component_item_id, $component->quantity_required);
+        // Corrected bind_param types: pet_bom_id is integer, component_item_id is string, quantity is double, unit is string
+        $comp_stmt->bind_param("isds", $pet_bom_id, $component->component_item_id, $component->quantity_required, $component->unit_of_measure);
+
         if (!$comp_stmt->execute()) {
             throw new Exception("Failed to add component: " . $comp_stmt->error);
         }
     }
+    $comp_stmt->close();
 
-    // Commit transaction
-    $db->commit();
+    // If everything was successful, commit the transaction
+    $conn->commit();
 
-    http_response_code(201);
-    echo json_encode(array("message" => "PET BOM created successfully.", "bom_id" => $pet_bom_id));
+    send_json_response(['message' => 'PET BOM created successfully.', 'bom_id' => $pet_bom_id], 201);
 
 } catch (Exception $e) {
-    $db->rollback();
-    http_response_code(500);
-    echo json_encode(array("message" => "BOM creation failed: " . $e->getMessage()));
+    // If any step fails, roll back the entire transaction
+    $conn->rollback();
+    send_json_response(['message' => 'BOM creation failed: ' . $e->getMessage()], 500);
+} finally {
+    if (isset($conn) && $conn instanceof mysqli) {
+        $conn->close();
+    }
 }
-
 ?>

@@ -70,7 +70,8 @@ export const chartOfAccounts: Account[] = [
     { id: '102330', code: '102330', name: 'Accumulated Depreciation - Motor Vehicles', type: 'Asset' },
     { id: '102340', code: '102340', name: 'Accumulated Depreciation - Office Equipment', type: 'Asset' },
     { id: '102350', code: '102350', name: 'Impairment Loss Assets', type: 'Asset' },
-    
+    { id: '102350', code: '102360', name: 'Semi-Finished', type: 'Asset' },
+
     // Liabilities
     { id: '201010', code: '201010', name: 'Accounts Payable Control (AUTO)', type: 'Liability' },
     { id: '201020', code: '201020', name: 'Trade Creditors - Suppliers', type: 'Liability', parent: '201010' },
