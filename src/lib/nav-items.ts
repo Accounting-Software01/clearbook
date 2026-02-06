@@ -276,7 +276,9 @@ export const allNavItems = [
                     { href: '/production', label: 'Production', icon: Factory, permission: 'view_production' },
                     { href: '/production/boms', label: 'BOM Settings', icon: Users, permission: 'view_production_reports' },
                     { href: '/production/pet-manufacturing', label: 'Pet Making', icon: PillBottle, permission: 'view_production_reports' },
-                    { href: '/production/reports', label: 'Reports', icon: BarChart, permission: 'view_production_reports' },
+                    { href: '/production/reports', label: 'Manufacturing-Reports', icon: BarChart, permission: 'view_production_reports' },
+                    { href: '/production/reports/pet-material-flow', label: 'Pet-Reports', icon: BarChart, permission: 'view_production_reports' },
+
               ]
             },
           
