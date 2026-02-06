@@ -47,6 +47,14 @@ interface FinancialData {
     revenue: number;
     expenses: number;
   }[];
+
+  invoiceStatusSummary: {
+    paid: { count: number; total: number };
+    issued: { count: number; total: number };
+    partiallyPaid: { count: number; total: number };
+  };
+  
+  
 }
 
 // Helper Functions
@@ -113,6 +121,54 @@ const OrbitingCircles = ({ isCurrentUser }: { isCurrentUser: boolean }) => {
   );
 };
 
+// --- ADD THIS NEW COMPONENT ---
+const PieChart = ({ data }: { data: { value: number; color: string; label: string }[] }) => {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+
+  if (total === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-full bg-gray-100">
+        <span className="text-xs text-gray-500">No data</span>
+      </div>
+    );
+  }
+
+  let cumulativePercent = 0;
+  const getCoordinatesForPercent = (percent: number) => {
+    const x = Math.cos(2 * Math.PI * percent);
+    const y = Math.sin(2 * Math.PI * percent);
+    return [x, y];
+  };
+
+  return (
+    <svg viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)' }}>
+      {data.map((item) => {
+        if (item.value === 0) return null;
+        
+        const percent = item.value / total;
+        const [startX, startY] = getCoordinatesForPercent(cumulativePercent);
+        cumulativePercent += percent;
+        const [endX, endY] = getCoordinatesForPercent(cumulativePercent);
+
+        const largeArcFlag = percent > 0.5 ? 1 : 0;
+
+        const pathData = [
+          `M ${startX} ${startY}`,
+          `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`,
+          `L 0 0`,
+        ].join(' ');
+
+        return <path key={item.label} d={pathData} fill={item.color} />;
+      })}
+    </svg>
+  );
+};
+// --- END NEW COMPONENT ---
+const PIE_CHART_COLORS = {
+  paid: '#00C49F', // A pleasant green/teal
+  issued: '#0088FE', // A strong blue
+  partiallyPaid: '#FFBB28', // A warm amber/yellow
+};
 // Main Component
 export default function DashboardPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -122,6 +178,7 @@ export default function DashboardPage() {
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
   const [isFinancialLoading, setIsFinancialLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'cashflow'>('overview');
+  const [companyInfo, setCompanyInfo] = useState(null);
 
   // Fetch Financial Data
   const fetchFinancialData = useCallback(async () => {
@@ -161,23 +218,51 @@ export default function DashboardPage() {
         .sort((a, b) => new Date(b.invoice_date).getTime() - new Date(a.invoice_date).getTime())
         .slice(0, 5);
 
-      // Mock cash flow data (replace with actual API data)
-      const cashFlow = [
-        { month: 'Jan', revenue: 450000, expenses: 320000 },
-        { month: 'Feb', revenue: 520000, expenses: 380000 },
-        { month: 'Mar', revenue: 480000, expenses: 350000 },
-        { month: 'Apr', revenue: 610000, expenses: 420000 },
-        { month: 'May', revenue: 580000, expenses: 390000 },
-        { month: 'Jun', revenue: 720000, expenses: 450000 },
-      ];
+        
+// --- ADD THIS SNIPPET ---
+const invoiceStatusSummary = invoices.reduce(
+  (acc, invoice) => {
+    const status = invoice.status.toLowerCase();
+    if (status === 'paid') {
+      acc.paid.count++;
+      acc.paid.total += sanitizeNumber(invoice.total_amount);
+    } else if (status === 'issued' || status === 'unpaid') { // Handles both ISSUED and UNPAID
+      acc.issued.count++;
+      acc.issued.total += sanitizeNumber(invoice.amount_due);
+    } else if (status === 'partially paid') {
+      acc.partiallyPaid.count++;
+      acc.partiallyPaid.total += sanitizeNumber(invoice.amount_due);
+    }
+    return acc;
+  },
+  {
+    paid: { count: 0, total: 0 },
+    issued: { count: 0, total: 0 }, // Changed from unpaid
+    partiallyPaid: { count: 0, total: 0 },
+  }
+);
 
-      setFinancialData({ 
-        totalRevenue, 
-        outstandingBalance, 
-        overdueInvoices,
-        recentInvoices,
-        cashFlow
-      });
+// --- END SNIPPET ---
+
+        const cashFlowResponse = await fetch(
+          `https://hariindustries.net/api/clearbook/get-cash-flow.php?company_id=${user.company_id}`
+        );
+        if (!cashFlowResponse.ok) {
+          throw new Error('Failed to fetch cash flow data');
+        }
+        const cashFlowData = await cashFlowResponse.json();
+        
+        
+
+        setFinancialData({ 
+          totalRevenue, 
+          outstandingBalance, 
+          overdueInvoices,
+          recentInvoices,
+          cashFlow: cashFlowData,
+          invoiceStatusSummary // <-- Add this line
+        });
+        
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       toast({
@@ -191,6 +276,25 @@ export default function DashboardPage() {
     }
   }, [user?.company_id, toast]);
 
+  const fetchCompanyData = useCallback(async () => {
+    if (!user?.company_id) return;
+  
+    try {
+      const response = await fetch(
+        `https://hariindustries.net/api/clearbook/get-company-details.php?company_id=${user.company_id}`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch company details');
+      }
+      const data = await response.json();
+      setCompanyInfo(data); // This saves the company info into our new state
+    } catch (error) {
+      console.error("Could not fetch company details:", error);
+      // Optional: Add a toast notification for this error if you wish
+    }
+  }, [user?.company_id]);
+ 
+
   // Initialize Dashboard
   useEffect(() => {
     if (user) {
@@ -198,8 +302,9 @@ export default function DashboardPage() {
       const formattedLoginTime = `${now.toLocaleDateString()} at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       setLastLogin(formattedLoginTime);
       fetchFinancialData();
-    }
-  }, [user, fetchFinancialData]);
+    fetchCompanyData(); // <-- Add this line
+  }
+}, [user, fetchFinancialData, fetchCompanyData]); // <-- And add this here
 
   // Loading State
   if (isAuthLoading) {
@@ -222,6 +327,15 @@ export default function DashboardPage() {
   const sortedUserRoles = user 
     ? [user.role, ...USER_ROLES.filter(role => role !== user.role)] 
     : USER_ROLES;
+
+    const availableTabs: ('overview' | 'invoices' | 'cashflow')[] = ['overview', 'invoices'];
+    if (user.role === 'admin') {
+      availableTabs.push('cashflow');
+    }
+    const maxCashFlowValue = financialData?.cashFlow?.reduce((max, item) => {
+      return Math.max(max, item.revenue, item.expenses);
+    }, 0) || 1; // Use 1 as a fallback to prevent division by zero
+    
 
   return (
     <>
@@ -251,9 +365,11 @@ export default function DashboardPage() {
           <div className="mb-6 md:mb-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
+                
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">
-                  Accounting Dashboard
+                {companyInfo ? `${companyInfo.name} - ${companyInfo.business_type}` : 'Accounting Dashboard'}
                 </h1>
+
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2">
                   <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">
                     <UserCircle className="h-4 w-4 mr-2" />
@@ -387,8 +503,9 @@ export default function DashboardPage() {
             <div className="lg:col-span-3">
               {/* Tab Navigation */}
               <div className="flex space-x-1 mb-6 bg-white rounded-lg p-1 shadow-sm">
-                {(['overview', 'invoices', 'cashflow'] as const).map((tab) => (
-                  <button
+                {availableTabs.map((tab) => (
+ 
+                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -535,8 +652,89 @@ export default function DashboardPage() {
                     </>
                   )}
 
+                  {/* --- ADD THIS ENTIRE BLOCK for the Invoices Tab --- */}
+{activeTab === 'invoices' && financialData && (
+  <>
+    {/* Invoice Status Summary Card */}
+    <Card className="shadow-lg">
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          <BarChart3 className="h-5 w-5 mr-2 text-gray-700" />
+          Invoice Status Summary
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+          {/* Pie Chart */}
+          <div className="w-full max-w-[200px] mx-auto">
+          <PieChart data={[
+  { value: financialData.invoiceStatusSummary.paid.count, color: PIE_CHART_COLORS.paid, label: 'Paid' },
+  { value: financialData.invoiceStatusSummary.issued.count, color: PIE_CHART_COLORS.issued, label: 'Issued' },
+  { value: financialData.invoiceStatusSummary.partiallyPaid.count, color: PIE_CHART_COLORS.partiallyPaid, label: 'Partially Paid' }
+]} />
+
+          </div>
+
+         {/* Summary Details */}
+<div className="space-y-4">
+  {/* Paid */}
+  <div className="flex items-start justify-between">
+    <div className="flex items-center">
+      <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: PIE_CHART_COLORS.paid }}/>
+      <div>
+        <p className="font-semibold text-gray-800">Paid</p>
+        <p className="text-sm text-gray-600">
+          {financialData.invoiceStatusSummary.paid.count} Invoices
+        </p>
+      </div>
+    </div>
+    <p className="font-bold" style={{ color: PIE_CHART_COLORS.paid }}>
+      {formatCurrency(financialData.invoiceStatusSummary.paid.total)}
+    </p>
+  </div>
+  {/* Issued */}
+  <div className="flex items-start justify-between">
+    <div className="flex items-center">
+      <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: PIE_CHART_COLORS.issued }}/>
+      <div>
+        <p className="font-semibold text-gray-800">Issued</p>
+        <p className="text-sm text-gray-600">
+          {financialData.invoiceStatusSummary.issued.count} Invoices
+        </p>
+      </div>
+    </div>
+    <p className="font-bold" style={{ color: PIE_CHART_COLORS.issued }}>
+      {formatCurrency(financialData.invoiceStatusSummary.issued.total)}
+    </p>
+  </div>
+  {/* Partially Paid */}
+  <div className="flex items-start justify-between">
+    <div className="flex items-center">
+      <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: PIE_CHART_COLORS.partiallyPaid }}/>
+      <div>
+        <p className="font-semibold text-gray-800">Partially Paid</p>
+        <p className="text-sm text-gray-600">
+          {financialData.invoiceStatusSummary.partiallyPaid.count} Invoices
+        </p>
+      </div>
+    </div>
+    <p className="font-bold" style={{ color: PIE_CHART_COLORS.partiallyPaid }}>
+      {formatCurrency(financialData.invoiceStatusSummary.partiallyPaid.total)}
+    </p>
+  </div>
+</div>
+
+        </div>
+      </CardContent>
+    </Card>
+  </>
+)}
+{/* --- END OF INVOICES BLOCK --- */}
+
+
                   {/* Cash Flow Chart */}
-                  {activeTab === 'cashflow' && financialData && (
+                  {user.role === 'admin' && activeTab === 'cashflow' && financialData && (
+
                     <Card className="shadow-lg">
                       <CardHeader>
                         <CardTitle className="flex items-center">
@@ -545,37 +743,54 @@ export default function DashboardPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="h-64 sm:h-80">
-                          {/* Simple bar chart implementation */}
-                          <div className="flex items-end h-48 sm:h-56 space-x-2 sm:space-x-4 mt-4">
-                            {financialData.cashFlow.map((monthData, index) => (
-                              <div key={monthData.month} className="flex-1 flex flex-col items-center">
-                                <div className="relative w-full">
-                                  <div 
-                                    className="w-full bg-blue-500 rounded-t-md"
-                                    style={{ height: `${(monthData.revenue / 800000) * 100}%` }}
-                                  />
-                                  <div 
-                                    className="w-full bg-green-500 rounded-t-md mt-1"
-                                    style={{ height: `${(monthData.expenses / 500000) * 100}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-gray-600 mt-2">{monthData.month}</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex items-center space-x-4 mt-6">
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-                              <span className="text-sm text-gray-600">Revenue</span>
-                            </div>
-                            <div className="flex items-center">
-                              <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-                              <span className="text-sm text-gray-600">Expenses</span>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
+  <div className="h-64 sm:h-80 flex flex-col">
+    {/* Dynamic bar chart implementation */}
+    <div className="flex justify-between items-end flex-grow w-full gap-x-2 md:gap-x-4">
+      {maxCashFlowValue <= 1 ? (
+        <div className="w-full h-full flex items-center justify-center text-gray-500">
+          No cash flow activity to display for this period.
+        </div>
+      ) : (
+        financialData.cashFlow.map((monthData) => (
+          <div key={monthData.month} className="h-full flex-1 flex flex-col justify-end items-center text-center">
+            <div className="flex items-end w-full h-full gap-x-1">
+              {/* Revenue Bar */}
+              <div
+                className="flex-1 bg-blue-500 rounded-t-md hover:bg-blue-600 transition-all"
+                style={{
+                  height: `${(monthData.revenue / maxCashFlowValue) * 100}%`,
+                }}
+                title={`Revenue: ${formatCurrency(monthData.revenue)}`}
+              />
+              {/* Expense Bar */}
+              <div
+                className="flex-1 bg-green-500 rounded-t-md hover:bg-green-600 transition-all"
+                style={{
+                  height: `${(monthData.expenses / maxCashFlowValue) * 100}%`,
+                }}
+                title={`Expenses: ${formatCurrency(monthData.expenses)}`}
+              />
+            </div>
+            <span className="text-xs text-gray-600 mt-2 flex-shrink-0">{monthData.month}</span>
+          </div>
+        ))
+      )}
+    </div>
+
+    {/* Legend */}
+    <div className="flex items-center justify-center space-x-4 mt-4 flex-shrink-0">
+      <div className="flex items-center">
+        <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
+        <span className="text-sm text-gray-600">Revenue</span>
+      </div>
+      <div className="flex items-center">
+        <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
+        <span className="text-sm text-gray-600">Expenses</span>
+      </div>
+    </div>
+  </div>
+</CardContent>
+
                     </Card>
                   )}
                 </div>
