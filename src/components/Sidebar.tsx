@@ -661,18 +661,7 @@ const QuickActionsDropZone = () => {
                 
                     {!isCollapsed && <QuickActionsDropZone />}
 
-                    <div className="p-4 border-t border-white/20">
-                        <div className="grid grid-cols-2 gap-2 mb-4">
-                            <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg flex flex-col items-center transition-colors">
-                                <FilePlus className="h-4 w-4 text-primary-foreground mb-1" />
-                                <span className="text-xs text-primary-foreground">New Invoice</span>
-                            </button>
-                            <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg flex flex-col items-center transition-colors">
-                                <Receipt className="h-4 w-4 text-primary-foreground mb-1" />
-                                <span className="text-xs text-primary-foreground">Record Expense</span>
-                            </button>
-                        </div>
-                    </div>
+                    
                 
     
                 {/* Footer */}
