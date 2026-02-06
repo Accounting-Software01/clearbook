@@ -216,7 +216,7 @@ const PETProductionPage = () => {
 
    // REPLACE a total of 49 lines (from line 216 to 264) with this new function:
 
-const handleSaveOrder = async () => {
+   const handleSaveOrder = async () => {
     // Updated validation
     if (!newOrderBomId || !newOrderDate || (newOrderStage === 'injection' && newOrderOperations.length === 0) || (newOrderStage === 'blowing' && newOrderQuantity <= 0)) {
          toast({ title: "Validation Error", description: "Please select a BOM, a date, and specify the production quantity or routing.", variant: "destructive" });
@@ -225,38 +225,93 @@ const handleSaveOrder = async () => {
 
     setIsSubmitting(true);
 
-    // Calculate total GOOD quantity from operations if it's an injection order
-    const totalQuantityToProduce = newOrderStage === 'injection' 
-        ? newOrderOperations.reduce((acc, op) => {
+    // --- Start of New Logic ---
+
+    let productionQuantities;
+    let totalMaterialCost = 0;
+
+    // Find the selected BOM to get component details for cost calculation
+    const selectedBom = petBoms.find(b => b.id === newOrderBomId);
+
+    // Step 1: Calculate Gross, Net (Good), and Defective quantities
+    if (newOrderStage === 'injection') {
+        productionQuantities = newOrderOperations.reduce((acc, op) => {
             const cycleTime = parseFloat(op.cycle_time_seconds) || 0;
             const cavities = parseFloat(op.cavities_per_round) || 0;
             const hours = parseFloat(op.running_hours) || 0;
             const scrap = parseFloat(op.scrap_percentage) || 0;
+
             const roundsPerHour = cycleTime > 0 ? 3600 / cycleTime : 0;
             const grossOutput = roundsPerHour * hours * cavities;
-            const goodQty = grossOutput * (1 - (scrap / 100));
-            return acc + goodQty;
-        }, 0)
-        : newOrderQuantity;
+            const defectiveQty = grossOutput * (scrap / 100);
+            const goodQty = grossOutput - defectiveQty;
+
+            acc.gross += grossOutput;
+            acc.good += goodQty;
+            acc.defective += defectiveQty;
+
+            return acc;
+        }, { gross: 0, good: 0, defective: 0 });
+
+        // Step 2: Calculate Total Material Cost using the same logic as the estimate card
+        if (selectedBom) {
+            totalMaterialCost = selectedBom.components.reduce((costAcc, bomComp) => {
+                const itemDetail = inventoryItems.find(item => item.id == bomComp.component_item_id);
+                // Cost is based on total *gross* output, as all materials are consumed regardless of scrap
+                const totalConsumption = productionQuantities.gross * bomComp.quantity_required;
+                const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
+                return costAcc + cost;
+            }, 0);
+        }
+
+    } else { // Simplified logic for 'blowing' stage
+        productionQuantities = {
+            gross: newOrderQuantity,
+            good: newOrderQuantity,
+            defective: 0, // Assume no defects are planned for blowing orders
+        };
+         if (selectedBom) {
+            totalMaterialCost = selectedBom.components.reduce((costAcc, bomComp) => {
+                const itemDetail = inventoryItems.find(item => item.id == bomComp.component_item_id);
+                const totalConsumption = productionQuantities.gross * bomComp.quantity_required;
+                const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
+                return costAcc + cost;
+            }, 0);
+        }
+    }
+
+    const totalQuantityToProduce = productionQuantities.good;
 
     if (totalQuantityToProduce <= 0) {
         toast({ title: "Validation Error", description: "Total quantity to produce must be greater than zero.", variant: "destructive" });
         setIsSubmitting(false);
         return;
     }
+    
+    // Step 3: Calculate the cost per *good* unit produced
+    const costPerUnitProduced = totalQuantityToProduce > 0 ? totalMaterialCost / totalQuantityToProduce : 0;
 
      try {
+         // Step 4: Update the payload with the new fields
          const response = await fetch(`https://hariindustries.net/api/clearbook/create-pet-production-order.php`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                company_id: user.company_id, 
-                pet_bom_id: newOrderBomId, 
-                quantity_to_produce: totalQuantityToProduce, // Use the calculated NET good quantity
+            body: JSON.stringify({
+                company_id: user.company_id,
+                pet_bom_id: newOrderBomId,
                 order_date: newOrderDate,
-                operations: newOrderStage === 'injection' ? newOrderOperations : undefined
+                operations: newOrderStage === 'injection' ? newOrderOperations : undefined,
+                
+                // --- Fields you are adding ---
+                planned_to_produced: productionQuantities.gross,
+                quantity_to_produce: totalQuantityToProduce,
+                quantity_defective: productionQuantities.defective,
+                total_material_cost: totalMaterialCost,
+                cost_per_unit_produced: costPerUnitProduced
             })
         });
+        // --- End of New Logic ---
+
         const result = await response.json();
         if (!response.ok) throw new Error(result.message);
         toast({ title: "Production Order Created", description: `New order for ${Math.floor(totalQuantityToProduce).toLocaleString()} units added.` });
@@ -351,7 +406,7 @@ const finishedGoods = inventoryItems.filter(i => i.item_type === 'product');
 
     const renderOrderTable = (orders: PetProductionOrder[], bomsForStage: PetBom[]) => (
         <Table>
-            <TableHeader><TableRow><TableHead>BOM Name</TableHead><TableHead>Date</TableHead><TableHead>Planned</TableHead><TableHead>Produced</TableHead><TableHead>Defects</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>BOM Name</TableHead><TableHead>Date</TableHead><TableHead>Produced</TableHead><TableHead>Planned</TableHead><TableHead>Defects</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
                 {orders.map(order => (
                     <TableRow key={order.id}>

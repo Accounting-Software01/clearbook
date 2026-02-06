@@ -1,4 +1,6 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
 header("Access-Control-Allow-Methods: POST");
@@ -7,8 +9,13 @@ header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers
 
 require_once __DIR__ . '/db_connect.php';
 
-$database = new Database();
-$db = $database->getConnection();
+if ($conn === null) {
+    http_response_code(500);
+    echo json_encode(array("message" => "Database connection failed."));
+    return;
+}
+
+$db = $conn;
 
 $data = json_decode(file_get_contents("php://input"));
 
@@ -29,7 +36,7 @@ try {
     // 1. Get PET Order and BOM details
     $order_query = "SELECT pet_bom_id FROM pet_production_orders WHERE id = ? AND company_id = ?";
     $order_stmt = $db->prepare($order_query);
-    // Corrected bind_param: production_order_id is int, company_id is string
+    if ($order_stmt === false) { throw new Exception("Prepare failed (order_query): " . $db->error); }
     $order_stmt->bind_param("is", $data->production_order_id, $data->company_id);
     $order_stmt->execute();
     $order_result = $order_stmt->get_result();
@@ -41,6 +48,7 @@ try {
 
     $bom_query = "SELECT output_item_id FROM pet_boms WHERE id = ?";
     $bom_stmt = $db->prepare($bom_query);
+    if ($bom_stmt === false) { throw new Exception("Prepare failed (bom_query): " . $db->error); }
     $bom_stmt->bind_param("i", $order['pet_bom_id']);
     $bom_stmt->execute();
     $bom_result = $bom_stmt->get_result();
@@ -55,6 +63,7 @@ try {
     // 2. Get BOM components
     $components_query = "SELECT component_item_id, quantity_required FROM pet_bom_components WHERE pet_bom_id = ?";
     $comp_stmt = $db->prepare($components_query);
+    if ($comp_stmt === false) { throw new Exception("Prepare failed (components_query): " . $db->error); }
     $comp_stmt->bind_param("i", $order['pet_bom_id']);
     $comp_stmt->execute();
     $components_result = $comp_stmt->get_result();
@@ -65,7 +74,7 @@ try {
     while ($component = $components_result->fetch_assoc()) {
         $item_to_consume_query = "SELECT average_unit_cost, quantity_on_hand FROM raw_materials WHERE id = ? AND company_id = ? FOR UPDATE";
         $item_stmt = $db->prepare($item_to_consume_query);
-        // Corrected bind_param: component_item_id is int, company_id is string
+        if ($item_stmt === false) { throw new Exception("Prepare failed (item_to_consume_query): " . $db->error); }
         $item_stmt->bind_param("is", $component['component_item_id'], $data->company_id);
         $item_stmt->execute();
         $item_result = $item_stmt->get_result();
@@ -87,6 +96,7 @@ try {
         // Decrement stock
         $update_stock_query = "UPDATE raw_materials SET quantity_on_hand = quantity_on_hand - ? WHERE id = ?";
         $update_stock_stmt = $db->prepare($update_stock_query);
+        if ($update_stock_stmt === false) { throw new Exception("Prepare failed (update_stock_query): " . $db->error); }
         $update_stock_stmt->bind_param("di", $quantity_to_consume, $component['component_item_id']);
         $update_stock_stmt->execute();
     }
@@ -97,6 +107,7 @@ try {
     // 5. Add output to inventory and update its cost
     $output_item_query = "SELECT average_unit_cost, quantity_on_hand FROM raw_materials WHERE id = ? AND company_id = ? FOR UPDATE";
     $output_item_stmt = $db->prepare($output_item_query);
+    if ($output_item_stmt === false) { throw new Exception("Prepare failed (output_item_query): " . $db->error); }
     $output_item_stmt->bind_param("is", $output_item_id, $data->company_id);
     $output_item_stmt->execute();
     $output_item_result = $output_item_stmt->get_result();
@@ -108,6 +119,7 @@ try {
     // Increment stock
     $inc_stock_query = "UPDATE raw_materials SET quantity_on_hand = quantity_on_hand + ? WHERE id = ?";
     $inc_stock_stmt = $db->prepare($inc_stock_query);
+    if ($inc_stock_stmt === false) { throw new Exception("Prepare failed (inc_stock_query): " . $db->error); }
     $inc_stock_stmt->bind_param("di", $data->quantity_produced, $output_item_id);
     $inc_stock_stmt->execute();
 
@@ -118,13 +130,25 @@ try {
 
     $update_cost_query = "UPDATE raw_materials SET average_unit_cost = ? WHERE id = ?";
     $update_cost_stmt = $db->prepare($update_cost_query);
+    if ($update_cost_stmt === false) { throw new Exception("Prepare failed (update_cost_query): " . $db->error); }
     $update_cost_stmt->bind_param("di", $new_average_cost, $output_item_id);
     $update_cost_stmt->execute();
 
     // 6. Finalize the PET order
-    $finalize_order_query = "UPDATE pet_production_orders SET status = 'Completed', quantity_produced = ?, total_material_cost = ?, cost_per_unit_produced = ? WHERE id = ?";
+    $finalize_order_query = "UPDATE pet_production_orders SET status = 'Completed', quantity_produced = ?, total_material_cost = ?, cost_per_unit_produced = ? WHERE id = ? AND company_id = ? AND status != 'Completed'";
+    
     $finalize_stmt = $db->prepare($finalize_order_query);
-    $finalize_stmt->bind_param("dddi", $data->quantity_produced, $total_material_cost, $cost_per_unit_produced, $data->production_order_id);
+    if ($finalize_stmt === false) { throw new Exception("Prepare failed (finalize_order_query): " . $db->error); }
+    
+    $finalize_stmt->bind_param(
+        "dddis",
+        $data->quantity_produced,
+        $total_material_cost,
+        $cost_per_unit_produced,
+        $data->production_order_id,
+        $data->company_id
+    );
+
     $finalize_stmt->execute();
 
     // 7. Commit transaction
