@@ -661,7 +661,7 @@ const QuickActionsDropZone = () => {
                 
                     {!isCollapsed && <QuickActionsDropZone />}
 
-                    
+                   
                 
     
                 {/* Footer */}
