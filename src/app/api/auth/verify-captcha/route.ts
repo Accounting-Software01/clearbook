@@ -15,9 +15,7 @@ export async function POST(request: NextRequest) {
     if (process.env.NODE_ENV === 'development' && token === 'test-token-bypass') {
       return NextResponse.json({
         success: true,
-        score: 0.9,
-        action: 'bypassed',
-        timestamp: new Date().toISOString()
+        message: "CAPTCHA bypassed for development"
       });
     }
 
@@ -49,19 +47,17 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
 
-    if (data.success && data.score >= 0.5) {
+    // Correct validation for reCAPTCHA v2 (removes the score check)
+    if (data.success) {
       return NextResponse.json({
         success: true,
-        score: data.score,
-        action: data.action,
-        timestamp: new Date().toISOString()
+        message: "CAPTCHA verified successfully"
       });
     } else {
       console.error('CAPTCHA verification failed:', data['error-codes']);
       return NextResponse.json(
         {
           success: false,
-          score: data.score || 0,
           errors: data['error-codes'] || [],
           message: 'CAPTCHA verification failed'
         },
