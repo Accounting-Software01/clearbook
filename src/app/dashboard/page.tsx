@@ -809,7 +809,7 @@ const invoiceStatusSummary = invoices.reduce(
                 <span>Data updated just now</span>
               </div>
               <div className="mt-2 sm:mt-0">
-                <span>© 2024 ClearBook Accounting</span>
+                <span>© 2026 ClearBook Accounting</span>
               </div>
             </div>
           </div>

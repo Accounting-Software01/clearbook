@@ -1,33 +1,74 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
+import SessionExpired from '@/components/SessionExpired';
 
 interface AppLayoutProps {
     children: React.ReactNode;
 }
 
-/**
- * This layout component wraps all pages in the protected (app) section.
- * It's a Client Component because it uses the `useAuth` hook and `useEffect`.
- * Its primary job is to protect routes and redirect unauthenticated users.
- */
+const INACTIVITY_TIMEOUT = 10 * 1000; // 10 seconds
+const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'mousedown'] as const;
+
 export default function AppLayout({ children }: AppLayoutProps) {
-    const { user, isLoading } = useAuth();
+    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
+
+    const { user, isLoading, logout } = useAuth();
     const router = useRouter();
+    const [isIdle, setIsIdle] = useState(false);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleIdle = useCallback(() => {
+        console.log('%c[TIMER] EXPIRED! Setting idle state and logging out.', 'color: red; font-weight: bold;');
+        logout(); // Logout the user
+        setIsIdle(true);
+    }, [logout]);
 
     useEffect(() => {
-        // If the auth state is done loading and there is no user,
-        // redirect them to the login page.
-        if (!isLoading && !user) {
-            router.replace('/login');
+        if (isLoading || !user) {
+            return;
         }
-    }, [isLoading, user, router]);
 
-    // While the authentication state is loading, show a full-screen spinner.
-    // This prevents a flash of the protected content before the user is redirected.
+        const resetTimer = () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+            timerRef.current = setTimeout(handleIdle, INACTIVITY_TIMEOUT);
+        };
+
+        // Add all activity event listeners
+        ACTIVITY_EVENTS.forEach(event => {
+            window.addEventListener(event, resetTimer, { passive: true });
+        });
+
+        // Start the initial timer
+        resetTimer();
+
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+            ACTIVITY_EVENTS.forEach(event => {
+                window.removeEventListener(event, resetTimer);
+            });
+        };
+    }, [isLoading, user, handleIdle]);
+
+    // Redirect to login when user is logged out (either manually or by idle timer)
+    useEffect(() => {
+        if (!isLoading && !user) {
+            // If idle, the SessionExpired component will handle the redirect message
+            // If not idle (manual logout), redirect immediately
+            if (!isIdle) {
+                console.log('%c[ROUTER] Redirecting to login (manual logout)', 'color: orange;');
+                router.replace('/login');
+            }
+        }
+    }, [isLoading, user, router, isIdle]);
+
     if (isLoading) {
         return (
             <div className="flex h-screen w-full items-center justify-center">
@@ -36,18 +77,22 @@ export default function AppLayout({ children }: AppLayoutProps) {
         );
     }
 
-    // If a user is authenticated, render the children (the actual page content).
-    // We wrap it in a div to provide a basic layout structure.
+    // When idle, show the SessionExpired component.
+    // The `useAuth` hook will eventually set `user` to null, but we show the component immediately.
+    if (isIdle) {
+        return <SessionExpired />;
+    }
+
+    // If there's a user and they are not idle, show the app.
     if (user) {
-         return (
+        return (
             <div className="flex min-h-screen flex-col">
-                {/* You can add a common header or sidebar here */}
                 <main className="flex-1">{children}</main>
             </div>
         );
     }
-
-    // If not loading and no user, this will be briefly rendered before the redirect happens.
-    // Typically, the loading spinner is shown long enough that this isn't seen.
+    
+    // If no user, and not loading, and not idle (initial state or manual logout),
+    // this will be null and the useEffect above will redirect.
     return null;
 }
