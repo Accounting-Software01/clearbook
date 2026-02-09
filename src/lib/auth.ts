@@ -13,7 +13,7 @@ interface User {
 }
 
 // HARDCODE your API URL
-const API_BASE_URL = 'http://hariindustries.net/api/clearbook';
+const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
 
 /**
  * Login with CAPTCHA verification
