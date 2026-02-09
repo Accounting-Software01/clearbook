@@ -45,20 +45,24 @@ export default function AppLayout({
     const isAuthPage = pathname === '/login' || pathname === '/signup';
 
     useEffect(() => {
-        if (!isLoading && !user && !isAuthPage) {
-            router.replace('/login');
-        } else if (user && isAuthPage) {
+        if (user && isAuthPage) {
             router.replace('/dashboard');
         }
-    }, [isLoading, user, isAuthPage, router, pathname]);
+    }, [user, isAuthPage, router]);
 
-    if (isLoading || (!user && !isAuthPage)) {
+
+    if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen w-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
     }
+
+    if (!user && !isAuthPage) {
+        return <SessionExpired />;
+    }
+
 
     if (isAuthPage) {
         return <>{children}</>;
