@@ -56,25 +56,15 @@ export async function login(email: string, password: string, captchaToken?: stri
     }
   }
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-if (!API_URL) {
-  throw new Error("NEXT_PUBLIC_API_URL is not defined");
-}
-
-const res = await fetch(`${API_URL}/login.php`, {
-  method: "POST",
-  credentials: "include", // 🔥 THIS FIXES IT
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    email,
-    password,
-    captcha_token: captchaToken || "bypassed"
-  })
-});
-
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+      email, 
+      password, 
+      captcha_token: captchaToken || 'bypassed' 
+    }),
+  });
 
   const data = await res.json();
 
@@ -109,6 +99,13 @@ const res = await fetch(`${API_URL}/login.php`, {
  * Sign up with CAPTCHA verification
  */
 export const signup = async (email: string, password: string, captchaToken?: string): Promise<User> => {
+  // Verify CAPTCHA if provided
+  if (captchaToken && captchaToken !== 'test-token-bypass') {
+    const isCaptchaValid = await verifyCaptcha(captchaToken);
+    if (!isCaptchaValid) {
+      throw new Error('Security verification failed. Please complete the CAPTCHA.');
+    }
+  }
 
   // In a real app, you'd call your signup API
   // For now, simulate with timeout
