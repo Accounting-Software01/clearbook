@@ -1,4 +1,4 @@
-// @/lib/auth.ts
+// @/lib/auth.ts - Complete corrected version
 
 const USER_SESSION_KEY = 'user';
 
@@ -12,103 +12,100 @@ interface User {
   company_id: string;
 }
 
-/**
- * Verify CAPTCHA token using Next.js API route
- */
-async function verifyCaptcha(token: string): Promise<boolean> {
-  try {
-    // Development bypass
-    if (process.env.NEXT_PUBLIC_APP_ENV === 'development' && token === 'test-token-bypass') {
-      return true;
-    }
-
-    const response = await fetch('/api/auth/verify-captcha', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ token }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('CAPTCHA verification failed:', error);
-      return false;
-    }
-
-    const data = await response.json();
-    return data.success === true;
-  } catch (error) {
-    console.error('CAPTCHA verification error:', error);
-    return false;
-  }
-}
+// HARDCODE your API URL
+const API_BASE_URL = 'http://hariindustries.net/api/clearbook';
 
 /**
  * Login with CAPTCHA verification
  */
 export async function login(email: string, password: string, captchaToken?: string) {
-  // Verify CAPTCHA if provided (except in development bypass)
-  if (captchaToken && captchaToken !== 'test-token-bypass') {
-    const isCaptchaValid = await verifyCaptcha(captchaToken);
-    if (!isCaptchaValid) {
-      throw new Error('Security verification failed. Please complete the CAPTCHA and try again.');
-    }
-  }
-
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login.php`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      email, 
-      password, 
-      captcha_token: captchaToken || 'bypassed' 
-    }),
-  });
-
-  const data = await res.json();
-
-  if (data.status !== "success") {
-    if (data.message?.toLowerCase().includes('captcha')) {
-      throw new Error('Security verification failed. Please refresh and try again.');
-    }
-    throw new Error(data.message || "Login failed");
-  }
-
-  // Transform PHP user → layout-friendly format
-  const transformedUser: User = {
-    uid: data.user.id,
-    full_name: data.user.full_name,
-    email: data.user.email,
-    role: data.user.role,
-    user_type: data.user.user_type,
-    company_type: data.user.company_type,
-    company_id: data.user.company_id
+  console.log('📡 Calling API:', `${API_BASE_URL}/login.php`);
+  console.log('📧 Email:', email);
+  
+  // Prepare request body
+  const body: any = { 
+    email, 
+    password 
   };
+  
+  // Only add captcha_token if it exists (avoid sending undefined)
+  if (captchaToken && captchaToken.trim()) {
+    body.captcha_token = captchaToken;
+  }
+  
+  console.log('📦 Request body:', body);
 
-  // Store in sessionStorage (consider using cookies for production)
-  sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
-  
-  // Also store in localStorage for persistence across tabs
-  localStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
-  
-  return transformedUser;
+  try {
+    const res = await fetch(`${API_BASE_URL}/login.php`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('📊 Response status:', res.status);
+    
+    const text = await res.text();
+    console.log('📨 Raw response:', text);
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      console.error('❌ Failed to parse JSON:', text);
+      throw new Error('Invalid server response');
+    }
+
+    if (data.status !== "success") {
+      // Check for specific error messages
+      if (data.message?.toLowerCase().includes('captcha') || 
+          data.message?.toLowerCase().includes('security')) {
+        throw new Error('Security verification failed. Please try again.');
+      }
+      if (data.message?.toLowerCase().includes('locked')) {
+        throw new Error('Account is temporarily locked. Please try again later.');
+      }
+      if (data.message?.toLowerCase().includes('not active')) {
+        throw new Error('Account is not active. Please contact support.');
+      }
+      throw new Error(data.message || "Invalid email or password");
+    }
+
+    // Transform PHP user → layout-friendly format
+    const transformedUser: User = {
+      uid: data.user.id.toString(),
+      full_name: data.user.full_name,
+      email: data.user.email,
+      role: data.user.role,
+      user_type: data.user.user_type,
+      company_type: data.user.company_type,
+      company_id: data.user.company_id.toString()
+    };
+
+    // Store in sessionStorage
+    sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
+    
+    // Also store in localStorage for persistence
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
+    
+    console.log('✅ Login successful for:', email);
+    return transformedUser;
+    
+  } catch (error: any) {
+    console.error('❌ Login error:', error);
+    if (error.message.includes('Failed to fetch')) {
+      throw new Error('Network error. Please check your connection.');
+    }
+    throw error;
+  }
 }
 
 /**
  * Sign up with CAPTCHA verification
  */
 export const signup = async (email: string, password: string, captchaToken?: string): Promise<User> => {
-  // Verify CAPTCHA if provided
-  if (captchaToken && captchaToken !== 'test-token-bypass') {
-    const isCaptchaValid = await verifyCaptcha(captchaToken);
-    if (!isCaptchaValid) {
-      throw new Error('Security verification failed. Please complete the CAPTCHA.');
-    }
-  }
-
-  // In a real app, you'd call your signup API
-  // For now, simulate with timeout
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       if (email && password) {
@@ -139,6 +136,9 @@ export const logout = async (): Promise<void> => {
     setTimeout(() => {
       sessionStorage.removeItem(USER_SESSION_KEY);
       localStorage.removeItem(USER_SESSION_KEY);
+      // Clear any other session-related items
+      sessionStorage.clear();
+      localStorage.clear();
       resolve();
     }, 200);
   });
@@ -160,6 +160,7 @@ export const getCurrentUser = (): Promise<User | null> => {
         try {
           resolve(JSON.parse(sessionData));
         } catch (e) {
+          console.error('Error parsing user data:', e);
           resolve(null);
         }
       } else {
@@ -173,7 +174,15 @@ export const getCurrentUser = (): Promise<User | null> => {
  * Check if user is authenticated
  */
 export const isAuthenticated = (): boolean => {
-  return !!(sessionStorage.getItem(USER_SESSION_KEY) || localStorage.getItem(USER_SESSION_KEY));
+  try {
+    const sessionData = sessionStorage.getItem(USER_SESSION_KEY) || localStorage.getItem(USER_SESSION_KEY);
+    if (!sessionData) return false;
+    
+    const user = JSON.parse(sessionData);
+    return !!(user && user.email && user.uid);
+  } catch (error) {
+    return false;
+  }
 };
 
 /**
@@ -189,4 +198,16 @@ export const clearSession = (): void => {
  */
 export const getSessionTimeout = (): number => {
   return parseInt(process.env.NEXT_PUBLIC_SESSION_TIMEOUT || '10');
+};
+
+/**
+ * Get user from storage synchronously
+ */
+export const getUserSync = (): User | null => {
+  try {
+    const sessionData = sessionStorage.getItem(USER_SESSION_KEY) || localStorage.getItem(USER_SESSION_KEY);
+    return sessionData ? JSON.parse(sessionData) : null;
+  } catch (error) {
+    return null;
+  }
 };
