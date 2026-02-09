@@ -65,9 +65,11 @@ export default function LoginPage() {
       setCaptchaToken(null);
 
       // Use router.push instead of window.location for smoother transition
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 1000);
+      // Use window.location.href for a full page reload to ensure the new session is applied
+setTimeout(() => {
+  window.location.href = '/dashboard';
+}, 1000);
+
     } catch (error: any) {
       // Reset captcha on error
       recaptchaRef.current?.reset();
