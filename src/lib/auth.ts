@@ -48,33 +48,46 @@ async function verifyCaptcha(token: string): Promise<boolean> {
  * Login with CAPTCHA verification
  */
 export async function login(email: string, password: string, captchaToken?: string) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-  if (!API_URL) {
-    throw new Error("NEXT_PUBLIC_API_URL is not defined");
+  // Verify CAPTCHA if provided (except in development bypass)
+  if (captchaToken && captchaToken !== 'test-token-bypass') {
+    const isCaptchaValid = await verifyCaptcha(captchaToken);
+    if (!isCaptchaValid) {
+      throw new Error('Security verification failed. Please complete the CAPTCHA and try again.');
+    }
   }
 
-  const res = await fetch(`${API_URL}/login.php`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email,
-      password,
-      captcha_token: captchaToken || "test-token-bypass"
-    })
-  });
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error("NEXT_PUBLIC_API_URL is not defined");
+}
+
+const res = await fetch(`${API_URL}/login.php`, {
+  method: "POST",
+  credentials: "include", // 🔥 THIS FIXES IT
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    email,
+    password,
+    captcha_token: captchaToken || "bypassed"
+  })
+});
+
 
   const data = await res.json();
 
   if (data.status !== "success") {
+    if (data.message?.toLowerCase().includes('captcha')) {
+      throw new Error('Security verification failed. Please refresh and try again.');
+    }
     throw new Error(data.message || "Login failed");
   }
 
+  // Transform PHP user → layout-friendly format
   const transformedUser: User = {
-    uid: String(data.user.id),
+    uid: data.user.id,
     full_name: data.user.full_name,
     email: data.user.email,
     role: data.user.role,
@@ -83,9 +96,12 @@ export async function login(email: string, password: string, captchaToken?: stri
     company_id: data.user.company_id
   };
 
+  // Store in sessionStorage (consider using cookies for production)
   sessionStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
+  
+  // Also store in localStorage for persistence across tabs
   localStorage.setItem(USER_SESSION_KEY, JSON.stringify(transformedUser));
-
+  
   return transformedUser;
 }
 
