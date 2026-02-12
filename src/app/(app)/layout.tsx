@@ -5,16 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import SessionExpired from '@/components/SessionExpired';
+import { getSessionTimeout } from '@/lib/auth'; // Import the function
 
 interface AppLayoutProps {
     children: React.ReactNode;
 }
 
-const INACTIVITY_TIMEOUT = 10 * 1000; // 10 seconds
+// Get timeout from environment variables (in minutes) and convert to milliseconds
+const sessionTimeoutMinutes = getSessionTimeout();
+const INACTIVITY_TIMEOUT = sessionTimeoutMinutes * 60 * 1000;
+
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'mousedown'] as const;
 
 export default function AppLayout({ children }: AppLayoutProps) {
-    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
+    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\nSession Timeout: ${sessionTimeoutMinutes} minutes\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
 
     const { user, isLoading, logout } = useAuth();
     const router = useRouter();
@@ -60,8 +64,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
     // Redirect to login when user is logged out (either manually or by idle timer)
     useEffect(() => {
         if (!isLoading && !user) {
-            // If idle, the SessionExpired component will handle the redirect message
-            // If not idle (manual logout), redirect immediately
             if (!isIdle) {
                 console.log('%c[ROUTER] Redirecting to login (manual logout)', 'color: orange;');
                 router.replace('/login');
@@ -77,13 +79,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
         );
     }
 
-    // When idle, show the SessionExpired component.
-    // The `useAuth` hook will eventually set `user` to null, but we show the component immediately.
     if (isIdle) {
         return <SessionExpired />;
     }
 
-    // If there's a user and they are not idle, show the app.
     if (user) {
         return (
             <div className="flex min-h-screen flex-col">
@@ -92,7 +91,5 @@ export default function AppLayout({ children }: AppLayoutProps) {
         );
     }
     
-    // If no user, and not loading, and not idle (initial state or manual logout),
-    // this will be null and the useEffect above will redirect.
     return null;
 }
