@@ -197,7 +197,7 @@ export const clearSession = (): void => {
  * Get session timeout in minutes
  */
 export const getSessionTimeout = (): number => {
-  return parseInt(process.env.NEXT_PUBLIC_SESSION_TIMEOUT || '10');
+  return parseInt(process.env.NEXT_PUBLIC_SESSION_TIMEOUT || '1440');
 };
 
 /**
