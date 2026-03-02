@@ -209,5 +209,5 @@ export const getUserSync = (): User | null => {
     return sessionData ? JSON.parse(sessionData) : null;
   } catch (error) {
     return null;
-  }
+  }qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0
 };

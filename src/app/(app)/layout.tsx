@@ -5,20 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import SessionExpired from '@/components/SessionExpired';
-import { getSessionTimeout } from '@/lib/auth'; // Import the function
+// No import from '@/lib/auth' needed anymore
 
 interface AppLayoutProps {
     children: React.ReactNode;
 }
 
-// Get timeout from environment variables (in minutes) and convert to milliseconds
-const sessionTimeoutMinutes = getSessionTimeout();
-const INACTIVITY_TIMEOUT = sessionTimeoutMinutes * 60 * 1000;
+// Hardcoded session timeout – 30 minutes
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
 
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'mousedown'] as const;
 
 export default function AppLayout({ children }: AppLayoutProps) {
-    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\nSession Timeout: ${sessionTimeoutMinutes} minutes\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
+    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\nSession Timeout: ${INACTIVITY_TIMEOUT / 60000} minutes\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
 
     const { user, isLoading, logout } = useAuth();
     const router = useRouter();
@@ -27,7 +26,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
     const handleIdle = useCallback(() => {
         console.log('%c[TIMER] EXPIRED! Setting idle state and logging out.', 'color: red; font-weight: bold;');
-        logout(); // Logout the user
+        logout();
         setIsIdle(true);
     }, [logout]);
 
@@ -43,12 +42,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
             timerRef.current = setTimeout(handleIdle, INACTIVITY_TIMEOUT);
         };
 
-        // Add all activity event listeners
         ACTIVITY_EVENTS.forEach(event => {
             window.addEventListener(event, resetTimer, { passive: true });
         });
 
-        // Start the initial timer
         resetTimer();
 
         return () => {
