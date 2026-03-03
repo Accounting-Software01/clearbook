@@ -11,8 +11,8 @@ interface AppLayoutProps {
     children: React.ReactNode;
 }
 
-// Hardcoded session timeout – 30 minutes
-const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+// Updated session timeout to 24 hours as requested
+const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'mousedown'] as const;
 
