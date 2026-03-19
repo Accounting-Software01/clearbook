@@ -594,7 +594,7 @@ const QuickActionsDropZone = () => {
                         )} />
                         {!isCollapsed && (
                             <div>
-                                <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+                                <h2 className="text-2xl font-bold text-primary-foreground">Hari Ind.</h2>
                                 <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
                             </div>
                         )}
@@ -696,7 +696,7 @@ const QuickActionsDropZone = () => {
                                     <span className="text-xs text-primary-foreground/70">System Active</span>
                                 </div>
                                 <p className="text-xs text-primary-foreground/70">
-                                    &copy; 2026 ClearBooks Pro v2.1
+                                    &copy; Hari Ind. Pro v2.1
                                 </p>
                             </div>
                         </>
