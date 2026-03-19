@@ -67,9 +67,9 @@ if ($insertStmt->execute()) {
     // --- Simulate Sending Email ---
     // In a real application, you would use a library like PHPMailer or an email service (SendGrid, Mailgun)
     $invitationLink = "https://your-app-domain.com/accept-invitation?token=" . $invitationToken;
-    $subject = "You have been invited to join ClearBook";
-    $body = "Hello,\n\nYou have been invited to join the company on ClearBook. Please click the link below to accept the invitation and set up your account:\n\n" . $invitationLink . "\n\nThank you,\nThe ClearBook Team";
-    $headers = "From: no-reply@clearbook.com";
+    $subject = "You have been invited to join Hari Ind";
+    $body = "Hello,\n\nYou have been invited to join the company on Hari Ind. Please click the link below to accept the invitation and set up your account:\n\n" . $invitationLink . "\n\nThank you,\nThe Hari Ind Team";
+    $headers = "From: no-reply@hariind.com";
     
     // The mail() function is notoriously unreliable. This is for demonstration.
     // A real implementation should log this and handle failures.

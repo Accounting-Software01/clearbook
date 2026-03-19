@@ -8,7 +8,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider } from '@/hooks/useAuth';
 
 export const metadata: Metadata = {
-  title: 'ClearBooks',
+  title: 'Hari Ind.',
   description: 'A comprehensive, cloud-ready accounting system, for seamless bookkeeping and financial management.',
 };
 
