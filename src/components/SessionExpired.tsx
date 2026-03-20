@@ -57,8 +57,8 @@ const SessionExpired = () => {
                                 <CheckCircle className="absolute -bottom-1 -right-1 w-5 h-5 text-yellow-500 bg-background rounded-full animate-in zoom-in-0 duration-500 delay-300" />
                             </div>
                             <div className="text-left">
-                                <h1 className="text-3xl font-bold tracking-tight">ClearBook</h1>
-                                <p className="text-sm text-muted-foreground">Smart accounting for growing organizations</p>
+                                <h1 className="text-3xl font-bold tracking-tight">Hari Ind. Accounting Pro</h1>
+                                <p className="text-sm text-muted-foreground">Smart accounting designed Sagheer+ Lab Limited</p>
                             </div>
                         </div>
                     </div>

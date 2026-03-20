@@ -158,12 +158,10 @@ setTimeout(() => {
                     <Library className="h-12 w-12 text-white" />
                   </div>
                   <h2 className="text-3xl font-bold tracking-tight">
-                    ClearBooks
+                    Hari Industries Ltd.
                   </h2>
                   <p className="text-white/90 mt-2 max-w-md text-sm leading-relaxed">
-                    A unified financial platform designed to eliminate silos,
-                    improve accuracy, and give leaders real-time insight across
-                    the entire organization.
+                    A unified financial platform designed by Sagheer+ Lab Limited.
                   </p>
                   <div className="mt-4 w-full max-w-xs bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-4">
                     <div className="flex items-center justify-center gap-2 mb-2">
@@ -173,7 +171,7 @@ setTimeout(() => {
                       </p>
                     </div>
                     <p className="text-xs text-white/80">
-                      Your data is protected with bank-level encryption and
+                      Protected with bank-level encryption and
                       multi-factor authentication.
                     </p>
                   </div>
