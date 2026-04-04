@@ -492,9 +492,9 @@ const GeneralLedgerPage = () => {
     try {
       // CHANGE 1: Use the new API endpoint
       const response = await fetch(
-        `https://hariindustries.net/api/clearbook/get-general-ledger-v2.php?${params.toString()}`
+        `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}`
+        
       );
-      
       const data = await response.json();
 
       // CHANGE 2: The logic to handle the response
@@ -518,69 +518,70 @@ const GeneralLedgerPage = () => {
   }, [user?.company_id, searchParams, toast]);
 
   // ─── Fetch Ledger ─────────────────────────────────────────────────────────
-  const fetchLedger = useCallback(async (
-    code: string,
-    from: Date,
-    to: Date
-  ) => {
-    if (!code) {
-      toast({ title: "Account Required", description: "Please select an account", variant: "destructive" });
-      return;
-    }
+  // ─── Fetch Ledger ─────────────────────────────────────────────────────────
+const fetchLedger = useCallback(async (
+  code: string,
+  from: Date,
+  to: Date
+) => {
+  if (!code) {
+    toast({ title: "Account Required", description: "Please select an account", variant: "destructive" });
+    return;
+  }
 
-    const companyId = user?.company_id || 'HARI123'; // FIX: never block on auth
-    setIsLoading(true);
+  const companyId = user?.company_id || 'HARI123';
+  setIsLoading(true);
 
-    try {
-      const params = new URLSearchParams({
-        company_id: companyId,
-        account_code: code,
-        from_date: format(from, 'yyyy-MM-dd'),
-        to_date: format(to, 'yyyy-MM-dd'),
-      });
+  try {
+    const params = new URLSearchParams({
+      company_id: companyId,
+      account_code: code,
+      from_date: format(from, 'yyyy-MM-dd'),
+      to_date: format(to, 'yyyy-MM-dd'),
+    });
 
-      const response = await fetch(
-        `https://hariindustries.net/api/clearbook/get-general-ledger.php?${params.toString()}`
-      );
+    // CHANGE THIS LINE to use the new v2 script
+    const response = await fetch(
+      `https://hariindustries.net/api/clearbook/get-general-ledger-v2.php?${params.toString()}`
+    );
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch ledger`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to fetch ledger`);
 
-      const data = await response.json();
-      if (!data.success) throw new Error(data.message || 'Failed to generate ledger');
+    const data = await response.json();
+    if (!data.success) throw new Error(data.message || 'Failed to generate ledger');
 
-      setSummary({
-        ...data.summary,
-        opening_balance: parseNum(data.summary.opening_balance),
-        total_debit:     parseNum(data.summary.total_debit),
-        total_credit:    parseNum(data.summary.total_credit),
-        net_movement:    parseNum(data.summary.net_movement),
-        closing_balance: parseNum(data.summary.closing_balance),
-      });
+    setSummary({
+      ...data.summary,
+      opening_balance: parseNum(data.summary.opening_balance),
+      total_debit:     parseNum(data.summary.total_debit),
+      total_credit:    parseNum(data.summary.total_credit),
+      net_movement:    parseNum(data.summary.net_movement),
+      closing_balance: parseNum(data.summary.closing_balance),
+    });
 
-      const parsedTransactions = (data.transactions || []).map((tx: any) => ({
-        ...tx,
-        description:     tx.description || '—',   // FIX: API may return null
-        debit:           parseNum(tx.debit),
-        credit:          parseNum(tx.credit),
-        running_balance: parseNum(tx.running_balance),
-      }));
+    const parsedTransactions = (data.transactions || []).map((tx: any) => ({
+      ...tx,
+      description:     tx.description || '—',
+      debit:           parseNum(tx.debit),
+      credit:          parseNum(tx.credit),
+      running_balance: parseNum(tx.running_balance),
+    }));
 
-      setTransactions(parsedTransactions);
-      // Apply the fetched dates
-      setFromDate(from);
-      setToDate(to);
+    setTransactions(parsedTransactions);
+    setFromDate(from);
+    setToDate(to);
 
-      toast({
-        title: "Ledger Generated",
-        description: `${parsedTransactions.length} transactions loaded for ${format(from, 'dd MMM yyyy')} – ${format(to, 'dd MMM yyyy')}`,
-      });
-    } catch (error: any) {
-      toast({ title: "Error Generating Ledger", description: error.message, variant: "destructive" });
-      setTransactions([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.company_id, toast]);
+    toast({
+      title: "Ledger Generated",
+      description: `${parsedTransactions.length} transactions loaded for ${format(from, 'dd MMM yyyy')} – ${format(to, 'dd MMM yyyy')}`,
+    });
+  } catch (error: any) {
+    toast({ title: "Error Generating Ledger", description: error.message, variant: "destructive" });
+    setTransactions([]);
+  } finally {
+    setIsLoading(false);
+  }
+}, [user?.company_id, toast]);
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
