@@ -456,10 +456,13 @@ const GeneralLedgerPage = () => {
 
   // ─── State ────────────────────────────────────────────────────────────────
   // Pending = what's in the filter panel, not yet fetched
-  const [pendingFrom, setPendingFrom] = useState<Date>(startOfMonth(new Date()));
+
+  const [pendingFrom, setPendingFrom] = useState<Date>(startOfYear(new Date()));
+
   const [pendingTo,   setPendingTo]   = useState<Date>(new Date());
   // Applied = what was last fetched
-  const [fromDate, setFromDate] = useState<Date>(startOfMonth(new Date()));
+  const [fromDate, setFromDate] = useState<Date>(startOfYear(new Date()));
+
   const [toDate,   setToDate]   = useState<Date>(new Date());
 
   const [accountCode,       setAccountCode]       = useState<string>(searchParams.get('account_code') || '');
@@ -583,7 +586,8 @@ const GeneralLedgerPage = () => {
     const urlDate = searchParams.get('date');
     if (urlCode) {
       const asOf = urlDate ? new Date(urlDate + 'T00:00:00') : new Date();
-      const from = startOfMonth(asOf);
+      const from = startOfYear(asOf);
+
       const to   = asOf;
       setPendingFrom(from);
       setPendingTo(to);
