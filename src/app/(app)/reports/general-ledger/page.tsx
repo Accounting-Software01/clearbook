@@ -492,8 +492,9 @@ const GeneralLedgerPage = () => {
     try {
       // CHANGE 1: Use the new API endpoint
       const response = await fetch(
-        `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}`
+        `https://hariindustries.net/api/clearbook/get-general-ledger-v2.php?${params.toString()}`
       );
+      
       const data = await response.json();
 
       // CHANGE 2: The logic to handle the response
