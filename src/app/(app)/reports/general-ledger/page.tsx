@@ -491,7 +491,7 @@ const GeneralLedgerPage = () => {
     const companyId = user?.company_id || 'HARI123';
     try {
       const response = await fetch(
-        `https://hariindustries.net/api/clearbook/get-gl-accounts.php?company_id=${companyId}`
+      `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}`
       );
       const data = await response.json();
       if (data.success) {
