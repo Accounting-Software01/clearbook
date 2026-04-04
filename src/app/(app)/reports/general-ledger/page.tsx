@@ -490,19 +490,26 @@ const GeneralLedgerPage = () => {
   const fetchAccounts = useCallback(async () => {
     const companyId = user?.company_id || 'HARI123';
     try {
+      // CHANGE 1: Use the new API endpoint
       const response = await fetch(
-      `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}`
+        `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${companyId}`
       );
       const data = await response.json();
-      if (data.success) {
-        setAccountsList(data.accounts || []);
-        // If account_code came from URL query, auto-fetch ledger
+
+      // CHANGE 2: The logic to handle the response
+      // The new API returns a direct array, so we check if it's an array.
+      if (Array.isArray(data)) {
+        // If it's an array, we can set the accounts list directly.
+        setAccountsList(data);
+        
+        // This part of the logic remains the same.
         const urlCode = searchParams.get('account_code');
-        if (urlCode && data.accounts?.some((a: ChartOfAccount) => a.account_code === urlCode)) {
+        if (urlCode && data.some((a: ChartOfAccount) => a.account_code === urlCode)) {
           setAccountCode(urlCode);
         }
       } else {
-        throw new Error(data.message || 'Failed to load accounts');
+        // If the API returns something other than an array, it's an error.
+        throw new Error( (data && data.message) || 'Failed to load accounts: Invalid format');
       }
     } catch (error: any) {
       toast({ title: "Error Loading Accounts", description: error.message, variant: "destructive" });
