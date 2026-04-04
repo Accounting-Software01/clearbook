@@ -86,7 +86,7 @@ export const allNavItems = [
                 icon: FileBarChart2,
                 subItems: [
                     {
-                        label: 'Accounting',
+                        label: 'Accounting Reports',
                         icon: Landmark,
                         subItems: [
                             { href: '/reports/account-balances', label: 'Account Balances', icon: Scale, permission: 'view_reports_accounting' },
