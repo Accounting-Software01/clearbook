@@ -22,4 +22,18 @@ export const apiEndpoints = {
   // Sales Endpoints
   getSalesInvoices: `${CLEARBOOK_API_BASE_URL}/get-sales-invoices.php`,
   salesInvoice: `${CLEARBOOK_API_BASE_URL}/sales-invoice.php`,
+
+// Add these alongside your existing endpoints:
+
+updateCustomer: (companyId: string, customerId: string) =>
+  `${CLEARBOOK_API_BASE_URL}/update_customer.php`,
+
+deleteCustomer: (companyId: string, customerId: string) =>
+  `${CLEARBOOK_API_BASE_URL}/delete_customer.php`,
+
+bulkImportCustomers: (companyId: string) =>
+  `${CLEARBOOK_API_BASE_URL}/bulk_import_customers.php`,
+
+
+
 };
