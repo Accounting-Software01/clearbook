@@ -727,7 +727,8 @@ const LedgerTable = ({
 const generateProfessionalPDF = (
   customer: CustomerProfile,
   ledger: LedgerTransaction[],
-  periodSummary?: PeriodSummary
+  periodSummary?: PeriodSummary,
+  companyName?: string
 ) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -736,7 +737,7 @@ const generateProfessionalPDF = (
   // Header with company info
   doc.setFontSize(16);
   doc.setTextColor(40, 40, 40);
-  doc.text('CLEARBOOKS ACCOUNTING', pageWidth / 2, 15, { align: 'center' });
+  doc.text(companyName || 'HARI & CO', pageWidth / 2, 15, { align: 'center' });
   
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
@@ -937,7 +938,7 @@ export default function CustomerLedgerPage() {
     
     setExportLoading(true);
     try {
-      generateProfessionalPDF(data.customer, data.ledger, data.periodSummary);
+      generateProfessionalPDF(data.customer, data.ledger, data.periodSummary, user.company_name);
       toast({
         title: 'PDF Generated',
         description: 'Customer ledger PDF has been downloaded',
