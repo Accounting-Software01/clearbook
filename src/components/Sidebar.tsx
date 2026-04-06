@@ -683,23 +683,7 @@ const QuickActionsDropZone = () => {
                         </div>
                     ) : (
                         <>
-                            <button
-                                onClick={logout}
-                                className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 text-primary-foreground/80 hover:bg-white/20 hover:text-white w-full"
-                            >
-                                <LogOut className="h-5 w-5" />
-                                <span className="font-medium">Logout</span>
-                            </button>
-                            <div className="mt-3 pt-3 border-t border-white/20 text-center">
-                                <div className="flex items-center justify-center gap-2 mb-1">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                    <span className="text-xs text-primary-foreground/70">System Active</span>
-                                </div>
-                                <p className="text-xs text-primary-foreground/70">
-                                    &copy; Hari Ind. Pro v2.1
-                                </p>
-                            </div>
-                        </>
+                                                  </>
                     )}
                 </div>
             </aside>
