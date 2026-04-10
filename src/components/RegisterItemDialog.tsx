@@ -16,43 +16,8 @@ interface RegisterItemDialogProps {
     onSuccess: () => void;
 }
 
-// This constant forces every item to use exactly this category.
+// All items will be saved with this exact category.
 const FORCED_CATEGORY = 'Raw Materials Inventory';
-
-const inventoryCategories = {
-    raw_material: [
-        'Raw Materials Inventory',
-        'Work-in-Progress (WIP) Inventory',
-        'Packaging Materials Inventory',
-        'Consumables & Production Supplies',
-        'Spare Parts & Maintenance Inventory',
-        'Fuel & Energy Inventory',
-        'Returned Goods / Reverse Inventory',
-        'Obsolete, Expired & Scrap Inventory',
-        'Goods-in-Transit Inventory',
-        'Promotional & Marketing Inventory',
-        'Safety Stock / Buffer Inventory',
-        'Rejected / Quality-Hold Inventory',
-        'Third-Party / Consignment Inventory',
-    ],
-    semi_finished: [
-        'Sub-assemblies',
-        'Semi_finished',
-        'Intermediate Products',
-    ],
-    
-    finished_good: [
-        'Finished Goods Inventory',
-        'Work-in-Progress (WIP) Inventory',
-        'Returned Goods / Reverse Inventory',
-        'Obsolete, Expired & Scrap Inventory',
-        'Goods-in-Transit Inventory',
-        'Promotional & Marketing Inventory',
-        'Safety Stock / Buffer Inventory',
-        'Rejected / Quality-Hold Inventory',
-        'Third-Party / Consignment Inventory',
-    ],
-};
 
 export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, onOpenChange, onSuccess }) => {
     const { user } = useAuth();
@@ -61,15 +26,14 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
         name: '',
         sku: '',
         unit_of_measure: '',
-        category: FORCED_CATEGORY, // start with forced category
         cost: '0',
     });
-    const [itemType, setItemType] = useState(''); 
+    const [itemType, setItemType] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         if (!open) {
-            setFormData({ name: '', sku: '', unit_of_measure: '', category: FORCED_CATEGORY, cost: '0' });
+            setFormData({ name: '', sku: '', unit_of_measure: '', cost: '0' });
             setItemType('');
             setIsLoading(false);
         }
@@ -83,14 +47,15 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
 
         setIsLoading(true);
         try {
-            // Force the category to be "Raw Materials Inventory" no matter what the dropdown shows.
             const payload = {
-                ...formData,
+                name: formData.name,
+                sku: formData.sku,
+                unit_of_measure: formData.unit_of_measure,
+                category: FORCED_CATEGORY,   // always forced
+                cost: parseFloat(formData.cost) || 0,
                 company_id: user?.company_id,
                 item_type: itemType,
                 opening_balance: 0,
-                cost: parseFloat(formData.cost) || 0,
-                category: FORCED_CATEGORY, // override any user choice
             };
 
             const response = await fetch(apiEndpoints.registerItem, {
@@ -119,8 +84,6 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
         const { id, value } = e.target;
         setFormData((prev) => ({ ...prev, [id]: value }));
     };
-    
-    const categories = itemType ? inventoryCategories[itemType as keyof typeof inventoryCategories] || [] : [];
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,7 +94,7 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                 <div className="space-y-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="itemType" className="text-right">Item Type</Label>
-                        <Select onValueChange={value => { setItemType(value); setFormData(prev => ({ ...prev, category: FORCED_CATEGORY })); }} value={itemType}>
+                        <Select onValueChange={setItemType} value={itemType}>
                             <SelectTrigger id="itemType" className="col-span-3">
                                 <SelectValue placeholder="Select item type" />
                             </SelectTrigger>
@@ -142,50 +105,34 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                             </SelectContent>
                         </Select>
                     </div>
-                    
+
                     {itemType && (
                         <>
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="category" className="text-right">Category</Label>
-                                {/* Category dropdown is present but its selection has no effect on the final submission.
-                                    It always submits "Raw Materials Inventory". */}
-                                <Select 
-                                    onValueChange={value => setFormData(prev => ({ ...prev, category: value }))} 
-                                    value={formData.category}
-                                >
-                                    <SelectTrigger id="category" className="col-span-3">
-                                        <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {categories.map(cat => (
-                                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="name" className="text-right">Name</Label>
-                                <Input id="name" value={formData.name} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 'HDPE Pellets'"/>
+                                <Input id="name" value={formData.name} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 'HDPE Pellets'" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="sku" className="text-right">SKU</Label>
-                                <Input id="sku" value={formData.sku} onChange={handleInputChange} className="col-span-3" placeholder="Stock Keeping Unit (optional)"/>
+                                <Input id="sku" value={formData.sku} onChange={handleInputChange} className="col-span-3" placeholder="Stock Keeping Unit (optional)" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="unit_of_measure" className="text-right">Unit of Measure</Label>
-                                <Input id="unit_of_measure" value={formData.unit_of_measure} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 'kg', 'pcs', 'litres'"/>
+                                <Input id="unit_of_measure" value={formData.unit_of_measure} onChange={handleInputChange} className="col-span-3" placeholder="e.g., 'kg', 'pcs', 'litres'" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="cost" className="text-right">Unit Cost</Label>
-                                <Input id="cost" type="number" value={formData.cost} onChange={handleInputChange} className="col-span-3" placeholder="Cost per unit"/>
+                                <Input id="cost" type="number" value={formData.cost} onChange={handleInputChange} className="col-span-3" placeholder="Cost per unit" />
                             </div>
                         </>
                     )}
                 </div>
                 <DialogFooter>
-                    <Button onClick={() => onOpenChange(false)} variant="outline" disabled={isLoading}>Cancel</Button>
+                    <Button onClick={() => onOpenChange(false)} variant="outline" disabled={isLoading}>
+                        Cancel
+                    </Button>
                     <Button onClick={handleRegister} disabled={isLoading || !itemType || !formData.name}>
-                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Registering...</> : 'Register Item'}
+                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registering...</> : 'Register Item'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
