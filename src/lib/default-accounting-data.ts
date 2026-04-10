@@ -45,7 +45,7 @@ export const defaultChartOfAccounts = [
   { account_code: '105240', account_name: 'Accumulated Depreciation - Office Equipment', account_type: 'Asset', system_role: null, parent_account_code: '105200', is_control_account: false, is_active: true },
   { account_code: '105250', account_name: 'Impairment Loss Assets', account_type: 'Asset', system_role: null, parent_account_code: null, is_control_account: false, is_active: true },
   { account_code: '201000', account_name: 'Accounts Payable (AUTO)', account_type: 'Liability', system_role: 'accounts_payable', parent_account_code: null, is_control_account: true, is_active: true },
-  { account_code: '201100', account_name: 'Trade Creditors - Suppliers', account_type: 'Liability', system_role: null, parent_account_code: '201000', is_control_account: false, is_active: true },
+  { account_code: '201020', account_name: 'Trade Creditors - Suppliers', account_type: 'Liability', system_role: null, parent_account_code: '201000', is_control_account: false, is_active: true },
   { account_code: '201200', account_name: 'Accrued Expenses', account_type: 'Liability', system_role: null, parent_account_code: '201000', is_control_account: false, is_active: true },
   { account_code: '201300', account_name: 'Payroll Payables', account_type: 'Liability', system_role: null, parent_account_code: '201000', is_control_account: false, is_active: true },
   { account_code: '201400', account_name: 'Statutory Payables (AUTO)', account_type: 'Liability', system_role: null, parent_account_code: null, is_control_account: true, is_active: true },

@@ -16,6 +16,9 @@ interface RegisterItemDialogProps {
     onSuccess: () => void;
 }
 
+// This constant forces every item to use exactly this category.
+const FORCED_CATEGORY = 'Raw Materials Inventory';
+
 const inventoryCategories = {
     raw_material: [
         'Raw Materials Inventory',
@@ -58,38 +61,42 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
         name: '',
         sku: '',
         unit_of_measure: '',
-        category: '',
-        cost: '0', // Added for unit cost
+        category: FORCED_CATEGORY, // start with forced category
+        cost: '0',
     });
     const [itemType, setItemType] = useState(''); 
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         if (!open) {
-            setFormData({ name: '', sku: '', unit_of_measure: '', category: '', cost: '0' });
+            setFormData({ name: '', sku: '', unit_of_measure: '', category: FORCED_CATEGORY, cost: '0' });
             setItemType('');
             setIsLoading(false);
         }
     }, [open]);
 
     const handleRegister = async () => {
-        if (!itemType || !formData.name || !formData.category) {
-            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please select an item type, a category, and enter a name.' });
+        if (!itemType || !formData.name) {
+            toast({ variant: 'destructive', title: 'Missing Fields', description: 'Please select an item type and enter a name.' });
             return;
         }
 
         setIsLoading(true);
         try {
+            // Force the category to be "Raw Materials Inventory" no matter what the dropdown shows.
+            const payload = {
+                ...formData,
+                company_id: user?.company_id,
+                item_type: itemType,
+                opening_balance: 0,
+                cost: parseFloat(formData.cost) || 0,
+                category: FORCED_CATEGORY, // override any user choice
+            };
+
             const response = await fetch(apiEndpoints.registerItem, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ...formData,
-                    company_id: user?.company_id,
-                    item_type: itemType,
-                    opening_balance: 0, // Required by backend, not shown in UI
-                    cost: parseFloat(formData.cost) || 0,
-                }),
+                body: JSON.stringify(payload),
             });
 
             const data = await response.json();
@@ -124,7 +131,7 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                 <div className="space-y-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="itemType" className="text-right">Item Type</Label>
-                        <Select onValueChange={value => { setItemType(value); setFormData(prev => ({ ...prev, category: '' })); }} value={itemType}>
+                        <Select onValueChange={value => { setItemType(value); setFormData(prev => ({ ...prev, category: FORCED_CATEGORY })); }} value={itemType}>
                             <SelectTrigger id="itemType" className="col-span-3">
                                 <SelectValue placeholder="Select item type" />
                             </SelectTrigger>
@@ -132,7 +139,6 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                                 <SelectItem value="raw_material">Raw Material</SelectItem>
                                 <SelectItem value="finished_good">Finished Good</SelectItem>
                                 <SelectItem value="semi_finished">Semi-Finished Good</SelectItem>
-
                             </SelectContent>
                         </Select>
                     </div>
@@ -141,7 +147,12 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                         <>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
-                                <Select onValueChange={value => setFormData(prev => ({ ...prev, category: value }))} value={formData.category}>
+                                {/* Category dropdown is present but its selection has no effect on the final submission.
+                                    It always submits "Raw Materials Inventory". */}
+                                <Select 
+                                    onValueChange={value => setFormData(prev => ({ ...prev, category: value }))} 
+                                    value={formData.category}
+                                >
                                     <SelectTrigger id="category" className="col-span-3">
                                         <SelectValue placeholder="Select category" />
                                     </SelectTrigger>
@@ -173,7 +184,7 @@ export const RegisterItemDialog: React.FC<RegisterItemDialogProps> = ({ open, on
                 </div>
                 <DialogFooter>
                     <Button onClick={() => onOpenChange(false)} variant="outline" disabled={isLoading}>Cancel</Button>
-                    <Button onClick={handleRegister} disabled={isLoading || !itemType || !formData.category || !formData.name}>
+                    <Button onClick={handleRegister} disabled={isLoading || !itemType || !formData.name}>
                         {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Registering...</> : 'Register Item'}
                     </Button>
                 </DialogFooter>
