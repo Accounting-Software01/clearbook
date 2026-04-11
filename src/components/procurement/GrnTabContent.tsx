@@ -19,7 +19,7 @@ type GrnView = 'list' | 'details' | 'select_po' | 'creator';
 type PoStatus = 'Approved' | 'Partially Received' | string;
 
 interface PurchaseOrderForList {
-  id: string;
+  id: string | number;   // API returns integer; widened to avoid .split() crash
   po_number: string;
   supplier_name: string;
   po_date: string;
@@ -45,8 +45,8 @@ const AVATAR_COLOURS = [
   'bg-emerald-600', 'bg-teal-600', 'bg-indigo-600',
   'bg-rose-600', 'bg-amber-600', 'bg-violet-600',
 ];
-function avatarColour(id: string): string {
-  const sum = id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+function avatarColour(id: string | number): string {
+  const sum = String(id).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   return AVATAR_COLOURS[sum % AVATAR_COLOURS.length];
 }
 
@@ -107,7 +107,7 @@ function PoStatusBadge({ status }: PoStatusBadgeProps) {
 
 interface PoCardProps {
   po: PurchaseOrderForList;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | number) => void;
 }
 function PoCard({ po, onSelect }: PoCardProps) {
   const initials = getInitials(po.supplier_name);
@@ -171,7 +171,7 @@ interface SelectPoViewProps {
   orders: PurchaseOrderForList[];
   isLoading: boolean;
   error: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | number) => void;
   onBack: () => void;
   onRetry: () => void;
 }
@@ -311,8 +311,8 @@ export function GrnTabContent() {
 
   // ── Navigation handlers ────────────────────────────────────────────────────
 
-  const handleGoToCreateFlow  = ()           => setView('select_po');
-  const handlePoSelected      = (id: string) => { setSelectedPoId(id); setView('creator'); };
+  const handleGoToCreateFlow  = ()                      => setView('select_po');
+  const handlePoSelected      = (id: string | number)   => { setSelectedPoId(String(id)); setView('creator'); };
   const handleGrnCreated      = ()           => { setView('list'); setSelectedPoId(null); };
   const handleCancelCreation  = ()           => { setView('list'); setSelectedPoId(null); };
   const handleViewDetails     = (id: number) => { setSelectedGrnId(id); setView('details'); };
