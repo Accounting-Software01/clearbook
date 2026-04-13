@@ -84,7 +84,7 @@ export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }:
         state: '',
         city: '',
         address: '',
-        ap_account_id: '201020',
+         ap_account_id: '201100',
         currency: 'NGN',
         payment_terms: 'immediate',
         vat_registered: 'no',
