@@ -100,3 +100,20 @@ export const defaultChartOfAccounts = [
   { account_code: '509400', account_name: 'Maintenance - Soaps Cleaners', account_type: 'Expense', system_role: null, parent_account_code: '509000', is_control_account: false, is_active: true },
   { account_code: '599999', account_name: 'Miscellaneous Expenses', account_type: 'Expense', system_role: 'default_expense', parent_account_code: null, is_control_account: false, is_active: true },
 ];
+
+export const defaultInventoryCategoryMap = [
+  { category_name: 'Consumables & Production Supplies', system_role: 'INVENTORY_CONSUMABLES' },
+  { category_name: 'Finished Goods Inventory', system_role: 'INVENTORY_FINISHED_GOODS' },
+  { category_name: 'Fuel & Energy Inventory', system_role: 'INVENTORY_FUEL' },
+  { category_name: 'Goods-in-Transit Inventory', system_role: 'INVENTORY_TRANSIT' },
+  { category_name: 'Obsolete, Expired & Scrap Inventory', system_role: 'INVENTORY_SCRAP' },
+  { category_name: 'Packaging Materials Inventory', system_role: 'INVENTORY_PACKAGING' },
+  { category_name: 'Promotional & Marketing Inventory', system_role: 'INVENTORY_OTHER' },
+  { category_name: 'Raw Materials Inventory', system_role: 'INVENTORY_RAW_MATERIAL' },
+  { category_name: 'Rejected / Quality-Hold Inventory', system_role: 'INVENTORY_QUALITY' },
+  { category_name: 'Returned Goods / Reverse Inventory', system_role: 'INVENTORY_RETURNED' },
+  { category_name: 'Safety Stock / Buffer Inventory', system_role: 'INVENTORY_SAFETY' },
+  { category_name: 'Spare Parts & Maintenance Inventory', system_role: 'INVENTORY_CONSUMABLES' },
+  { category_name: 'Third-Party / Consignment Inventory', system_role: 'INVENTORY_OTHER' },
+  { category_name: 'Work-in-Progress (WIP) Inventory', system_role: 'INVENTORY_WIP' },
+];
