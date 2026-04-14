@@ -34,34 +34,39 @@ interface StatementData {
     openingBalance: number;
     transactions: Transaction[];
     closingBalance: number;
+    periodDebitTotal?: number;
+    periodCreditTotal?: number;
 }
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 const formatCurrency = (amount: number) => {
     if (typeof amount !== 'number' || isNaN(amount)) return '0.00';
-    const formatted = new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(amount));
+    const formatted = new Intl.NumberFormat('en-US', { 
+        style: 'decimal', 
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2 
+    }).format(Math.abs(amount));
     return amount < 0 ? `(${formatted})` : formatted;
 };
 
 const AccountStatementPage = () => {
     const { user } = useAuth();
     const { toast } = useToast();
-    
+   
     const { data: accountsResponse, error: accountsError, isLoading: isAccountsLoading } = useSWR(
         user?.company_id ? `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${user.company_id}` : null,
         fetcher
     );
-    
+   
     const [selectedAccount, setSelectedAccount] = useState<string | undefined>();
     const [startDate, setStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
-    
+   
     const [data, setData] = useState<StatementData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [chartData, setChartData] = useState<{ date: string; balance: number }[]>([]);
-
 
     const accounts: GLAccount[] = accountsResponse || [];
 
@@ -77,33 +82,35 @@ const AccountStatementPage = () => {
 
         const fromDate = format(startDate, 'yyyy-MM-dd');
         const toDate = format(endDate, 'yyyy-MM-dd');
+
         const url = `https://hariindustries.net/api/clearbook/account-statement.php?company_id=${user.company_id}&account_id=${selectedAccount}&fromDate=${fromDate}&toDate=${toDate}`;
 
         try {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-            
+           
             const result = await response.json();
             if (!result.success) {
                 throw new Error(result.message || "An API error occurred.");
             }
-            
+           
             setData(result.statement);
+
+            // Build chart data
             let balance = result.statement.openingBalance;
             const trendData = result.statement.transactions.map((tx: Transaction) => {
                 balance += (tx.debit - tx.credit);
-                return { date: tx.date, balance: balance };
+                return { date: tx.date, balance };
             });
-            // Add opening balance as the first point for a complete trend
+
             setChartData([
                 { date: format(startDate, 'yyyy-MM-dd'), balance: result.statement.openingBalance },
                 ...trendData
             ]);
 
             if (result.statement.transactions.length === 0) {
-                 toast({ title: "No Transactions", description: "There are no transactions for this account in the selected period." });
+                toast({ title: "No Transactions", description: "There are no transactions for this account in the selected period." });
             }
-
         } catch (e: any) {
             setError(`Failed to generate statement: ${e.message}`);
             toast({ title: "Error Generating Report", description: e.message, variant: "destructive" });
@@ -111,93 +118,110 @@ const AccountStatementPage = () => {
             setIsLoading(false);
         }
     }, [startDate, endDate, selectedAccount, user, toast]);
-const ledger = useMemo(() => {
-    if (!data) return [];
 
-    let balance = data.openingBalance;
+    // Ledger with running balance (used in UI)
+    const ledger = useMemo(() => {
+        if (!data) return [];
+        
+        let balance = data.openingBalance;
+        
+        const txsWithBalance = data.transactions.map((tx) => {
+            balance += (tx.debit - tx.credit);
+            return { ...tx, balance };
+        });
 
-    const txs = data.transactions.map((tx) => {
-        balance += (tx.debit - tx.credit);
-        return {
-            ...tx,
-            balance
-        };
-    });
-
-    return [
-        {
-            date: format(startDate!, 'yyyy-MM-dd'),
-            description: 'Opening Balance',
-            debit: 0,
-            credit: 0,
-            balance: data.openingBalance
-        },
-        ...txs
-    ];
-}, [data, startDate]);
-
-    
+        return [
+            {
+                date: format(startDate!, 'yyyy-MM-dd'),
+                description: 'Opening Balance',
+                debit: 0,
+                credit: 0,
+                balance: data.openingBalance
+            },
+            ...txsWithBalance
+        ];
+    }, [data, startDate]);
 
     const handlePrint = () => {
         window.print();
     };
 
     const handleExport = (formatType: 'excel' | 'pdf') => {
-        if (!data || !selectedAccount) return;
+        if (!data || !selectedAccount || !startDate || !endDate) return;
+
         const accountName = accounts.find((a) => a.account_code === selectedAccount)?.account_name || 'Selected Account';
         const title = `Account Statement for ${accountName}`;
-        const head = [['Date', 'Description', 'Debit', 'Credit', 'Balance']];
-        const body = data.transactions.map((t, i) => [
-            t.date,
-            t.description,
-            t.debit > 0 ? formatCurrency(t.debit) : '-',
-            t.credit > 0 ? formatCurrency(t.credit) : '-',
-            formatCurrency(runningBalance[i])
+        const period = `Period: ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`;
+
+        // Use the same ledger logic for consistent balances
+        const tableRows = ledger.map((row) => [
+            row.description === 'Opening Balance' ? 'Opening Balance' : row.date,
+            row.description,
+            row.debit > 0 ? formatCurrency(row.debit) : '-',
+            row.credit > 0 ? formatCurrency(row.credit) : '-',
+            formatCurrency(row.balance)
         ]);
 
         if (formatType === 'pdf') {
             const doc = new jsPDF();
             doc.text(title, 14, 15);
+            doc.text(period, 14, 25);
+
             (doc as any).autoTable({
-                startY: 25,
-                head: head,
-                body: [
-                    [{content: 'Opening Balance', colSpan: 4, styles: { fontStyle: 'bold'}}, {content: formatCurrency(data.openingBalance), styles: { halign: 'right', fontStyle: 'bold' }}],
-                    ...body,
-                    [{content: 'Closing Balance', colSpan: 4, styles: { fontStyle: 'bold'}}, {content: formatCurrency(data.closingBalance), styles: { halign: 'right', fontStyle: 'bold' }}]
-                ],
-                theme: 'striped'
+                startY: 35,
+                head: [['Date', 'Description', 'Debit', 'Credit', 'Balance']],
+                body: tableRows,
+                theme: 'striped',
+                styles: { fontSize: 9 },
+                columnStyles: {
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                    4: { halign: 'right', fontStyle: 'bold' }
+                }
             });
-            doc.save(`${accountName}_Statement.pdf`);
+
+            // Add closing balance summary if needed
+            doc.save(`${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`);
         } else {
-            const ws = XLSX.utils.aoa_to_sheet([
+            // Excel Export
+            const wsData = [
                 [title],
-                [`Period: ${format(startDate!, 'MMM dd, yyyy')} to ${format(endDate!, 'MMM dd, yyyy')}`],
+                [period],
                 [],
-                ['', '', '', 'Opening Balance', formatCurrency(data.openingBalance)],
-                ...head,
-                ...body,
-                ['', '', '', 'Closing Balance', formatCurrency(data.closingBalance)]
-            ]);
+                ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
+                ...tableRows,
+                [],
+                ['Closing Balance', '', '', '', formatCurrency(data.closingBalance)]
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Account Statement');
-            XLSX.writeFile(wb, `${accountName}_Statement.xlsx`);
+            XLSX.utils.book_append_sheet(wb, ws, 'Statement');
+            XLSX.writeFile(wb, `${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.xlsx`);
         }
     };
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold tracking-tight flex items-center"><ClipboardList className="mr-3 h-8 w-8"/> Account Statement</h1>
+                <h1 className="text-3xl font-bold tracking-tight flex items-center">
+                    <ClipboardList className="mr-3 h-8 w-8"/> Account Statement
+                </h1>
                 {data && (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => handleExport('excel')}><Download className="mr-2 h-4 w-4" />Excel</Button>
-                        <Button variant="outline" onClick={() => handleExport('pdf')}><FileText className="mr-2 h-4 w-4" />PDF</Button>
-                        <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Print</Button>
+                        <Button variant="outline" onClick={() => handleExport('excel')}>
+                            <Download className="mr-2 h-4 w-4" /> Excel
+                        </Button>
+                        <Button variant="outline" onClick={() => handleExport('pdf')}>
+                            <FileText className="mr-2 h-4 w-4" /> PDF
+                        </Button>
+                        <Button variant="outline" onClick={handlePrint}>
+                            <Printer className="mr-2 h-4 w-4" /> Print
+                        </Button>
                     </div>
                 )}
             </div>
-            
+           
             <Card>
                 <CardHeader><CardTitle>Report Controls</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -211,26 +235,48 @@ const ledger = useMemo(() => {
                                 {accountsError && <SelectItem value="error" disabled>Failed to load accounts</SelectItem>}
                                 {accounts.map((acc) => (
                                     <SelectItem key={acc.account_code} value={acc.account_code}>
-                                        {acc.account_name}
+                                        {acc.account_name} ({acc.account_code})
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2"><label className="text-sm font-medium">From Date</label><DatePicker date={startDate} setDate={setStartDate} /></div>
-                    <div className="space-y-2"><label className="text-sm font-medium">To Date</label><DatePicker date={endDate} setDate={setEndDate} /></div>
-                    <Button onClick={generateReport} disabled={isLoading || !selectedAccount} className="w-full col-span-full">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} Generate Statement
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">From Date</label>
+                        <DatePicker date={startDate} setDate={setStartDate} />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium">To Date</label>
+                        <DatePicker date={endDate} setDate={setEndDate} />
+                    </div>
+                    <Button 
+                        onClick={generateReport} 
+                        disabled={isLoading || !selectedAccount} 
+                        className="w-full col-span-full"
+                    >
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} 
+                        Generate Statement
                     </Button>
                 </CardContent>
             </Card>
 
-            {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <span className="ml-4">Generating statement...</span></div>}
-            {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
+            {isLoading && (
+                <div className="flex justify-center items-center h-60">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" /> 
+                    <span className="ml-4">Generating statement...</span>
+                </div>
+            )}
 
-                        {data && (
+            {error && (
+                <div className="flex flex-col justify-center items-center h-60 text-destructive">
+                    <AlertCircle className="h-8 w-8 mb-2" />
+                    <p>{error}</p>
+                </div>
+            )}
+
+            {data && (
                 <div className="space-y-6">
-                    {/* NEW: Trend Chart Card */}
+                    {/* Balance Trend Chart */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Balance Trend</CardTitle>
@@ -240,14 +286,20 @@ const ledger = useMemo(() => {
                                 <ChartContainer config={{}}>
                                     <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="date" tickFormatter={(str) => format(new Date(str), 'MMM d')} />
-                                        <YAxis width={80} tickFormatter={(val) => `₦${(val/1000).toFixed(0)}k`} />
-                                        <ChartTooltip 
+                                        <XAxis 
+                                            dataKey="date" 
+                                            tickFormatter={(str) => format(new Date(str), 'MMM d')} 
+                                        />
+                                        <YAxis 
+                                            width={80} 
+                                            tickFormatter={(val) => `₦${(val/1000000).toFixed(1)}M`} 
+                                        />
+                                        <ChartTooltip
                                             cursor={false}
-                                            content={<ChartTooltipContent 
+                                            content={<ChartTooltipContent
                                                 labelFormatter={(label) => format(new Date(label), 'MMM dd, yyyy')}
-                                                formatter={(value) => formatCurrency(value as number)} 
-                                            />} 
+                                                formatter={(value) => [`₦${formatCurrency(value as number)}`, 'Balance']}
+                                            />}
                                         />
                                         <Area type="monotone" dataKey="balance" stroke="#2563eb" fill="#bfdbfe" />
                                     </AreaChart>
@@ -256,11 +308,15 @@ const ledger = useMemo(() => {
                         </CardContent>
                     </Card>
 
-                    {/* Existing Statement Details Card */}
+                    {/* Statement Table */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}</CardTitle>
-                            <p className="text-sm text-muted-foreground">Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}</p>
+                            <CardTitle>
+                                Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}
+                            </CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                                Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}
+                            </p>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -268,48 +324,39 @@ const ledger = useMemo(() => {
                                     <TableRow>
                                         <TableHead>Date</TableHead>
                                         <TableHead>Description</TableHead>
-                                        <TableHead className="text-right">Debit</TableHead>
-                                        <TableHead className="text-right">Credit</TableHead>
-                                        <TableHead className="text-right">Balance</TableHead>
+                                        <TableHead className="text-right">Debit (₦)</TableHead>
+                                        <TableHead className="text-right">Credit (₦)</TableHead>
+                                        <TableHead className="text-right">Balance (₦)</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-    {ledger.length > 0 ? (
-        ledger.map((tx, index) => (
-            <TableRow key={index} className={tx.description === 'Opening Balance' ? 'font-semibold' : ''}>
-                <TableCell>
-                    {tx.description === 'Opening Balance'
-                        ? 'Opening'
-                        : format(new Date(tx.date), 'yyyy-MM-dd')}
-                </TableCell>
-
-                <TableCell>{tx.description}</TableCell>
-
-                <TableCell className="text-right font-mono text-green-600">
-                    {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
-                </TableCell>
-
-                <TableCell className="text-right font-mono text-red-600">
-                    {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
-                </TableCell>
-
-                <TableCell className="text-right font-mono">
-                    {formatCurrency(tx.balance)}
-                </TableCell>
-            </TableRow>
-        ))
-    ) : (
-        <TableRow>
-            <TableCell colSpan={5} className="text-center h-24">
-                No transactions found for the selected period.
-            </TableCell>
-        </TableRow>
-    )}
-</TableBody>
+                                    {ledger.map((tx, index) => (
+                                        <TableRow 
+                                            key={index} 
+                                            className={tx.description === 'Opening Balance' ? 'font-semibold bg-muted/50' : ''}
+                                        >
+                                            <TableCell>
+                                                {tx.description === 'Opening Balance' ? 'Opening' : tx.date}
+                                            </TableCell>
+                                            <TableCell>{tx.description || '-'}</TableCell>
+                                            <TableCell className="text-right font-mono text-green-600">
+                                                {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">
+                                                {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono font-semibold">
+                                                {formatCurrency(tx.balance)}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
                                 <TableFooter>
                                     <TableRow className="font-extrabold text-lg bg-gray-50">
-                                        <TableCell colSpan={4}>Closing Balance</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(data.closingBalance)}</TableCell>
+                                        <TableCell colSpan={4} className="text-right">Closing Balance</TableCell>
+                                        <TableCell className="text-right font-mono">
+                                            {formatCurrency(data.closingBalance)}
+                                        </TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
