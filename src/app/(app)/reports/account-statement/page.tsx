@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,7 +52,7 @@ const AccountStatementPage = () => {
     const { user } = useAuth();
     const { toast } = useToast();
    
-    const { data: accountsResponse, error: accountsError, isLoading: isAccountsLoading } = useSWR(
+    const { data: accountsResponse } = useSWR(
         user?.company_id ? `https://hariindustries.net/api/clearbook/get-chart-of-accounts.php?company_id=${user.company_id}` : null,
         fetcher
     );
@@ -82,20 +81,18 @@ const AccountStatementPage = () => {
         const fromDate = format(startDate, 'yyyy-MM-dd');
         const toDate = format(endDate, 'yyyy-MM-dd');
 
-        const url = `https://hariindustries.net/api/clearbook/account-statement.php?company_id=${user.company_id}&account_id=${selectedAccount}&fromDate=${fromDate}&toDate=${toDate}`;
-
         try {
-            const response = await fetch(url);
+            const response = await fetch(
+                `https://hariindustries.net/api/clearbook/account-statement.php?company_id=${user.company_id}&account_id=${selectedAccount}&fromDate=${fromDate}&toDate=${toDate}`
+            );
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
            
             const result = await response.json();
-            if (!result.success) {
-                throw new Error(result.message || "An API error occurred.");
-            }
-           
+            if (!result.success) throw new Error(result.message || "API error");
+
             setData(result.statement);
 
-            // Build chart data with real opening balance
+            // Chart data
             let balance = result.statement.openingBalance;
             const trendData = result.statement.transactions.map((tx: Transaction) => {
                 balance += (tx.debit - tx.credit);
@@ -106,25 +103,21 @@ const AccountStatementPage = () => {
                 { date: format(startDate, 'yyyy-MM-dd'), balance: result.statement.openingBalance },
                 ...trendData
             ]);
-
-            if (result.statement.transactions.length === 0) {
-                toast({ title: "No Transactions", description: "There are no transactions for this account in the selected period." });
-            }
         } catch (e: any) {
             setError(`Failed to generate statement: ${e.message}`);
-            toast({ title: "Error Generating Report", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setIsLoading(false);
         }
     }, [startDate, endDate, selectedAccount, user, toast]);
 
-    // Ledger - Now guarantees real opening balance in first row
+    // Ledger - Force real opening balance
     const ledger = useMemo(() => {
         if (!data) return [];
-        
+
         let runningBalance = data.openingBalance;
-        
-        const txsWithBalance = data.transactions.map((tx) => {
+
+        const processedTxs = data.transactions.map((tx: Transaction) => {
             runningBalance += (tx.debit - tx.credit);
             return { ...tx, balance: runningBalance };
         });
@@ -135,24 +128,22 @@ const AccountStatementPage = () => {
                 description: 'Opening Balance',
                 debit: 0,
                 credit: 0,
-                balance: data.openingBalance   // ← Real API value used here
+                balance: data.openingBalance   // ← Real value from API
             },
-            ...txsWithBalance
+            ...processedTxs
         ];
     }, [data, startDate]);
 
-    const handlePrint = () => {
-        window.print();
-    };
+    const handlePrint = () => window.print();
 
     const handleExport = (formatType: 'excel' | 'pdf') => {
-        if (!data || !selectedAccount || !startDate || !endDate) return;
+        if (!data || !selectedAccount) return;
 
-        const accountName = accounts.find((a) => a.account_code === selectedAccount)?.account_name || 'Selected Account';
+        const accountName = accounts.find(a => a.account_code === selectedAccount)?.account_name || 'Account';
         const title = `Account Statement for ${accountName}`;
-        const period = `Period: ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`;
+        const period = `Period: ${format(startDate!, 'MMM dd, yyyy')} to ${format(endDate!, 'MMM dd, yyyy')}`;
 
-        const tableRows = ledger.map((row) => [
+        const tableRows = ledger.map(row => [
             row.description === 'Opening Balance' ? 'Opening' : row.date,
             row.description,
             row.debit > 0 ? formatCurrency(row.debit) : '-',
@@ -164,31 +155,26 @@ const AccountStatementPage = () => {
             const doc = new jsPDF();
             doc.text(title, 14, 15);
             doc.text(period, 14, 25);
-
             (doc as any).autoTable({
                 startY: 35,
                 head: [['Date', 'Description', 'Debit', 'Credit', 'Balance']],
                 body: tableRows,
                 theme: 'striped',
                 styles: { fontSize: 9 },
-                columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } }
+                columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' }}
             });
-            doc.save(`${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`);
+            doc.save(`${accountName}_Statement.pdf`);
         } else {
             const wsData = [
-                [title],
-                [period],
-                [],
+                [title], [period], [],
                 ['Date', 'Description', 'Debit', 'Credit', 'Balance'],
                 ...tableRows,
-                [],
-                ['Closing Balance', '', '', '', formatCurrency(data.closingBalance)]
+                [], ['Closing Balance', '', '', '', formatCurrency(data.closingBalance)]
             ];
-
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Statement');
-            XLSX.writeFile(wb, `${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.xlsx`);
+            XLSX.writeFile(wb, `${accountName}_Statement.xlsx`);
         }
     };
 
@@ -200,31 +186,25 @@ const AccountStatementPage = () => {
                 </h1>
                 {data && (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => handleExport('excel')}>
-                            <Download className="mr-2 h-4 w-4" /> Excel
-                        </Button>
-                        <Button variant="outline" onClick={() => handleExport('pdf')}>
-                            <FileText className="mr-2 h-4 w-4" /> PDF
-                        </Button>
-                        <Button variant="outline" onClick={handlePrint}>
-                            <Printer className="mr-2 h-4 w-4" /> Print
-                        </Button>
+                        <Button variant="outline" onClick={() => handleExport('excel')}><Download className="mr-2 h-4 w-4" />Excel</Button>
+                        <Button variant="outline" onClick={() => handleExport('pdf')}><FileText className="mr-2 h-4 w-4" />PDF</Button>
+                        <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" />Print</Button>
                     </div>
                 )}
             </div>
-           
+
+            {/* Controls Card */}
             <Card>
                 <CardHeader><CardTitle>Report Controls</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-2 col-span-1 md:col-span-2">
                         <label className="text-sm font-medium">Account</label>
-                        <Select onValueChange={setSelectedAccount} value={selectedAccount} disabled={isAccountsLoading}>
+                        <Select onValueChange={setSelectedAccount} value={selectedAccount} disabled={!accounts.length}>
                             <SelectTrigger>
-                                <SelectValue placeholder={isAccountsLoading ? "Loading accounts..." : "Select an account"} />
+                                <SelectValue placeholder="Select an account" />
                             </SelectTrigger>
                             <SelectContent>
-                                {accountsError && <SelectItem value="error" disabled>Failed to load accounts</SelectItem>}
-                                {accounts.map((acc) => (
+                                {accounts.map(acc => (
                                     <SelectItem key={acc.account_code} value={acc.account_code}>
                                         {acc.account_name} ({acc.account_code})
                                     </SelectItem>
@@ -232,66 +212,30 @@ const AccountStatementPage = () => {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">From Date</label>
-                        <DatePicker date={startDate} setDate={setStartDate} />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">To Date</label>
-                        <DatePicker date={endDate} setDate={setEndDate} />
-                    </div>
-                    <Button 
-                        onClick={generateReport} 
-                        disabled={isLoading || !selectedAccount} 
-                        className="w-full col-span-full"
-                    >
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                        Generate Statement
+                    <div className="space-y-2"><label className="text-sm font-medium">From Date</label><DatePicker date={startDate} setDate={setStartDate} /></div>
+                    <div className="space-y-2"><label className="text-sm font-medium">To Date</label><DatePicker date={endDate} setDate={setEndDate} /></div>
+                    <Button onClick={generateReport} disabled={isLoading || !selectedAccount} className="w-full col-span-full">
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} Generate Statement
                     </Button>
                 </CardContent>
             </Card>
 
-            {isLoading && (
-                <div className="flex justify-center items-center h-60">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <span className="ml-4">Generating statement...</span>
-                </div>
-            )}
-
-            {error && (
-                <div className="flex flex-col justify-center items-center h-60 text-destructive">
-                    <AlertCircle className="h-8 w-8 mb-2" />
-                    <p>{error}</p>
-                </div>
-            )}
+            {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin" /> Generating...</div>}
+            {error && <div className="flex flex-col items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
 
             {data && (
                 <div className="space-y-6">
-                    {/* Balance Trend Chart */}
+                    {/* Chart */}
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Balance Trend</CardTitle>
-                        </CardHeader>
-                        <CardContent className="h-[250px] w-full">
+                        <CardHeader><CardTitle>Balance Trend</CardTitle></CardHeader>
+                        <CardContent className="h-[250px]">
                             <ResponsiveContainer>
                                 <ChartContainer config={{}}>
-                                    <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
+                                    <AreaChart data={chartData}>
                                         <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis 
-                                            dataKey="date" 
-                                            tickFormatter={(str) => format(new Date(str), 'MMM d')} 
-                                        />
-                                        <YAxis 
-                                            width={80} 
-                                            tickFormatter={(val) => `₦${(val / 1000000000).toFixed(1)}B`} 
-                                        />
-                                        <ChartTooltip
-                                            cursor={false}
-                                            content={<ChartTooltipContent
-                                                labelFormatter={(label) => format(new Date(label), 'MMM dd, yyyy')}
-                                                formatter={(value) => [`₦${formatCurrency(value as number)}`, 'Balance']}
-                                            />}
-                                        />
+                                        <XAxis dataKey="date" tickFormatter={str => format(new Date(str), 'MMM d')} />
+                                        <YAxis width={80} tickFormatter={val => `₦${(val / 1000000000).toFixed(1)}B`} />
+                                        <ChartTooltip content={<ChartTooltipContent labelFormatter={label => format(new Date(label), 'MMM dd, yyyy')} formatter={value => [`₦${formatCurrency(value as number)}`, 'Balance']} />} />
                                         <Area type="monotone" dataKey="balance" stroke="#2563eb" fill="#bfdbfe" />
                                     </AreaChart>
                                 </ChartContainer>
@@ -299,15 +243,11 @@ const AccountStatementPage = () => {
                         </CardContent>
                     </Card>
 
-                    {/* Statement Table */}
+                    {/* Table */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>
-                                Statement for: {accounts.find((a) => a.account_code === selectedAccount!)?.account_name}
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                                Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}
-                            </p>
+                            <CardTitle>Statement for: {accounts.find(a => a.account_code === selectedAccount)?.account_name}</CardTitle>
+                            <p className="text-sm text-muted-foreground">Period: {format(startDate!, 'MMM dd, yyyy')} to {format(endDate!, 'MMM dd, yyyy')}</p>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -322,24 +262,13 @@ const AccountStatementPage = () => {
                                 </TableHeader>
                                 <TableBody>
                                     {ledger.map((tx, index) => (
-                                        <TableRow
-                                            key={index}
-                                            className={tx.description === 'Opening Balance' ? 'font-semibold bg-muted/50' : ''}
-                                        >
-                                            <TableCell className="font-medium">
-                                                {tx.description === 'Opening Balance' ? 'Opening' : tx.date}
-                                            </TableCell>
-                                            <TableCell className="font-medium">
-                                                {tx.description}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono text-green-600">
-                                                {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono text-red-600">
-                                                {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
-                                            </TableCell>
+                                        <TableRow key={index} className={tx.description === 'Opening Balance' ? 'font-semibold bg-muted/50' : ''}>
+                                            <TableCell>{tx.description === 'Opening Balance' ? 'Opening' : tx.date}</TableCell>
+                                            <TableCell>{tx.description}</TableCell>
+                                            <TableCell className="text-right font-mono text-green-600">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</TableCell>
+                                            <TableCell className="text-right font-mono text-red-600">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</TableCell>
                                             <TableCell className="text-right font-mono font-semibold">
-                                                {formatCurrency(tx.balance)}   {/* ← Now uses real opening balance */}
+                                                {formatCurrency(tx.balance)}   {/* This now uses real opening balance */}
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -347,9 +276,7 @@ const AccountStatementPage = () => {
                                 <TableFooter>
                                     <TableRow className="font-extrabold text-lg bg-gray-50">
                                         <TableCell colSpan={4} className="text-right">Closing Balance</TableCell>
-                                        <TableCell className="text-right font-mono">
-                                            {formatCurrency(data.closingBalance)}
-                                        </TableCell>
+                                        <TableCell className="text-right font-mono">{formatCurrency(data.closingBalance)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
                             </Table>
