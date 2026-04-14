@@ -111,15 +111,32 @@ const AccountStatementPage = () => {
             setIsLoading(false);
         }
     }, [startDate, endDate, selectedAccount, user, toast]);
+const ledger = useMemo(() => {
+    if (!data) return [];
 
-    const runningBalance = useMemo(() => {
-        if (!data) return [];
-        let currentBalance = data.openingBalance;
-        return data.transactions.map(tx => {
-            currentBalance += (tx.debit - tx.credit);
-            return currentBalance;
-        });
-    }, [data]);
+    let balance = data.openingBalance;
+
+    const txs = data.transactions.map((tx) => {
+        balance += (tx.debit - tx.credit);
+        return {
+            ...tx,
+            balance
+        };
+    });
+
+    return [
+        {
+            date: format(startDate!, 'yyyy-MM-dd'),
+            description: 'Opening Balance',
+            debit: 0,
+            credit: 0,
+            balance: data.openingBalance
+        },
+        ...txs
+    ];
+}, [data, startDate]);
+
+    
 
     const handlePrint = () => {
         window.print();
@@ -257,24 +274,38 @@ const AccountStatementPage = () => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow className="font-semibold">
-                                        <TableCell colSpan={4}>Opening Balance</TableCell>
-                                        <TableCell className="text-right font-mono">{formatCurrency(data.openingBalance)}</TableCell>
-                                    </TableRow>
-                                    {data.transactions.length > 0 ? (
-                                        data.transactions.map((tx, index) => (
-                                            <TableRow key={index}>
-                                                <TableCell>{format(new Date(tx.date), 'yyyy-MM-dd')}</TableCell>
-                                                <TableCell>{tx.description}</TableCell>
-                                                <TableCell className="text-right font-mono text-green-600">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</TableCell>
-                                                <TableCell className="text-right font-mono text-red-600">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</TableCell>
-                                                <TableCell className="text-right font-mono">{formatCurrency(runningBalance[index])}</TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow><TableCell colSpan={5} className="text-center h-24">No transactions found for the selected period.</TableCell></TableRow>
-                                    )}
-                                </TableBody>
+    {ledger.length > 0 ? (
+        ledger.map((tx, index) => (
+            <TableRow key={index} className={tx.description === 'Opening Balance' ? 'font-semibold' : ''}>
+                <TableCell>
+                    {tx.description === 'Opening Balance'
+                        ? 'Opening'
+                        : format(new Date(tx.date), 'yyyy-MM-dd')}
+                </TableCell>
+
+                <TableCell>{tx.description}</TableCell>
+
+                <TableCell className="text-right font-mono text-green-600">
+                    {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
+                </TableCell>
+
+                <TableCell className="text-right font-mono text-red-600">
+                    {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
+                </TableCell>
+
+                <TableCell className="text-right font-mono">
+                    {formatCurrency(tx.balance)}
+                </TableCell>
+            </TableRow>
+        ))
+    ) : (
+        <TableRow>
+            <TableCell colSpan={5} className="text-center h-24">
+                No transactions found for the selected period.
+            </TableCell>
+        </TableRow>
+    )}
+</TableBody>
                                 <TableFooter>
                                     <TableRow className="font-extrabold text-lg bg-gray-50">
                                         <TableCell colSpan={4}>Closing Balance</TableCell>
