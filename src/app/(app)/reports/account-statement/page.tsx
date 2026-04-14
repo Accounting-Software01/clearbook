@@ -94,7 +94,7 @@ const AccountStatementPage = () => {
            
             setData(result.statement);
 
-            // Build chart data
+            // Build chart data with real opening balance
             let balance = result.statement.openingBalance;
             const trendData = result.statement.transactions.map((tx: Transaction) => {
                 balance += (tx.debit - tx.credit);
@@ -117,15 +117,15 @@ const AccountStatementPage = () => {
         }
     }, [startDate, endDate, selectedAccount, user, toast]);
 
-    // Ledger with correct opening balance
+    // Ledger - Now guarantees real opening balance in first row
     const ledger = useMemo(() => {
         if (!data) return [];
         
-        let balance = data.openingBalance;
+        let runningBalance = data.openingBalance;
         
         const txsWithBalance = data.transactions.map((tx) => {
-            balance += (tx.debit - tx.credit);
-            return { ...tx, balance };
+            runningBalance += (tx.debit - tx.credit);
+            return { ...tx, balance: runningBalance };
         });
 
         return [
@@ -134,7 +134,7 @@ const AccountStatementPage = () => {
                 description: 'Opening Balance',
                 debit: 0,
                 credit: 0,
-                balance: data.openingBalance   // Real opening balance from API
+                balance: data.openingBalance   // ← Real API value used here
             },
             ...txsWithBalance
         ];
@@ -170,11 +170,7 @@ const AccountStatementPage = () => {
                 body: tableRows,
                 theme: 'striped',
                 styles: { fontSize: 9 },
-                columnStyles: {
-                    2: { halign: 'right' },
-                    3: { halign: 'right' },
-                    4: { halign: 'right', fontStyle: 'bold' }
-                }
+                columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } }
             });
             doc.save(`${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`);
         } else {
@@ -286,7 +282,7 @@ const AccountStatementPage = () => {
                                         />
                                         <YAxis 
                                             width={80} 
-                                            tickFormatter={(val) => `₦${(val/1000000000).toFixed(1)}B`} 
+                                            tickFormatter={(val) => `₦${(val / 1000000000).toFixed(1)}B`} 
                                         />
                                         <ChartTooltip
                                             cursor={false}
@@ -342,7 +338,7 @@ const AccountStatementPage = () => {
                                                 {tx.credit > 0 ? formatCurrency(tx.credit) : '-'}
                                             </TableCell>
                                             <TableCell className="text-right font-mono font-semibold">
-                                                {formatCurrency(tx.balance)}
+                                                {formatCurrency(tx.balance)}   {/* ← Now uses real opening balance */}
                                             </TableCell>
                                         </TableRow>
                                     ))}
