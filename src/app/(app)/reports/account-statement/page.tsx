@@ -34,18 +34,16 @@ interface StatementData {
     openingBalance: number;
     transactions: Transaction[];
     closingBalance: number;
-    periodDebitTotal?: number;
-    periodCreditTotal?: number;
 }
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 const formatCurrency = (amount: number) => {
     if (typeof amount !== 'number' || isNaN(amount)) return '0.00';
-    const formatted = new Intl.NumberFormat('en-US', { 
-        style: 'decimal', 
-        minimumFractionDigits: 2, 
-        maximumFractionDigits: 2 
+    const formatted = new Intl.NumberFormat('en-US', {
+        style: 'decimal',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     }).format(Math.abs(amount));
     return amount < 0 ? `(${formatted})` : formatted;
 };
@@ -119,7 +117,7 @@ const AccountStatementPage = () => {
         }
     }, [startDate, endDate, selectedAccount, user, toast]);
 
-    // Ledger with running balance (used in UI)
+    // Ledger with correct opening balance
     const ledger = useMemo(() => {
         if (!data) return [];
         
@@ -136,7 +134,7 @@ const AccountStatementPage = () => {
                 description: 'Opening Balance',
                 debit: 0,
                 credit: 0,
-                balance: data.openingBalance
+                balance: data.openingBalance   // Real opening balance from API
             },
             ...txsWithBalance
         ];
@@ -153,9 +151,8 @@ const AccountStatementPage = () => {
         const title = `Account Statement for ${accountName}`;
         const period = `Period: ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`;
 
-        // Use the same ledger logic for consistent balances
         const tableRows = ledger.map((row) => [
-            row.description === 'Opening Balance' ? 'Opening Balance' : row.date,
+            row.description === 'Opening Balance' ? 'Opening' : row.date,
             row.description,
             row.debit > 0 ? formatCurrency(row.debit) : '-',
             row.credit > 0 ? formatCurrency(row.credit) : '-',
@@ -179,11 +176,8 @@ const AccountStatementPage = () => {
                     4: { halign: 'right', fontStyle: 'bold' }
                 }
             });
-
-            // Add closing balance summary if needed
             doc.save(`${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`);
         } else {
-            // Excel Export
             const wsData = [
                 [title],
                 [period],
@@ -254,7 +248,7 @@ const AccountStatementPage = () => {
                         disabled={isLoading || !selectedAccount} 
                         className="w-full col-span-full"
                     >
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} 
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
                         Generate Statement
                     </Button>
                 </CardContent>
@@ -262,7 +256,7 @@ const AccountStatementPage = () => {
 
             {isLoading && (
                 <div className="flex justify-center items-center h-60">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" /> 
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <span className="ml-4">Generating statement...</span>
                 </div>
             )}
@@ -292,7 +286,7 @@ const AccountStatementPage = () => {
                                         />
                                         <YAxis 
                                             width={80} 
-                                            tickFormatter={(val) => `₦${(val/1000000).toFixed(1)}M`} 
+                                            tickFormatter={(val) => `₦${(val/1000000000).toFixed(1)}B`} 
                                         />
                                         <ChartTooltip
                                             cursor={false}
@@ -331,14 +325,16 @@ const AccountStatementPage = () => {
                                 </TableHeader>
                                 <TableBody>
                                     {ledger.map((tx, index) => (
-                                        <TableRow 
-                                            key={index} 
+                                        <TableRow
+                                            key={index}
                                             className={tx.description === 'Opening Balance' ? 'font-semibold bg-muted/50' : ''}
                                         >
-                                            <TableCell>
+                                            <TableCell className="font-medium">
                                                 {tx.description === 'Opening Balance' ? 'Opening' : tx.date}
                                             </TableCell>
-                                            <TableCell>{tx.description || '-'}</TableCell>
+                                            <TableCell className="font-medium">
+                                                {tx.description}
+                                            </TableCell>
                                             <TableCell className="text-right font-mono text-green-600">
                                                 {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}
                                             </TableCell>
