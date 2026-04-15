@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -14,11 +14,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast'; // CORRECT: Use the project's toast hook
 
 export interface OrphanItem {
-  id: string; // e.g., "orphan_103315"
-  name: string; // e.g., "[ORPHAN] Inventory - Sample Product"
+  id: string; 
+  name: string; 
   item_type: 'product' | 'raw_material';
   account_code: string;
 }
@@ -34,7 +34,7 @@ interface ResolveOrphansDialogProps {
   onOpenChange: (open: boolean) => void;
   orphans: OrphanItem[];
   companyId: string;
-  onSuccess: () => void; // Callback to refresh the main item list
+  onSuccess: () => void; 
 }
 
 export function ResolveOrphansDialog({
@@ -44,6 +44,7 @@ export function ResolveOrphansDialog({
   companyId,
   onSuccess,
 }: ResolveOrphansDialogProps) {
+  const { toast } = useToast(); // CORRECT: Instantiate the hook
   const [inputs, setInputs] = useState<Record<string, OrphanInputState>>({});
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -76,7 +77,8 @@ export function ResolveOrphansDialog({
     for (const orphan of orphans) {
       const input = inputs[orphan.id];
       if (!input.sku || !input.unit_of_measure) {
-        toast.error(`Please fill in all fields for "${orphan.name.replace('[ORPHAN] ', '')}".`);
+        // CORRECT: Use the project's toast for errors
+        toast({ variant: 'destructive', title: 'Missing Information', description: `Please fill in all fields for "${orphan.name.replace('[ORPHAN] ', '')}".` });
         return;
       }
     }
@@ -88,13 +90,11 @@ export function ResolveOrphansDialog({
         orphans_to_register: orphans.map(orphan => ({
             ...orphan,
             ...inputs[orphan.id],
-            // Extract the original account name for the new item name
             name: orphan.name.replace('[ORPHAN] ', '').replace(/Inventory - (Finished Goods )?/, ''),
         }))
     };
     
     try {
-      // NOTE: We will create the 'bulk-register-orphans.php' API endpoint next.
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bulk-register-orphans.php`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -107,13 +107,15 @@ export function ResolveOrphansDialog({
           throw new Error(result.error || 'Failed to register items.');
       }
 
-      toast.success('Orphaned items successfully registered!');
-      onSuccess(); // This will trigger a refresh on the main inventory page
-      onOpenChange(false); // Close the dialog
+      // CORRECT: Use the project's toast for success
+      toast({ title: 'Success', description: 'Orphaned items successfully registered!' });
+      onSuccess();
+      onOpenChange(false);
 
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-        toast.error('Registration Failed', { description: errorMessage });
+        // CORRECT: Use the project's toast for registration failures
+        toast({ variant: 'destructive', title: 'Registration Failed', description: errorMessage });
     } finally {
         setIsRegistering(false);
     }
