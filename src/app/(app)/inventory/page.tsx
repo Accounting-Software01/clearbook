@@ -1,40 +1,93 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableFooter
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, AlertCircle, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Loader2, AlertCircle, RefreshCw, BookUp, AlertTriangle } from 'lucide-react';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
+import ItemHistoryDialog from '@/components/ItemHistoryDialog';
+import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
 import { ResolveOrphansDialog, OrphanItem } from '@/components/inventory/ResolveOrphansDialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import Link from 'next/link';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+interface InventoryItem {
+  id: number;
+  name: string;
+  sku: string;
+  category: string;
+  unit_of_measure: string;
+  unit_cost: number;
+  quantity: number;
+  item_type: 'product' | 'raw_material' | 'semi_finished';
+  total_value: number;
+}
+
+// --- NEW: Category options for the dropdown ---
+const CATEGORY_OPTIONS = [
+    "Raw Material",
+    "Semi_finished",
+    "Sub-assemblies",
+    "Intermediate Products",
+    "Consumables",
+    "Packaging"
+];
 
 const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
 };
 
-const InventoryPage = () => {
+const RawMaterialsPage = () => {
     const { user } = useAuth();
     const { toast } = useToast();
 
-    const [totalInventoryValue, setTotalInventoryValue] = useState(0);
+    const [items, setItems] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
     const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+    const [isOpeningBalanceDialogOpen, setIsOpeningBalanceDialogOpen] = useState(false);
     const [isResolveOrphansDialogOpen, setIsResolveOrphansDialogOpen] = useState(false);
     const [orphans, setOrphans] = useState<OrphanItem[]>([]);
+    
+    const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+    const [showOpeningBalancePrompt, setShowOpeningBalancePrompt] = useState(false);
 
-    const fetchInventoryValue = useCallback(async () => {
+    const fetchInventory = useCallback(async () => {
         if (!user?.company_id) return;
-
         setIsLoading(true);
         setError(null);
         setOrphans([]);
 
         try {
-            const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}`);
-            
+            const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}&user_role=${user.role}`);
             if (!response.ok) {
                 let errorText = `HTTP error! status: ${response.status}`;
                 try {
@@ -47,157 +100,207 @@ const InventoryPage = () => {
             }
             
             const data = await response.json();
+            if (data && data.raw_materials) {
+                const allRawMaterials = data.raw_materials || [];
 
-            if (data) {
-                const allItems = [ ...(data.products || []), ...(data.raw_materials || [])];
-
-                const foundOrphans = allItems.filter(item => item.is_orphan === true)
-                  .map(item => ({...item, account_code: item.id.replace('orphan_', '') }));
-
+                const foundOrphans = allRawMaterials
+                    .filter((item: any) => item.is_orphan === true)
+                    .map((item: any): OrphanItem => ({ 
+                        ...item, 
+                        id: item.id, 
+                        account_code: item.id.replace('orphan_', '') 
+                    }));
+                
                 setOrphans(foundOrphans);
 
-                const calculateValue = (items: any[]) => 
-                    items.reduce((acc, item) => {
-                        const quantity = parseFloat(item.quantity) || 0;
-                        const unitCost = parseFloat(item.unit_cost) || 0;
-                        return acc + (quantity * unitCost);
-                    }, 0);
+                const regularItems = allRawMaterials.filter((item: any) => !item.is_orphan);
 
-                const productsValue = calculateValue(data.products || []);
-                const rawMaterialsValue = calculateValue(data.raw_materials || []);
-                
-                setTotalInventoryValue(productsValue + rawMaterialsValue);
+                const processItem = (item: any): InventoryItem => ({
+                    ...item,
+                    unit_cost: parseFloat(item.unit_cost) || 0,
+                    quantity: parseFloat(item.quantity) || 0,
+                    total_value: (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_cost) || 0),
+                });
+
+                const rawMaterials = regularItems.map(processItem);
+                setItems(rawMaterials);
+
+                const hasSeenPrompt = localStorage.getItem('hasSeenOpeningBalancePrompt_raw_materials');
+                if (user && user.role === 'admin' && !hasSeenPrompt && rawMaterials.length > 0 && rawMaterials.every(item => item.quantity === 0)) {
+                    setShowOpeningBalancePrompt(true);
+                }
             }
         } catch (e: any) {
             const errorMessage = e.message || 'An unknown error occurred';
-            setError(`Failed to fetch inventory value: ${errorMessage}`);
-            toast({ variant: 'destructive', title: 'Error', description: `Failed to fetch inventory value: ${errorMessage}` });
+            setError(`Failed to fetch inventory: ${errorMessage}`);
+            toast({ variant: 'destructive', title: 'Error', description: `Failed to fetch inventory: ${errorMessage}` });
         } finally {
             setIsLoading(false);
         }
-    }, [user?.company_id, toast]);
+    }, [user, toast]);
 
     useEffect(() => {
         if (user) {
-            fetchInventoryValue();
+            fetchInventory();
         }
-    }, [user, fetchInventoryValue]);
+    }, [user, fetchInventory]);
 
-    const handleRegistrationSuccess = () => {
-        toast({ title: 'Success', description: 'Item registered successfully.' });
-        fetchInventoryValue(); // Refreshes the list, which will also re-check for orphans
+    const handleDataUpdateSuccess = () => {
+        toast({ title: 'Success', description: 'Inventory data has been updated.' });
+        fetchInventory();
+    };
+    
+    // --- NEW: Handler for updating the category ---
+    const handleCategoryChange = async (itemId: number, itemType: string, newCategory: string) => {
+        const { id } = toast({ title: 'Updating Category...', description: <div className="flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Please wait</div> });
+
+        try {
+            const response = await fetch('https://hariindustries.net/api/clearbook/update-item-category.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    company_id: user?.company_id,
+                    item_id: itemId,
+                    item_type: itemType,
+                    new_category: newCategory
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.success === false) {
+                throw new Error(result.error || 'Failed to update category.');
+            }
+
+            toast.update(id, { title: 'Success!', description: 'Item category has been updated.', variant: 'default' });
+            fetchInventory(); // Refresh the data
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+            toast.update(id, { title: 'Update Failed', description: errorMessage, variant: 'destructive' });
+        }
+    };
+
+
+    const handleRowClick = (item: InventoryItem) => {
+        setSelectedItem(item);
+        setIsHistoryDialogOpen(true);
     };
 
     return (
         <>
-            <RegisterItemDialog
-                open={isRegisterItemDialogOpen}
-                onOpenChange={setIsRegisterItemDialogOpen}
-                onSuccess={handleRegistrationSuccess}
-            />
-            {user?.company_id && (
-              <ResolveOrphansDialog
-                  open={isResolveOrphansDialogOpen}
-                  onOpenChange={setIsResolveOrphansDialogOpen}
-                  orphans={orphans}
-                  companyId={user.company_id}
-                  onSuccess={handleRegistrationSuccess} // Re-use the same success handler
-              />
-            )}
+            <RegisterItemDialog open={isRegisterItemDialogOpen} onOpenChange={setIsRegisterItemDialogOpen} onSuccess={handleDataUpdateSuccess} />
+            {user?.company_id && <ResolveOrphansDialog open={isResolveOrphansDialogOpen} onOpenChange={setIsResolveOrphansDialogOpen} orphans={orphans} companyId={user.company_id} onSuccess={handleDataUpdateSuccess} />}
+            {selectedItem && <ItemHistoryDialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen} item={selectedItem} itemType="raw_material" />}
+            <RecordOpeningBalanceDialog open={isOpeningBalanceDialogOpen} onOpenChange={setIsOpeningBalanceDialogOpen} onSuccess={handleDataUpdateSuccess} itemType="raw_material" />
+             <AlertDialog open={false} onOpenChange={() => {}}>{/* Retained for structure */}</AlertDialog>
 
             {orphans.length > 0 && !isLoading && (
-                <Alert className="mb-6 border-amber-500/50 text-amber-900 dark:text-amber-200">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <AlertTitle>Data Inconsistency Detected</AlertTitle>
-                  <AlertDescription>
-                    We found {orphans.length} inventory account(s) in your ledger that are not registered as items.
-                    <Button variant="link" className="p-0 h-auto ml-2 text-amber-900 dark:text-amber-200 font-bold" onClick={() => setIsResolveOrphansDialogOpen(true)}>
-                        Click here to resolve.
-                    </Button>
-                  </AlertDescription>
-                </Alert>
+                 <Alert className="mb-6 border-amber-500/50 text-amber-900 dark:text-amber-200">
+                   <AlertTriangle className="h-4 w-4 text-amber-500" />
+                   <AlertTitle>Data Inconsistency Detected</AlertTitle>
+                   <AlertDescription>
+                     We found {orphans.length} raw material account(s) that are not registered as items.
+                     <Button variant="link" className="p-0 h-auto ml-2 text-amber-900 dark:text-amber-200 font-bold" onClick={() => setIsResolveOrphansDialogOpen(true)}>
+                         Click here to resolve.
+                     </Button>
+                   </AlertDescription>
+                 </Alert>
             )}
 
             <div className="flex justify-between items-center mb-4">
                 <div>
-                    <h1 className="text-2xl font-bold">Inventory Overview</h1>
-                    <p className="text-muted-foreground">An overview of your entire inventory.</p>
+                    <h1 className="text-2xl font-bold">Raw Materials</h1>
+                    <p className="text-muted-foreground">Track and manage all registered raw materials.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={fetchInventoryValue} disabled={isLoading}>
-                        <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                        Refresh
-                    </Button>
-                    <Button size="sm" onClick={() => setIsRegisterItemDialogOpen(true)}>
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Register New Item
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={fetchInventory} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />Refresh</Button>
+                     {user?.role === 'admin' && <Button size="sm" variant="outline" onClick={() => setIsOpeningBalanceDialogOpen(true)}><BookUp className="mr-2 h-4 w-4" />Set Opening Balances</Button>}
+                    <Button size="sm" onClick={() => setIsRegisterItemDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" />Register New Item</Button>
                 </div>
             </div>
 
-            <Card className="mb-6">
-                 <CardHeader>
-                    <CardTitle>Total Inventory Value</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    ) : error ? (
-                         <div className="text-destructive">
-                            <AlertCircle className="inline-block mr-2 h-5 w-5" />
-                            Could not load value.
-                         </div>
-                    ) : (
-                        <p className="text-3xl font-bold">{formatCurrency(totalInventoryValue)}</p>
-                    )}
-                    <p className="text-sm text-muted-foreground mt-1">Combined value of all finished products and raw materials.</p>
-                </CardContent>
-            </Card>
-
-            <div className="grid md:grid-cols-3 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Finished Goods</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-muted-foreground mb-4">Manage products that are ready for sale.</p>
-                        <Link href="/inventory/finished-goods" passHref>
-                           <Button>
-                                View Finished Goods <ArrowRight className="ml-2 h-4 w-4" />
-                           </Button>
-                        </Link>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Raw Materials</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-muted-foreground mb-4">Manage materials used in your production process.</p>
-                         <Link href="/inventory/raw-materials" passHref>
-                           <Button>
-                                View Raw Materials <ArrowRight className="ml-2 h-4 w-4" />
-                           </Button>
-                        </Link>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Work-in-Progress</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-muted-foreground mb-4">Track and manage all items currently in production.</p>
-                         <Link href="/inventory/work-in-progress" passHref>
-                           <Button>
-                                View Work-in-Progress <ArrowRight className="ml-2 h-4 w-4" />
-                           </Button>
-                        </Link>
-                    </CardContent>
-                </Card>
-                {/* Other cards remain unchanged */}
-            </div>
+            {isLoading ? (
+                <div className="flex justify-center items-center py-16"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>
+            ) : error ? (
+                <div className="flex flex-col items-center justify-center py-16 bg-destructive/10 text-destructive rounded-lg"><AlertCircle className="h-10 w-10 mb-2" /><p className="text-lg font-semibold">An Error Occurred</p><p>{error}</p></div>
+            ) : (
+                <InventoryTable items={items} userRole={user?.role} onRowClick={handleRowClick} onCategoryChange={handleCategoryChange} />
+            )}
         </>
     );
 };
 
-export default InventoryPage;
+// --- NEW: Editable Category Cell Component ---
+const EditableCategoryCell = ({ item, userRole, onCategoryChange }: { item: InventoryItem, userRole: string | undefined, onCategoryChange: (itemId: number, itemType: string, newCategory: string) => void }) => {
+    if (userRole !== 'admin') {
+        return <TableCell>{item.category}</TableCell>;
+    }
+
+    return (
+        <TableCell onClick={(e) => e.stopPropagation()}>
+            <Select
+                value={item.category}
+                onValueChange={(newCategory) => onCategoryChange(item.id, item.item_type, newCategory)}
+            >
+                <SelectTrigger className="h-8 text-xs"> 
+                    <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                    {CATEGORY_OPTIONS.map(option => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </TableCell>
+    );
+};
+
+
+const InventoryTable = ({ items, userRole, onRowClick, onCategoryChange }: { items: InventoryItem[], userRole: string | undefined, onRowClick: (item: InventoryItem) => void, onCategoryChange: (itemId: number, itemType: string, newCategory: string) => void }) => (
+    <Card>
+        <CardContent className="pt-6">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Unit of Measure</TableHead>
+                        {userRole !== 'staff' && <TableHead className="text-right">Avg. Unit Cost</TableHead>}
+                        <TableHead className="text-right">Stock on Hand</TableHead>
+                        {userRole !== 'staff' && <TableHead className="text-right">Total Value</TableHead>}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {items.map((item) => (
+                        <TableRow key={item.id} onClick={() => onRowClick(item)} className="cursor-pointer">
+                            <TableCell className="font-mono">{item.sku || 'N/A'}</TableCell>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            {/* --- Use the new EditableCategoryCell --- */}
+                            <EditableCategoryCell item={item} userRole={userRole} onCategoryChange={onCategoryChange} />
+                            <TableCell>{item.unit_of_measure}</TableCell>
+                            {userRole !== 'staff' && <TableCell className="text-right font-mono">{formatCurrency(item.unit_cost)}</TableCell>}
+                            <TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
+                            {userRole !== 'staff' && <TableCell className="text-right font-mono">{formatCurrency(item.total_value)}</TableCell>}
+                        </TableRow>
+                    ))}
+                </TableBody>
+                 {userRole !== 'staff' && items.length > 0 && <TableFooter>
+                    <TableRow>
+                        <TableCell colSpan={6} className="text-right font-bold">Total Value</TableCell>
+                        <TableCell className="text-right font-bold font-mono">{formatCurrency(items.reduce((acc, item) => acc + item.total_value, 0))}</TableCell>
+                    </TableRow>
+                </TableFooter>}
+            </Table>
+            {items.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                    <p>No raw materials registered yet.</p>
+                    {userRole === 'admin' && <p className="mt-2 text-sm">You can add your initial inventory using the &quot;Set Opening Balances&quot; button.</p>}
+                </div>
+            )}
+        </CardContent>
+    </Card>
+);
+
+export default RawMaterialsPage;
