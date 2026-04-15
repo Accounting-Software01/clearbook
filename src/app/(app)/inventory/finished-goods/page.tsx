@@ -23,7 +23,7 @@ import { RegisterItemDialog } from '@/components/RegisterItemDialog';
 import { PriceTierManagerDialog } from '@/components/PriceTierManagerDialog';
 import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
-import { EditFinishedGoodDialog } from '@/components/inventory/EditFinishedGoodDialog'; // Import the new dialog
+import { EditProductDialog } from '@/components/inventory/EditProductDialog'; // Corrected import path
 import { ResolveOrphansDialog, OrphanItem } from '@/components/inventory/ResolveOrphansDialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
@@ -161,7 +161,7 @@ const FinishedGoodsPage = () => {
         <>
             {/* --- DIALOGS --- */}
             <RegisterItemDialog open={isRegisterItemDialogOpen} onOpenChange={setIsRegisterItemDialogOpen} onSuccess={handleDataUpdateSuccess} />
-            <EditFinishedGoodDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} item={itemToManage} onSuccess={handleDataUpdateSuccess} />
+            <EditProductDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} item={itemToManage} onSuccess={handleDataUpdateSuccess} />
             <PriceTierManagerDialog open={isPriceTierDialogOpen} onOpenChange={setIsPriceTierDialogOpen} product={itemToManage ? { id: itemToManage.id, name: itemToManage.name } : null} />
             {user?.company_id && <ResolveOrphansDialog open={isResolveOrphansDialogOpen} onOpenChange={setIsResolveOrphansDialogOpen} orphans={orphans} companyId={user.company_id} onSuccess={handleDataUpdateSuccess} />}
             {selectedItem && <ItemHistoryDialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen} item={selectedItem} itemType="product" />}
