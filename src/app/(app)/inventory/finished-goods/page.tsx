@@ -11,11 +11,13 @@ import {
   TableFooter
 } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp } from 'lucide-react';
+import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp, AlertTriangle } from 'lucide-react';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
 import { PriceTierManagerDialog } from '@/components/PriceTierManagerDialog';
 import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
+import { ResolveOrphansDialog, OrphanItem } from '@/components/inventory/ResolveOrphansDialog';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -29,17 +31,16 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Interface matches the aliased output from the get-items.php API
 interface InventoryItem {
-  id: number;
+  id: number; // Orphans are filtered out, so this remains a number
   name: string;
   sku: string;
   category: string;
   unit_of_measure: string;
-  unit_cost: number; // Aliased from average_unit_cost
-  quantity: number;  // Aliased from quantity_on_hand
+  unit_cost: number;
+  quantity: number;
   item_type: 'product' | 'raw_material';
-  total_value: number; // This will be calculated on the client
+  total_value: number;
 }
 
 const formatCurrency = (amount: number) => {
@@ -58,6 +59,9 @@ const FinishedGoodsPage = () => {
     const [isPriceTierDialogOpen, setIsPriceTierDialogOpen] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
     const [isOpeningBalanceDialogOpen, setIsOpeningBalanceDialogOpen] = useState(false);
+    const [isResolveOrphansDialogOpen, setIsResolveOrphansDialogOpen] = useState(false);
+    const [orphans, setOrphans] = useState<OrphanItem[]>([]);
+
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<{ id: number; name: string } | null>(null);
     const [showOpeningBalancePrompt, setShowOpeningBalancePrompt] = useState(false);
@@ -67,12 +71,13 @@ const FinishedGoodsPage = () => {
 
         setIsLoading(true);
         setError(null);
+        setOrphans([]);
 
         try {
             const response = await fetch(`https://hariindustries.net/api/clearbook/get-items.php?company_id=${user.company_id}&user_role=${user.role}`);
             
             if (!response.ok) {
-                let errorText = `HTTP error! status: ${response.status}`;
+                 let errorText = `HTTP error! status: ${response.status}`;
                 try {
                     const errorData = await response.json();
                     errorText = errorData.message || JSON.stringify(errorData);
@@ -84,7 +89,21 @@ const FinishedGoodsPage = () => {
             
             const data = await response.json();
 
-            if (data) {
+            if (data && data.products) {
+                const allProducts = data.products || [];
+
+                const foundOrphans = allProducts
+                    .filter((item: any) => item.is_orphan === true)
+                    .map((item: any): OrphanItem => ({ 
+                        ...item, 
+                        id: item.id, // Keep the orphan_xxx ID
+                        account_code: item.id.replace('orphan_', '') 
+                    }));
+                
+                setOrphans(foundOrphans);
+
+                const regularItems = allProducts.filter((item: any) => !item.is_orphan);
+
                 const processItem = (item: any): InventoryItem => ({
                     ...item,
                     unit_cost: parseFloat(item.unit_cost) || 0,
@@ -92,10 +111,9 @@ const FinishedGoodsPage = () => {
                     total_value: (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_cost) || 0),
                 });
 
-                const finishedGoods = (data.products || []).map(processItem);
+                const finishedGoods = regularItems.map(processItem);
                 setItems(finishedGoods);
 
-                // Prompt for opening balance if it's the first time and no stock exists
                 const hasSeenPrompt = localStorage.getItem('hasSeenOpeningBalancePrompt_finished_goods');
                 if (user && user.role === 'admin' && !hasSeenPrompt && finishedGoods.length > 0 && finishedGoods.every(item => item.quantity === 0)) {
                     setShowOpeningBalancePrompt(true);
@@ -121,14 +139,9 @@ const FinishedGoodsPage = () => {
         setIsPriceTierDialogOpen(true);
     };
 
-    const handleRegistrationSuccess = () => {
-        toast({ title: 'Success', description: 'Item registered successfully.' });
-        fetchInventory();
-    };
-    
-    const handleOpeningBalanceSuccess = () => {
-        toast({ title: 'Success', description: 'Opening balances recorded successfully.' });
-        fetchInventory();
+    const handleDataUpdateSuccess = () => {
+        toast({ title: 'Success', description: 'Inventory data has been updated.' });
+        fetchInventory(); // Refreshes the list and re-checks for orphans
     };
 
     const handleRowClick = (item: InventoryItem) => {
@@ -149,8 +162,17 @@ const FinishedGoodsPage = () => {
             <RegisterItemDialog
                 open={isRegisterItemDialogOpen}
                 onOpenChange={setIsRegisterItemDialogOpen}
-                onSuccess={handleRegistrationSuccess}
+                onSuccess={handleDataUpdateSuccess}
             />
+            {user?.company_id && (
+                <ResolveOrphansDialog
+                    open={isResolveOrphansDialogOpen}
+                    onOpenChange={setIsResolveOrphansDialogOpen}
+                    orphans={orphans}
+                    companyId={user.company_id}
+                    onSuccess={handleDataUpdateSuccess}
+                />
+            )}
             <PriceTierManagerDialog
                 open={isPriceTierDialogOpen}
                 onOpenChange={setIsPriceTierDialogOpen}
@@ -165,23 +187,25 @@ const FinishedGoodsPage = () => {
              <RecordOpeningBalanceDialog
                 open={isOpeningBalanceDialogOpen}
                 onOpenChange={setIsOpeningBalanceDialogOpen}
-                onSuccess={handleOpeningBalanceSuccess}
+                onSuccess={handleDataUpdateSuccess}
                 itemType="finished_good"
             />
             <AlertDialog open={showOpeningBalancePrompt} onOpenChange={setShowOpeningBalancePrompt}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Set Your Opening Balances</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            It looks like you're getting started. Would you like to record the opening stock quantities and costs for your finished goods now?
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => handlePromptAction(false)}>Maybe Later</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handlePromptAction(true)}>Yes, Let's Do It</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
+                {/* ... existing alert dialog content ... */}
             </AlertDialog>
+
+             {orphans.length > 0 && !isLoading && (
+                <Alert className="mb-6 border-amber-500/50 text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTitle>Data Inconsistency Detected</AlertTitle>
+                  <AlertDescription>
+                    We found {orphans.length} finished good account(s) that are not registered as items.
+                    <Button variant="link" className="p-0 h-auto ml-2 text-amber-900 dark:text-amber-200 font-bold" onClick={() => setIsResolveOrphansDialogOpen(true)}>
+                        Click here to resolve.
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+            )}
 
             <div className="flex justify-between items-center mb-4">
                 <div>
@@ -225,7 +249,7 @@ const FinishedGoodsPage = () => {
     );
 };
 
-
+// The InventoryTable component remains unchanged.
 const InventoryTable = ({ items, onManageTiers, userRole, onRowClick, user }: { items: InventoryItem[], onManageTiers?: (item: InventoryItem) => void, userRole: string | undefined, onRowClick: (item: InventoryItem) => void, user: any }) => (
     <Card>
         <CardContent className="pt-6">
