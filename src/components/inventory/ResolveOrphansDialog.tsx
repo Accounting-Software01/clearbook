@@ -95,7 +95,7 @@ export function ResolveOrphansDialog({
     };
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bulk-register-orphans.php`, {
+      const response = await fetch(`https://hariindustries.net/api/clearbook/bulk-register-orphans.php`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
