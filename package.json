@@ -44,6 +44,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/qrcode.react": "^1.0.5",
+    "@vercel/speed-insights": "^2.0.0",
     "bcrypt": "^6.0.0",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",

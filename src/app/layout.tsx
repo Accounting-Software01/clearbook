@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import AppLayout from './AppLayout';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider } from '@/hooks/useAuth';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   title: 'Hari Ind.',
@@ -33,6 +34,7 @@ export default function RootLayout({
             <Toaster />
           </LanguageProvider>
         </AuthProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
