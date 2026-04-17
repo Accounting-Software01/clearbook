@@ -37,7 +37,8 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@/components/ui/tabs';import {
+} from '@/components/ui/tabs';
+import {
   Download,
   Printer,
   FileText,
@@ -94,7 +95,8 @@ import {
   Factory,
   Wrench,
   Sparkles,
-  Loader2
+  Loader2,
+  BadgeCheck,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -102,6 +104,15 @@ import { Separator } from '@/components/ui/separator';
 import { format, parseISO, isValid, startOfMonth, endOfMonth } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+/* =====================================================
+   BRAND PALETTE
+===================================================== */
+const BRAND = {
+  green:  '#28a745',
+  orange: '#e05030',
+  blue:   '#2563c0',
+} as const;
 
 /* =====================================================
    TYPES
@@ -176,13 +187,66 @@ interface PeriodSummary {
    UTILITY FUNCTIONS
 ===================================================== */
 
+/**
+ * Format a currency amount with correct sign handling.
+ *
+ * Rules:
+ *  • amount === 0              → "₦0.00"          (never negative)
+ *  • amount > 0                → "₦X,XXX.XX"
+ *  • amount < 0                → "-₦X,XXX.XX"     (use Math.abs so Intl doesn't double-sign)
+ */
 const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-NG', {
+  // Guard against NaN / undefined
+  if (typeof amount !== 'number' || isNaN(amount)) return '₦0.00';
+
+  // Treat true zero as zero — prevents "-₦0.00" edge case
+  const safeAmount = Object.is(amount, -0) ? 0 : amount;
+
+  const formatted = new Intl.NumberFormat('en-NG', {
     style: 'currency',
     currency: 'NGN',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(amount);
+    maximumFractionDigits: 2,
+  }).format(Math.abs(safeAmount));
+
+  return safeAmount < 0 ? `-${formatted}` : formatted;
+};
+
+/**
+ * Resolve a raw balance number into a display-ready object.
+ *
+ *  balance > 0  → customer owes us  → "Receivable" (red)
+ *  balance < 0  → we owe customer   → "Payable"    (orange)
+ *  balance === 0 → settled           → "Settled"    (green)
+ */
+const resolveBalance = (balance: number) => {
+  const safe = Object.is(balance, -0) ? 0 : balance;
+  if (safe === 0) {
+    return {
+      label: 'Settled',
+      color: BRAND.green,
+      bgClass: 'bg-green-50',
+      textClass: 'text-green-600',
+      display: '₦0.00',
+    };
+  }
+  if (safe > 0) {
+    return {
+      label: 'Receivable',
+      color: BRAND.orange,
+      bgClass: 'bg-red-50',
+      textClass: 'text-red-600',
+      display: formatCurrency(safe),
+    };
+  }
+  // safe < 0
+  return {
+    label: 'Payable',
+    color: BRAND.blue,
+    bgClass: 'bg-blue-50',
+    textClass: 'text-blue-600',
+    display: formatCurrency(safe), // already prefixes "-"
+  };
 };
 
 const formatDate = (dateString: string): string => {
@@ -199,17 +263,17 @@ const formatDateTime = (dateString: string): string => {
 
 const getStatusBadge = (status: string) => {
   const statusMap: Record<string, { color: string; icon: any }> = {
-    'Active': { color: 'bg-green-100 text-green-800', icon: CheckCircle },
-    'Inactive': { color: 'bg-gray-100 text-gray-800', icon: Clock },
-    'Overdue': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
-    'Pending': { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    'Paid': { color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
-    'Partial': { color: 'bg-orange-100 text-orange-800', icon: AlertCircle }
+    Active:   { color: 'bg-green-100 text-green-800', icon: CheckCircle },
+    Inactive: { color: 'bg-gray-100 text-gray-800',   icon: Clock },
+    Overdue:  { color: 'bg-red-100 text-red-800',     icon: AlertCircle },
+    Pending:  { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+    Paid:     { color: 'bg-blue-100 text-blue-800',   icon: CheckCircle },
+    Partial:  { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
   };
-  
+
   const config = statusMap[status] || { color: 'bg-gray-100 text-gray-800', icon: Clock };
   const Icon = config.icon;
-  
+
   return (
     <Badge className={`${config.color} flex items-center gap-1`}>
       <Icon className="h-3 w-3" />
@@ -220,14 +284,14 @@ const getStatusBadge = (status: string) => {
 
 const getTransactionIcon = (type: string) => {
   const iconMap: Record<string, any> = {
-    'Invoice': FileText,
-    'Receipt': Receipt,
-    'Payment': CreditCardIcon,
-    'Credit Note': FileSignature,
-    'Journal': FileText,
-    'Adjustment': Calculator,
-    'Refund': ArrowDownRight,
-    'Opening Balance': Archive
+    Invoice:          FileText,
+    Receipt:          Receipt,
+    Payment:          CreditCardIcon,
+    'Credit Note':    FileSignature,
+    Journal:          FileText,
+    Adjustment:       Calculator,
+    Refund:           ArrowDownRight,
+    'Opening Balance': Archive,
   };
   return iconMap[type] || FileText;
 };
@@ -285,7 +349,20 @@ const CustomerHeader = ({ customer }: { customer: CustomerProfile }) => (
           </div>
         </div>
       </div>
-      
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm">
+          <Edit className="h-4 w-4 mr-2" />
+          Edit
+        </Button>
+        <Button variant="outline" size="sm">
+          <Mail className="h-4 w-4 mr-2" />
+          Contact
+        </Button>
+        <Button variant="outline" size="sm">
+          <Printer className="h-4 w-4 mr-2" />
+          Print
+        </Button>
+      </div>
     </div>
   </div>
 );
@@ -296,32 +373,32 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
       title: 'Basic Information',
       icon: User,
       items: [
-        { label: 'Customer Type', value: customer.customer_type },
+        { label: 'Customer Type',    value: customer.customer_type },
         { label: 'Registration No.', value: customer.registration_number || 'N/A' },
-        { label: 'Tax ID', value: customer.tax_id || 'N/A' },
-        { label: 'Created On', value: formatDate(customer.created_at || '') },
-      ]
+        { label: 'Tax ID',           value: customer.tax_id || 'N/A' },
+        { label: 'Created On',       value: formatDate(customer.created_at || '') },
+      ],
     },
     {
       title: 'Contact Details',
       icon: Phone,
       items: [
-        { label: 'Primary Phone', value: customer.primary_phone_number || 'N/A' },
+        { label: 'Primary Phone',   value: customer.primary_phone_number || 'N/A' },
         { label: 'Secondary Phone', value: customer.secondary_phone_number || 'N/A' },
-        { label: 'Email', value: customer.email_address || 'N/A' },
-        { label: 'Address', value: customer.address || 'N/A' },
-      ]
+        { label: 'Email',           value: customer.email_address || 'N/A' },
+        { label: 'Address',         value: customer.address || 'N/A' },
+      ],
     },
     {
       title: 'Financial Details',
       icon: DollarSign,
       items: [
-        { label: 'Credit Limit', value: formatCurrency(customer.credit_limit) },
-        { label: 'Payment Terms', value: customer.payment_terms || 'N/A' },
-        { label: 'Credit Days', value: customer.credit_days ? `${customer.credit_days} days` : 'N/A' },
+        { label: 'Credit Limit',      value: formatCurrency(customer.credit_limit) },
+        { label: 'Payment Terms',     value: customer.payment_terms || 'N/A' },
+        { label: 'Credit Days',       value: customer.credit_days ? `${customer.credit_days} days` : 'N/A' },
         { label: 'Preferred Payment', value: customer.preferred_payment_method || 'N/A' },
-      ]
-    }
+      ],
+    },
   ];
 
   return (
@@ -355,16 +432,21 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
   );
 };
 
-const FinancialSummaryCard = ({ 
-  ledger, 
-  balance, 
+/* ───────────────────────────────────────────────────────
+   FinancialSummaryCard  — KEY FIX IS HERE
+   Uses resolveBalance() so zero always renders as ₦0.00
+   with a "Settled" label, never as a negative figure.
+─────────────────────────────────────────────────────── */
+const FinancialSummaryCard = ({
+  ledger,
+  balance,
   creditLimit,
   customer,
   onExportPDF,
   onExportExcel,
   onPrint,
-  isLoading
-}: { 
+  isLoading,
+}: {
   ledger: LedgerTransaction[];
   balance: number;
   creditLimit: number;
@@ -375,25 +457,26 @@ const FinancialSummaryCard = ({
   isLoading: boolean;
 }) => {
   const totals = useMemo(() => {
-    const totalDebit = ledger.reduce((sum, l) => sum + l.debit, 0);
+    const totalDebit  = ledger.reduce((sum, l) => sum + l.debit,  0);
     const totalCredit = ledger.reduce((sum, l) => sum + l.credit, 0);
-    const totalTransactions = ledger.length;
     const overdueAmount = ledger
       .filter(l => l.status === 'Overdue')
       .reduce((sum, l) => sum + l.debit, 0);
-    
-    return { totalDebit, totalCredit, totalTransactions, overdueAmount };
+    return { totalDebit, totalCredit, totalTransactions: ledger.length, overdueAmount };
   }, [ledger]);
 
-  const creditUtilization = creditLimit > 0 ? (balance / creditLimit) * 100 : 0;
+  const creditUtilization = creditLimit > 0 ? (Math.abs(balance) / creditLimit) * 100 : 0;
+
+  // ── The resolved balance object drives ALL balance-related display ──
+  const bal = resolveBalance(balance);
 
   return (
-    <Card className="border border-gray-200 mb-6">
+    <Card className="border border-gray-200 mb-6 border-t-4" style={{ borderTopColor: BRAND.green }}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-green-50 rounded-lg">
-              <BarChart3 className="h-5 w-5 text-green-600" />
+              <BarChart3 className="h-5 w-5" style={{ color: BRAND.green }} />
             </div>
             <div>
               <CardTitle className="text-lg">Financial Summary</CardTitle>
@@ -403,48 +486,43 @@ const FinancialSummaryCard = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={onExportPDF}
-              disabled={isLoading}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              PDF
+            <Button variant="outline" size="sm" onClick={onExportPDF} disabled={isLoading}
+              style={{ borderColor: BRAND.orange, color: BRAND.orange }} className="hover:bg-orange-50">
+              <FileText className="h-4 w-4 mr-2" /> PDF
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={onExportExcel}
-              disabled={isLoading}
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Excel
+            <Button variant="outline" size="sm" onClick={onExportExcel} disabled={isLoading}
+              style={{ borderColor: BRAND.green, color: BRAND.green }} className="hover:bg-green-50">
+              <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={onPrint}
-              disabled={isLoading}
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              Print
+            <Button variant="outline" size="sm" onClick={onPrint} disabled={isLoading}
+              style={{ borderColor: BRAND.blue, color: BRAND.blue }} className="hover:bg-blue-50">
+              <Printer className="h-4 w-4 mr-2" /> Print
             </Button>
           </div>
         </div>
       </CardHeader>
+
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-4 bg-gray-50 rounded-lg">
+
+          {/* ── Current Balance tile ── */}
+          <div className={`p-4 rounded-lg ${bal.bgClass}`}>
             <div className="text-sm text-gray-600 mb-1">Current Balance</div>
-            <div className={`text-2xl font-bold ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {formatCurrency(balance)}
+            <div className={`text-2xl font-bold ${bal.textClass}`}>
+              {bal.display}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {balance > 0 ? 'Receivable' : 'Payable'}
+            <div className="flex items-center gap-1 mt-1">
+              {balance === 0
+                ? <BadgeCheck className="h-3 w-3 text-green-500" />
+                : balance > 0
+                  ? <TrendingUp className="h-3 w-3 text-red-400" />
+                  : <TrendingDown className="h-3 w-3 text-blue-400" />
+              }
+              <span className="text-xs text-gray-500">{bal.label}</span>
             </div>
           </div>
-          
+
+          {/* Total Debit */}
           <div className="p-4 bg-blue-50 rounded-lg">
             <div className="text-sm text-gray-600 mb-1">Total Debit</div>
             <div className="text-2xl font-bold text-blue-600">
@@ -454,17 +532,17 @@ const FinancialSummaryCard = ({
               From {totals.totalTransactions} transactions
             </div>
           </div>
-          
+
+          {/* Total Credit */}
           <div className="p-4 bg-green-50 rounded-lg">
             <div className="text-sm text-gray-600 mb-1">Total Credit</div>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold" style={{ color: BRAND.green }}>
               {formatCurrency(totals.totalCredit)}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Payments & adjustments
-            </div>
+            <div className="text-xs text-gray-500 mt-1">Payments & adjustments</div>
           </div>
-          
+
+          {/* Credit Utilization */}
           <div className="p-4 bg-orange-50 rounded-lg">
             <div className="text-sm text-gray-600 mb-1">Credit Utilization</div>
             <div className="text-2xl font-bold text-orange-600">
@@ -475,12 +553,27 @@ const FinancialSummaryCard = ({
             </div>
           </div>
         </div>
-        
+
+        {/* Overdue alert */}
         {totals.overdueAmount > 0 && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-2 text-red-700">
               <AlertCircle className="h-4 w-4" />
-              <span className="font-medium">Overdue Amount: {formatCurrency(totals.overdueAmount)}</span>
+              <span className="font-medium">
+                Overdue Amount: {formatCurrency(totals.overdueAmount)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Settled banner — shown only when balance is exactly 0 */}
+        {balance === 0 && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2" style={{ color: BRAND.green }}>
+              <BadgeCheck className="h-4 w-4" />
+              <span className="font-medium">
+                This account is fully settled — no outstanding balance.
+              </span>
             </div>
           </div>
         )}
@@ -489,22 +582,26 @@ const FinancialSummaryCard = ({
   );
 };
 
-const LedgerTable = ({ 
-  ledger, 
-  periodSummary 
-}: { 
+/* ───────────────────────────────────────────────────────
+   LedgerTable — balance column also uses formatCurrency
+   which now correctly renders 0 as ₦0.00
+─────────────────────────────────────────────────────── */
+const LedgerTable = ({
+  ledger,
+  periodSummary,
+}: {
   ledger: LedgerTransaction[];
   periodSummary?: PeriodSummary;
 }) => {
-  const [filterType, setFilterType] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [filterType, setFilterType]   = useState<string>('all');
+  const [searchTerm, setSearchTerm]   = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 10;
 
   const filteredLedger = useMemo(() => {
     return ledger.filter(transaction => {
-      const matchesType = filterType === 'all' || transaction.type === filterType;
-      const matchesSearch = 
+      const matchesType   = filterType === 'all' || transaction.type === filterType;
+      const matchesSearch =
         searchTerm === '' ||
         transaction.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
         transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -512,32 +609,48 @@ const LedgerTable = ({
     });
   }, [ledger, filterType, searchTerm]);
 
-  const totalPages = Math.ceil(filteredLedger.length / itemsPerPage);
+  const totalPages     = Math.ceil(filteredLedger.length / itemsPerPage);
   const paginatedLedger = filteredLedger.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   const transactionTypes = Array.from(new Set(ledger.map(t => t.type)));
 
+  /**
+   * Render the running Balance cell.
+   *
+   * • 0 or -0  → grey "₦0.00"   (settled row — no false negative)
+   * • > 0      → red   (receivable)
+   * • < 0      → blue  (payable / credit)
+   */
+  const renderBalanceCell = (rawBalance: number) => {
+    const safe = Object.is(rawBalance, -0) ? 0 : rawBalance;
+    if (safe === 0) {
+      return <span className="text-gray-400 font-bold">₦0.00</span>;
+    }
+    if (safe > 0) {
+      return <span className="text-red-600 font-bold">{formatCurrency(safe)}</span>;
+    }
+    return <span className="font-bold" style={{ color: BRAND.blue }}>{formatCurrency(safe)}</span>;
+  };
+
   return (
-    <Card className="border border-gray-200">
+    <Card className="border border-gray-200 border-t-4" style={{ borderTopColor: BRAND.blue }}>
       <CardHeader className="pb-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-lg">Ledger Transactions</CardTitle>
-            <CardDescription>
-              Showing {filteredLedger.length} transactions
-            </CardDescription>
+            <CardDescription>Showing {filteredLedger.length} transactions</CardDescription>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search transactions..."
                 className="pl-9 w-full sm:w-64"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={e => setSearchTerm(e.target.value)}
               />
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
@@ -554,33 +667,29 @@ const LedgerTable = ({
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent>
+        {/* Period summary strip */}
         {periodSummary && (
           <div className="mb-4 p-3 bg-gray-50 rounded-lg">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <div className="text-sm text-gray-600">Opening Balance</div>
-                <div className="text-lg font-semibold">
-                  {formatCurrency(periodSummary.opening_balance)}
-                </div>
+                <div className="text-lg font-semibold">{formatCurrency(periodSummary.opening_balance)}</div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Total Debit</div>
-                <div className="text-lg font-semibold text-red-600">
-                  {formatCurrency(periodSummary.total_debit)}
-                </div>
+                <div className="text-lg font-semibold text-red-600">{formatCurrency(periodSummary.total_debit)}</div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Total Credit</div>
-                <div className="text-lg font-semibold text-green-600">
-                  {formatCurrency(periodSummary.total_credit)}
-                </div>
+                <div className="text-lg font-semibold" style={{ color: BRAND.green }}>{formatCurrency(periodSummary.total_credit)}</div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Closing Balance</div>
-                <div className="text-lg font-semibold">
-                  {formatCurrency(periodSummary.closing_balance)}
+                {/* Also uses resolveBalance for the closing balance pill */}
+                <div className={`text-lg font-semibold ${resolveBalance(periodSummary.closing_balance).textClass}`}>
+                  {resolveBalance(periodSummary.closing_balance).display}
                 </div>
               </div>
             </div>
@@ -607,9 +716,7 @@ const LedgerTable = ({
                   const TransactionIcon = getTransactionIcon(transaction.type);
                   return (
                     <TableRow key={index} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">
-                        {formatDate(transaction.date)}
-                      </TableCell>
+                      <TableCell className="font-medium">{formatDate(transaction.date)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <TransactionIcon className="h-4 w-4 text-gray-500" />
@@ -617,33 +724,26 @@ const LedgerTable = ({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-mono text-sm">
-                          {transaction.reference}
-                        </span>
+                        <span className="font-mono text-sm">{transaction.reference}</span>
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {transaction.description}
-                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">{transaction.description}</TableCell>
                       <TableCell className="text-right font-medium">
                         {transaction.debit > 0 ? (
-                          <span className="text-red-600">
-                            {formatCurrency(transaction.debit)}
-                          </span>
+                          <span className="text-red-600">{formatCurrency(transaction.debit)}</span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {transaction.credit > 0 ? (
-                          <span className="text-green-600">
-                            {formatCurrency(transaction.credit)}
-                          </span>
+                          <span style={{ color: BRAND.green }}>{formatCurrency(transaction.credit)}</span>
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-bold">
-                        {formatCurrency(transaction.balance)}
+                      {/* Running balance — zero-safe renderer */}
+                      <TableCell className="text-right">
+                        {renderBalanceCell(transaction.balance)}
                       </TableCell>
                       <TableCell>
                         {transaction.status ? getStatusBadge(transaction.status) : '-'}
@@ -663,54 +763,39 @@ const LedgerTable = ({
           </Table>
         </div>
 
+        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
-            <div className="text-sm text-gray-600">
-              Page {currentPage} of {totalPages}
-            </div>
+            <div className="text-sm text-gray-600">Page {currentPage} of {totalPages}</div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
+              <Button variant="outline" size="sm"
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
+                disabled={currentPage === 1}>
+                <ChevronLeft className="h-4 w-4" /> Previous
               </Button>
               <div className="flex items-center gap-1">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
+                  let pageNum: number;
+                  if (totalPages <= 5)              pageNum = i + 1;
+                  else if (currentPage <= 3)         pageNum = i + 1;
+                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else                               pageNum = currentPage - 2 + i;
                   return (
-                    <Button
-                      key={pageNum}
-                      variant={currentPage === pageNum ? "default" : "outline"}
+                    <Button key={pageNum}
+                      variant={currentPage === pageNum ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setCurrentPage(pageNum)}
                       className="w-8 h-8 p-0"
-                    >
+                      style={currentPage === pageNum ? { backgroundColor: BRAND.green } : {}}>
                       {pageNum}
                     </Button>
                   );
                 })}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
+              <Button variant="outline" size="sm"
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-                <ChevronRight className="h-4 w-4" />
+                disabled={currentPage === totalPages}>
+                Next <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -721,116 +806,85 @@ const LedgerTable = ({
 };
 
 /* =====================================================
-   PDF EXPORT FUNCTION
+   PDF EXPORT
 ===================================================== */
 
 const generateProfessionalPDF = (
   customer: CustomerProfile,
   ledger: LedgerTransaction[],
   periodSummary?: PeriodSummary,
-  companyName?: string
 ) => {
   const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageWidth  = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  
-  // Header with company info
-  doc.setFontSize(16);
-  doc.setTextColor(40, 40, 40);
-  doc.text(companyName || 'HARI & CO', pageWidth / 2, 15, { align: 'center' });
-  
-  doc.setFontSize(10);
-  doc.setTextColor(100, 100, 100);
+
+  doc.setFontSize(16); doc.setTextColor(40, 40, 40);
+  doc.text('CLEARBOOKS ACCOUNTING', pageWidth / 2, 15, { align: 'center' });
+  doc.setFontSize(10); doc.setTextColor(100, 100, 100);
   doc.text('Customer Ledger Report', pageWidth / 2, 22, { align: 'center' });
-  
   doc.setFontSize(9);
   doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth - 10, 15, { align: 'right' });
-  
-  // Separator line
   doc.setDrawColor(200, 200, 200);
   doc.line(10, 30, pageWidth - 10, 30);
-  
-  // Customer Information Section
-  doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
+
+  doc.setFontSize(11); doc.setTextColor(40, 40, 40);
   doc.text('CUSTOMER INFORMATION', 14, 40);
-  
+
+  const balDisplay = resolveBalance(customer.balance).display;
+
   doc.setFontSize(9);
-  const customerInfo = [
-    [`Customer Name:`, customer.customer_name],
-    [`Customer ID:`, customer.customer_id],
-    [`Customer Type:`, customer.customer_type],
-    [`Status:`, customer.status],
-    [`Balance:`, formatCurrency(customer.balance)],
-    [`Credit Limit:`, formatCurrency(customer.credit_limit)],
-    [`Phone:`, customer.primary_phone_number || 'N/A'],
-    [`Email:`, customer.email_address || 'N/A'],
+  const customerInfo: [string, string][] = [
+    ['Customer Name:', customer.customer_name],
+    ['Customer ID:',   customer.customer_id],
+    ['Customer Type:', customer.customer_type],
+    ['Status:',        customer.status],
+    ['Balance:',       balDisplay],
+    ['Credit Limit:',  formatCurrency(customer.credit_limit)],
+    ['Phone:',         customer.primary_phone_number || 'N/A'],
+    ['Email:',         customer.email_address || 'N/A'],
   ];
-  
+
   let yPos = 50;
   customerInfo.forEach(([label, value]) => {
-    doc.setTextColor(100, 100, 100);
-    doc.text(label, 14, yPos);
-    doc.setTextColor(40, 40, 40);
-    doc.text(value, 60, yPos);
+    doc.setTextColor(100, 100, 100); doc.text(label, 14, yPos);
+    doc.setTextColor(40, 40, 40);   doc.text(value,  60, yPos);
     yPos += 6;
   });
-  
-  // Period Summary if available
+
   if (periodSummary) {
     yPos += 5;
-    doc.setFontSize(11);
-    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(11); doc.setTextColor(40, 40, 40);
     doc.text('PERIOD SUMMARY', 14, yPos);
     yPos += 10;
-    
     doc.setFontSize(9);
-    const summaryData = [
+    [
       ['Opening Balance', formatCurrency(periodSummary.opening_balance)],
-      ['Total Debit', formatCurrency(periodSummary.total_debit)],
-      ['Total Credit', formatCurrency(periodSummary.total_credit)],
-      ['Closing Balance', formatCurrency(periodSummary.closing_balance)],
-    ];
-    
-    summaryData.forEach(([label, value]) => {
-      doc.setTextColor(100, 100, 100);
-      doc.text(label, 14, yPos);
-      doc.setTextColor(40, 40, 40);
-      doc.text(value, 80, yPos);
+      ['Total Debit',     formatCurrency(periodSummary.total_debit)],
+      ['Total Credit',    formatCurrency(periodSummary.total_credit)],
+      ['Closing Balance', resolveBalance(periodSummary.closing_balance).display],
+    ].forEach(([label, value]) => {
+      doc.setTextColor(100, 100, 100); doc.text(label, 14, yPos);
+      doc.setTextColor(40, 40, 40);   doc.text(value,  80, yPos);
       yPos += 6;
     });
   }
-  
-  // Ledger Table
+
   yPos += 10;
-  const tableHeaders = [
-    ['Date', 'Voucher Type', 'Voucher No.', 'Particulars', 'Debit', 'Credit', 'Balance']
-  ];
-  
-  const tableData = ledger.map(transaction => [
-    formatDate(transaction.date),
-    transaction.type,
-    transaction.reference,
-    transaction.description.substring(0, 30) + (transaction.description.length > 30 ? '...' : ''),
-    transaction.debit > 0 ? formatCurrency(transaction.debit) : '-',
-    transaction.credit > 0 ? formatCurrency(transaction.credit) : '-',
-    formatCurrency(transaction.balance)
-  ]);
-  
   autoTable(doc, {
     startY: yPos,
-    head: tableHeaders,
-    body: tableData,
+    head: [['Date', 'Voucher Type', 'Voucher No.', 'Particulars', 'Debit', 'Credit', 'Balance']],
+    body: ledger.map(t => [
+      formatDate(t.date),
+      t.type,
+      t.reference,
+      t.description.substring(0, 30) + (t.description.length > 30 ? '...' : ''),
+      t.debit  > 0 ? formatCurrency(t.debit)  : '-',
+      t.credit > 0 ? formatCurrency(t.credit) : '-',
+      resolveBalance(t.balance).display,   // zero-safe here too
+    ]),
     theme: 'grid',
-    headStyles: {
-      fillColor: [41, 128, 185],
-      textColor: 255,
-      fontStyle: 'bold',
-      fontSize: 9
-    },
-    bodyStyles: {
-      fontSize: 8
-    },
+    headStyles: { fillColor: [40, 167, 69], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 8 },
     columnStyles: {
       0: { cellWidth: 20 },
       1: { cellWidth: 25 },
@@ -838,29 +892,16 @@ const generateProfessionalPDF = (
       3: { cellWidth: 40 },
       4: { cellWidth: 25, halign: 'right' },
       5: { cellWidth: 25, halign: 'right' },
-      6: { cellWidth: 30, halign: 'right' }
+      6: { cellWidth: 30, halign: 'right' },
     },
     margin: { left: 14, right: 14 },
-    didDrawPage: (data) => {
-      // Footer on each page
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(
-        `Page ${doc.internal.getNumberOfPages()}`,
-        pageWidth / 2,
-        pageHeight - 10,
-        { align: 'center' }
-      );
-      doc.text(
-        'This is a computer-generated document. No signature required.',
-        pageWidth / 2,
-        pageHeight - 5,
-        { align: 'center' }
-      );
-    }
+    didDrawPage: () => {
+      doc.setFontSize(8); doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      doc.text('Computer-generated document. No signature required.', pageWidth / 2, pageHeight - 5, { align: 'center' });
+    },
   });
-  
-  // Save the PDF
+
   doc.save(`Customer-Ledger-${customer.customer_id}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
 };
 
@@ -869,24 +910,20 @@ const generateProfessionalPDF = (
 ===================================================== */
 
 export default function CustomerLedgerPage() {
-  const { id } = useParams() as { id: string };
-  const { user } = useAuth();
+  const { id }    = useParams() as { id: string };
+  const { user }  = useAuth();
   const { toast } = useToast();
-  const router = useRouter();
-  
+  const router    = useRouter();
+
   const [data, setData] = useState<{
     customer: CustomerProfile;
     ledger: LedgerTransaction[];
     balance: number;
     periodSummary?: PeriodSummary;
   } | null>(null);
-  
-  const [loading, setLoading] = useState(true);
+
+  const [loading,       setLoading]       = useState(true);
   const [exportLoading, setExportLoading] = useState(false);
-  const [dateRange, setDateRange] = useState({
-    start: startOfMonth(new Date()).toISOString().split('T')[0],
-    end: endOfMonth(new Date()).toISOString().split('T')[0]
-  });
 
   useEffect(() => {
     if (!user?.company_id || !id) return;
@@ -894,37 +931,31 @@ export default function CustomerLedgerPage() {
     const fetchLedger = async () => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `https://hariindustries.net/api/clearbook/get_customer_details.php?company_id=${user.company_id}&customer_id=${id}`
+        const res  = await fetch(
+          `https://hariindustries.net/api/clearbook/get_customer_details.php?company_id=${user.company_id}&customer_id=${id}`,
         );
-
         const json: ApiResponse = await res.json();
 
-        // Calculate period summary
-        const totalDebit = json.ledger.reduce((sum, l) => sum + l.debit, 0);
+        const totalDebit  = json.ledger.reduce((sum, l) => sum + l.debit,  0);
         const totalCredit = json.ledger.reduce((sum, l) => sum + l.credit, 0);
-        
+
+        // Normalise: treat -0 as 0
+        const currentBalance = Object.is(json.current_balance, -0) ? 0 : json.current_balance;
+
         setData({
-          customer: {
-            ...json.customer,
-            balance: json.current_balance
-          },
-          ledger: json.ledger,
-          balance: json.current_balance,
+          customer: { ...json.customer, balance: currentBalance },
+          ledger:   json.ledger,
+          balance:  currentBalance,
           periodSummary: {
             opening_balance: json.opening_balance || 0,
-            closing_balance: json.current_balance,
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-            net_movement: totalCredit - totalDebit
-          }
+            closing_balance: currentBalance,
+            total_debit:     totalDebit,
+            total_credit:    totalCredit,
+            net_movement:    totalCredit - totalDebit,
+          },
         });
       } catch (e: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Error Loading Ledger',
-          description: e.message || 'Failed to load customer ledger data'
-        });
+        toast({ variant: 'destructive', title: 'Error Loading Ledger', description: e.message || 'Failed to load customer ledger data' });
       } finally {
         setLoading(false);
       }
@@ -935,21 +966,12 @@ export default function CustomerLedgerPage() {
 
   const handleExportPDF = () => {
     if (!data) return;
-    
     setExportLoading(true);
     try {
-      generateProfessionalPDF(data.customer, data.ledger, data.periodSummary, user.company_name);
-      toast({
-        title: 'PDF Generated',
-        description: 'Customer ledger PDF has been downloaded',
-        className: 'bg-green-50 border-green-200'
-      });
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Export Failed',
-        description: 'Failed to generate PDF'
-      });
+      generateProfessionalPDF(data.customer, data.ledger, data.periodSummary);
+      toast({ title: 'PDF Generated', description: 'Customer ledger PDF has been downloaded', className: 'bg-green-50 border-green-200' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Export Failed', description: 'Failed to generate PDF' });
     } finally {
       setExportLoading(false);
     }
@@ -957,40 +979,26 @@ export default function CustomerLedgerPage() {
 
   const handleExportExcel = () => {
     if (!data) return;
-    
     setExportLoading(true);
     try {
-      // Redirect to server-side Excel generation
       window.open(
         `https://hariindustries.net/api/clearbook/customer-ledger-pdf.php?company_id=${user?.company_id}&customer_id=${id}&user_id=${user?.uid}&format=excel`,
-        '_blank'
+        '_blank',
       );
-      toast({
-        title: 'Excel Export Initiated',
-        description: 'Excel file download will begin shortly',
-        className: 'bg-blue-50 border-blue-200'
-      });
-    } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Export Failed',
-        description: 'Failed to export Excel file'
-      });
+      toast({ title: 'Excel Export Initiated', description: 'Excel file download will begin shortly', className: 'bg-blue-50 border-blue-200' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Export Failed', description: 'Failed to export Excel file' });
     } finally {
       setExportLoading(false);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading customer ledger...</p>
+          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" style={{ color: BRAND.blue }} />
+          <p className="text-gray-600">Loading customer ledger…</p>
         </div>
       </div>
     );
@@ -1003,8 +1011,7 @@ export default function CustomerLedgerPage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-2">Customer Not Found</h2>
         <p className="text-gray-600 mb-4">The customer ledger could not be loaded.</p>
         <Button onClick={() => router.push('/customers')}>
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Customers
+          <ChevronLeft className="h-4 w-4 mr-2" /> Back to Customers
         </Button>
       </div>
     );
@@ -1014,9 +1021,9 @@ export default function CustomerLedgerPage() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <Breadcrumbs code={data.customer.customer_id} name={data.customer.customer_name} />
-        
+
         <CustomerHeader customer={data.customer} />
-        
+
         <Tabs defaultValue="ledger" className="mb-6">
           <TabsList className="grid w-full md:w-auto grid-cols-2 md:grid-cols-4">
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
@@ -1024,10 +1031,10 @@ export default function CustomerLedgerPage() {
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="ledger" className="space-y-6">
             <CustomerInfoCard customer={data.customer} />
-            
+
             <FinancialSummaryCard
               ledger={data.ledger}
               balance={data.balance}
@@ -1035,46 +1042,27 @@ export default function CustomerLedgerPage() {
               customer={data.customer}
               onExportPDF={handleExportPDF}
               onExportExcel={handleExportExcel}
-              onPrint={handlePrint}
+              onPrint={() => window.print()}
               isLoading={exportLoading}
             />
-            
-            <LedgerTable 
-              ledger={data.ledger}
-              periodSummary={data.periodSummary}
-            />
+
+            <LedgerTable ledger={data.ledger} periodSummary={data.periodSummary} />
           </TabsContent>
-          
+
           <TabsContent value="details">
             <Card>
-              <CardHeader>
-                <CardTitle>Detailed Customer Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Add detailed customer info here */}
-              </CardContent>
+              <CardHeader><CardTitle>Detailed Customer Information</CardTitle></CardHeader>
+              <CardContent>{/* extend as needed */}</CardContent>
             </Card>
           </TabsContent>
         </Tabs>
 
-        {/* Print Styles */}
         <style jsx global>{`
           @media print {
-            body * {
-              visibility: hidden;
-            }
-            .print-area, .print-area * {
-              visibility: visible;
-            }
-            .print-area {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 100%;
-            }
-            .no-print {
-              display: none !important;
-            }
+            body * { visibility: hidden; }
+            .print-area, .print-area * { visibility: visible; }
+            .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
           }
         `}</style>
       </div>
