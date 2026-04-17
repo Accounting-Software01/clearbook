@@ -861,14 +861,7 @@ const BalanceSheetPage = () => {
               <div className="space-y-2">
                 <Label>Export Options</Label>
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleExportPDF}
-                    className="flex-1 bg-red-600 hover:bg-red-700"
-                    disabled={!processedData}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    PDF
-                  </Button>
+                  
                   <Button 
                     onClick={handleExportExcel}
                     className="flex-1 bg-green-600 hover:bg-green-700"
