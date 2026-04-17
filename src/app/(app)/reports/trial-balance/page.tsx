@@ -494,10 +494,7 @@ export default function TrialBalancePage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Export Options</label>
               <div className="flex gap-2">
-                <Button onClick={handleExportPDF} className="flex-1 bg-red-600 hover:bg-red-700">
-                  <FileText className="mr-2 h-4 w-4" />
-                  PDF
-                </Button>
+                
                 <Button onClick={handleExportExcel} className="flex-1 bg-green-600 hover:bg-green-700">
                   <FileSpreadsheet className="mr-2 h-4 w-4" />
                   Excel
