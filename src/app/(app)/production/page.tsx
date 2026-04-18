@@ -8,11 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-// On line 11
-import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, GanttChartSquare, Workflow, Eye, ArrowLeft } from 'lucide-react';
+import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, GanttChartSquare, Workflow, Eye, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { InventoryItem } from '@/types/inventory';
+
 // --- NEW COMPREHENSIVE INTERFACES ---
 interface Bom {
     id: number;
@@ -238,15 +238,12 @@ export default function ProductionPage() {
     const { user } = useAuth();
 
     // State
-
     const [orders, setOrders] = useState<ProductionOrder[]>([]);
     const [boms, setBoms] = useState<Bom[]>([]);
-    const [products, setProducts] = useState<InventoryItem[]>([]);
+    const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isBomLoading, setIsBomLoading] = useState(false);
-
-    // --- Add these new state variables around line 128 ---
     const [viewingOrderDetails, setViewingOrderDetails] = useState<ProductionOrderDetails | null>(null);
     const [isDetailLoading, setIsDetailLoading] = useState(false);
 
@@ -272,7 +269,7 @@ export default function ProductionPage() {
             
             const itemsData = await itemsRes.json();
             if(!itemsRes.ok) throw new Error(itemsData.message || 'Failed to fetch items');
-            setProducts((itemsData.products || []).map((p: any) => ({ ...p, id: parseInt(p.id, 10) })));
+            setInventoryItems((itemsData.products || []).map((p: any) => ({ ...p, id: parseInt(p.id, 10), quantity_on_hand: parseFloat(p.quantity_on_hand) || 0 })));
             
             const bomsData = await bomsRes.json();
             if(!bomsRes.ok) throw new Error(bomsData.message || 'Failed to fetch BOMs');
@@ -320,9 +317,27 @@ export default function ProductionPage() {
     }, [selectedBomId, toast]);
 
     const bomOptions = useMemo(() => {
-        const productMap = new Map(products.map(p => [p.id, p.name]));
+        const productMap = new Map(inventoryItems.map(p => [p.id, p.name]));
         return boms.map(bom => ({ ...bom, finished_good_name: productMap.get(bom.finished_good_id) || 'Unknown Product' }));
-    }, [boms, products]);
+    }, [boms, inventoryItems]);
+
+    const materialRequirements = useMemo(() => {
+        if (!selectedBomDetails?.components) return [];
+        const inventoryMap = new Map(inventoryItems.map(item => [item.id, item.quantity_on_hand || 0]));
+        const batchQty = parseFloat(quantityToProduce) || 0;
+        return selectedBomDetails.components.map(c => {
+            const requiredQty = c.quantity * batchQty;
+            const availableQty = inventoryMap.get(c.item_id) || 0;
+            return {
+                ...c,
+                requiredQty,
+                availableQty,
+                isShortage: requiredQty > availableQty,
+            };
+        });
+    }, [selectedBomDetails, quantityToProduce, inventoryItems]);
+
+    const hasShortage = useMemo(() => materialRequirements.some(m => m.isShortage), [materialRequirements]);
 
     const calculatedCosts = useMemo(() => {
         if (!selectedBomDetails) return null;
@@ -356,6 +371,19 @@ export default function ProductionPage() {
 
     const handleCreateOrder = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        const shortages = materialRequirements.filter(m => m.isShortage);
+        if (shortages.length > 0) {
+            const shortageList = shortages.map(s => `\n- ${s.item_name} (Required: ${s.requiredQty.toFixed(2)}, Available: ${s.availableQty.toFixed(2)})`).join('');
+            toast({
+                title: "Insufficient Material Stock",
+                description: `Cannot create production order. The following materials are short:${shortageList}`,
+                variant: 'destructive',
+                duration: 10000,
+            });
+            return;
+        }
+
         if (!user || !selectedBomId) {
             toast({ title: "Missing Information", description: "Please select a Bill of Materials.", variant: 'destructive' });
             return;
@@ -389,166 +417,174 @@ export default function ProductionPage() {
             setIsSubmitting(false);
         }
     };
-// --- Add this new function inside ProductionPage, after handleCreateOrder (around line 285) ---
-const handleViewOrder = useCallback(async (orderId: number) => {
-    if (!user?.company_id) return;
-    setIsDetailLoading(true);
-    setViewingOrderDetails(null);
-    try {
-        const response = await fetch(`https://hariindustries.net/api/clearbook/manage-production.php?company_id=${user.company_id}&production_order_id=${orderId}`);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || 'Failed to fetch order details');
-        
-        if (data.success) {
-            setViewingOrderDetails(data.data);
-        } else {
-            throw new Error(data.message);
+    
+    const handleViewOrder = useCallback(async (orderId: number) => {
+        if (!user?.company_id) return;
+        setIsDetailLoading(true);
+        setViewingOrderDetails(null);
+        try {
+            const response = await fetch(`https://hariindustries.net/api/clearbook/manage-production.php?company_id=${user.company_id}&production_order_id=${orderId}`);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Failed to fetch order details');
+            
+            if (data.success) {
+                setViewingOrderDetails(data.data);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (error: any) {
+            toast({ title: "Error Fetching Details", description: error.message, variant: 'destructive' });
+        } finally {
+            setIsDetailLoading(false);
         }
-    } catch (error: any) {
-        toast({ title: "Error Fetching Details", description: error.message, variant: 'destructive' });
-    } finally {
-        setIsDetailLoading(false);
-    }
-}, [user?.company_id, toast]);
+    }, [user?.company_id, toast]);
 
  
-const updateOrderStatus = async (orderId: number, status: 'In Progress' | 'Completed') => {
-    if (!user) return;
-    try {
-        const response = await fetch('https://hariindustries.net/api/clearbook/manage-production.php', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ production_order_id: orderId, company_id: user.company_id, user_id: user.uid, status: status }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.message);
-        toast({ title: 'Success', description: result.message || `Order #${orderId} status updated.` });
-        fetchData();
-    } catch (error: any) {
-         toast({ title: "Operation Failed", description: error.message, variant: 'destructive' });
+    const updateOrderStatus = async (orderId: number, status: 'In Progress' | 'Completed') => {
+        if (!user) return;
+        try {
+            const response = await fetch('https://hariindustries.net/api/clearbook/manage-production.php', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ production_order_id: orderId, company_id: user.company_id, user_id: user.uid, status: status }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message);
+            toast({ title: 'Success', description: result.message || `Order #${orderId} status updated.` });
+            fetchData();
+        } catch (error: any) {
+             toast({ title: "Operation Failed", description: error.message, variant: 'destructive' });
+        }
     }
-}
 
-// --- Replace the main return statement (lines 290-405) with this ---
-return (
-    <Card>
-        <CardHeader className="flex flex-row justify-between items-center">
-             <div className='flex items-center'><Factory className="mr-2" /><CardTitle>Production Dashboard</CardTitle></div>
-            <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>Refresh</Button>
-        </CardHeader>
-        <CardContent>
-            {isDetailLoading ? (
-                 <div className="flex justify-center items-center h-64"><Loader2 className="h-12 w-12 animate-spin" /></div>
-            ) : viewingOrderDetails ? (
-                <OrderDetailView details={viewingOrderDetails} onClose={() => setViewingOrderDetails(null)} />
-            ) : (
-                <Tabs defaultValue="orders" className='w-full'>
-                    <TabsList className="grid w-full grid-cols-4">
-                        <TabsTrigger value="orders"><Package className="mr-2 h-4 w-4"/>Pending ({orders.filter(o=>o.status === 'Pending').length})</TabsTrigger>
-                        <TabsTrigger value="wip"><ListChecks className="mr-2 h-4 w-4"/>WIP ({orders.filter(o=>o.status === 'In Progress').length})</TabsTrigger>
-                        <TabsTrigger value="finished"><PackageCheck className="mr-2 h-4 w-4"/>Finished ({orders.filter(o=>o.status === 'Completed').length})</TabsTrigger>
-                        <TabsTrigger value="new"><PlusCircle className="mr-2 h-4 w-4"/>Create New</TabsTrigger>
-                    </TabsList>
+    return (
+        <Card>
+            <CardHeader className="flex flex-row justify-between items-center">
+                 <div className='flex items-center'><Factory className="mr-2" /><CardTitle>Production Dashboard</CardTitle></div>
+                <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}/>Refresh</Button>
+            </CardHeader>
+            <CardContent>
+                {isDetailLoading ? (
+                     <div className="flex justify-center items-center h-64"><Loader2 className="h-12 w-12 animate-spin" /></div>
+                ) : viewingOrderDetails ? (
+                    <OrderDetailView details={viewingOrderDetails} onClose={() => setViewingOrderDetails(null)} />
+                ) : (
+                    <Tabs defaultValue="orders" className='w-full'>
+                        <TabsList className="grid w-full grid-cols-4">
+                            <TabsTrigger value="orders"><Package className="mr-2 h-4 w-4"/>Pending ({orders.filter(o=>o.status === 'Pending').length})</TabsTrigger>
+                            <TabsTrigger value="wip"><ListChecks className="mr-2 h-4 w-4"/>WIP ({orders.filter(o=>o.status === 'In Progress').length})</TabsTrigger>
+                            <TabsTrigger value="finished"><PackageCheck className="mr-2 h-4 w-4"/>Finished ({orders.filter(o=>o.status === 'Completed').length})</TabsTrigger>
+                            <TabsTrigger value="new"><PlusCircle className="mr-2 h-4 w-4"/>Create New</TabsTrigger>
+                        </TabsList>
 
-                    <TabsContent value="orders" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Pending')} onStart={(id) => updateOrderStatus(id, 'In Progress')} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
-                    <TabsContent value="wip" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'In Progress')} onStart={(id) => {}} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
-                    <TabsContent value="finished" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Completed')} onStart={(id) => {}} onComplete={(id) => {}} onView={handleViewOrder} /></TabsContent>
+                        <TabsContent value="orders" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Pending')} onStart={(id) => updateOrderStatus(id, 'In Progress')} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
+                        <TabsContent value="wip" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'In Progress')} onStart={(id) => {}} onComplete={(id) => updateOrderStatus(id, 'Completed')} onView={handleViewOrder} /></TabsContent>
+                        <TabsContent value="finished" className="mt-4"><OrderList orders={orders.filter(o=>o.status === 'Completed')} onStart={(id) => {}} onComplete={(id) => {}} onView={handleViewOrder} /></TabsContent>
 
-                    <TabsContent value="new" className="mt-4">
-                        <form onSubmit={handleCreateOrder} className="space-y-6 max-w-5xl mx-auto">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg flex items-center"><Notebook className="h-5 w-5 mr-2" />1. Define Production Goal</CardTitle>
-                                </CardHeader>
-                                <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <label className="font-medium">Bill of Materials (BOM)</label>
-                                        <Select value={selectedBomId} onValueChange={setSelectedBomId} required><SelectTrigger><SelectValue placeholder="Select a BOM..." /></SelectTrigger><SelectContent>{bomOptions.map(bom => <SelectItem key={bom.id} value={bom.id.toString()}>{bom.bom_code} (v{bom.bom_version}) - {bom.finished_good_name}</SelectItem>)}</SelectContent></Select>
-                                    </div>
-                                    <div>
-                                        <label className="font-medium">Quantity to Produce</label>
-                                        <Input type="number" min="1" value={quantityToProduce} onChange={e => setQuantityToProduce(e.target.value)} required disabled={!selectedBomId} />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="font-medium">Production Notes (Optional)</label>
-                                        <Textarea placeholder="e.g., Special batch for a client..." value={notes} onChange={e => setNotes(e.target.value)} disabled={!selectedBomId} />
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            {isBomLoading && <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/> Loading BOM Details...</div>}
-
-                            {selectedBomDetails && (
-                                <div className='space-y-6'>
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        <div className="lg:col-span-2 space-y-6">
-                                            <Card>
-                                                <CardHeader><CardTitle className="text-lg flex items-center"><GanttChartSquare className="h-5 w-5 mr-2" />2. Material Requirements</CardTitle></CardHeader>
-                                                <CardContent>
-                                                    <Table>
-                                                        <TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Required Qty</TableHead><TableHead>Unit</TableHead></TableRow></TableHeader>
-                                                        <TableBody>
-                                                            {selectedBomDetails.components.map(c => (
-                                                                <TableRow key={c.id}>
-                                                                    <TableCell>{c.item_name}</TableCell>
-                                                                    <TableCell className="text-right">{(c.quantity * (parseFloat(quantityToProduce) || 0)).toFixed(4)}</TableCell>
-                                                                    <TableCell>{c.uom}</TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </CardContent>
-                                            </Card>
-                                            
-                                            <Card>
-                                                <CardHeader><CardTitle className="text-lg flex items-center"><Workflow className="h-5 w-5 mr-2" />3. Manufacturing Route</CardTitle></CardHeader>
-                                                <CardContent>
-                                                    <Table>
-                                                        <TableHeader><TableRow><TableHead>Step</TableHead><TableHead>Operation</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
-                                                        <TableBody>
-                                                            {selectedBomDetails.operations.map(o => (
-                                                                <TableRow key={o.sequence}>
-                                                                    <TableCell>{o.sequence}</TableCell>
-                                                                    <TableCell className="font-medium">{o.operation_name}</TableCell>
-                                                                    <TableCell className="text-muted-foreground">{o.notes}</TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card>
-                                                <CardHeader><CardTitle className="text-lg flex items-center"><DollarSign className="h-5 w-5 mr-2" />4. Planned Overheads</CardTitle></CardHeader>
-                                                <CardContent>
-                                                    <Table>
-                                                        <TableHeader><TableRow><TableHead>Overhead</TableHead><TableHead>Category</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
-                                                        <TableBody>
-                                                            {selectedBomDetails.overheads.map((o, i) => (
-                                                                <TableRow key={i}>
-                                                                    <TableCell>{o.overhead_name}</TableCell>
-                                                                    <TableCell>{o.cost_category}</TableCell>
-                                                                    <TableCell>{o.cost_method.replace('_', ' ')}</TableCell>
-                                                                    <TableCell className="text-right">{o.cost_method === 'percentage_of_material' ? `${o.cost}%` : formatNaira(o.cost)}</TableCell>
-                                                                </TableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </CardContent>
-                                            </Card>
+                        <TabsContent value="new" className="mt-4">
+                            <form onSubmit={handleCreateOrder} className="space-y-6 max-w-5xl mx-auto">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-lg flex items-center"><Notebook className="h-5 w-5 mr-2" />1. Define Production Goal</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="font-medium">Bill of Materials (BOM)</label>
+                                            <Select value={selectedBomId} onValueChange={setSelectedBomId} required><SelectTrigger><SelectValue placeholder="Select a BOM..." /></SelectTrigger><SelectContent>{bomOptions.map(bom => <SelectItem key={bom.id} value={bom.id.toString()}>{bom.bom_code} (v{bom.bom_version}) - {bom.finished_good_name}</SelectItem>)}</SelectContent></Select>
                                         </div>
-                                        <div className="lg:col-span-1">
-                                            {calculatedCosts && <CostingSummary costs={calculatedCosts} />}
+                                        <div>
+                                            <label className="font-medium">Quantity to Produce</label>
+                                            <Input type="number" min="1" value={quantityToProduce} onChange={e => setQuantityToProduce(e.target.value)} required disabled={!selectedBomId} />
                                         </div>
+                                        <div className="md:col-span-2">
+                                            <label className="font-medium">Production Notes (Optional)</label>
+                                            <Textarea placeholder="e.g., Special batch for a client..." value={notes} onChange={e => setNotes(e.target.value)} disabled={!selectedBomId} />
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                {isBomLoading && <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/> Loading BOM Details...</div>}
+
+                                {selectedBomDetails && (
+                                    <div className='space-y-6'>
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                            <div className="lg:col-span-2 space-y-6">
+                                                <Card>
+                                                    <CardHeader><CardTitle className="text-lg flex items-center"><GanttChartSquare className="h-5 w-5 mr-2" />2. Material Requirements & Stock Check</CardTitle></CardHeader>
+                                                    <CardContent>
+                                                        <Table>
+                                                            <TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Available</TableHead><TableHead className="text-right">Required</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                                                            <TableBody>
+                                                                {materialRequirements.map(req => (
+                                                                    <TableRow key={req.id} className={req.isShortage ? 'bg-red-50 dark:bg-red-900/20' : ''}>
+                                                                        <TableCell>{req.item_name}</TableCell>
+                                                                        <TableCell className={req.isShortage ? 'text-red-500 font-bold' : ''}>{req.availableQty.toFixed(2)}</TableCell>
+                                                                        <TableCell className="text-right font-medium">{(req.requiredQty).toFixed(2)}</TableCell>
+                                                                        <TableCell>
+                                                                            {req.isShortage ? (
+                                                                                <span className="flex items-center text-red-600 font-bold"><AlertCircle className="h-4 w-4 mr-1" />Shortage</span>
+                                                                            ) : (
+                                                                                <span className="flex items-center text-green-600"><CheckCircle className="h-4 w-4 mr-1" />OK</span>
+                                                                            )}
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </CardContent>
+                                                </Card>
+                                                
+                                                <Card>
+                                                    <CardHeader><CardTitle className="text-lg flex items-center"><Workflow className="h-5 w-5 mr-2" />3. Manufacturing Route</CardTitle></CardHeader>
+                                                    <CardContent>
+                                                        <Table>
+                                                            <TableHeader><TableRow><TableHead>Step</TableHead><TableHead>Operation</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
+                                                            <TableBody>
+                                                                {selectedBomDetails.operations.map(o => (
+                                                                    <TableRow key={o.sequence}>
+                                                                        <TableCell>{o.sequence}</TableCell>
+                                                                        <TableCell className="font-medium">{o.operation_name}</TableCell>
+                                                                        <TableCell className="text-muted-foreground">{o.notes}</TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card>
+                                                    <CardHeader><CardTitle className="text-lg flex items-center"><DollarSign className="h-5 w-5 mr-2" />4. Planned Overheads</CardTitle></CardHeader>
+                                                    <CardContent>
+                                                        <Table>
+                                                            <TableHeader><TableRow><TableHead>Overhead</TableHead><TableHead>Category</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
+                                                            <TableBody>
+                                                                {selectedBomDetails.overheads.map((o, i) => (
+                                                                    <TableRow key={i}>
+                                                                        <TableCell>{o.overhead_name}</TableCell>
+                                                                        <TableCell>{o.cost_category}</TableCell>
+                                                                        <TableCell>{o.cost_method.replace('_', ' ')}</TableCell>
+                                                                        <TableCell className="text-right">{o.cost_method === 'percentage_of_material' ? `${o.cost}%` : formatNaira(o.cost)}</TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+                                            <div className="lg:col-span-1">
+                                                {calculatedCosts && <CostingSummary costs={calculatedCosts} />}
+                                            </div>
+                                        </div>
+                                        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isBomLoading || !selectedBomId || hasShortage || (parseFloat(quantityToProduce) || 0) <= 0}>
+                                            {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Order...</> : hasShortage ? <><AlertCircle className="mr-2 h-4 w-4" />Insufficient Stock</> : <>Create Production Order</>}
+                                        </Button>
                                     </div>
-                                    <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isBomLoading || !selectedBomId || (parseFloat(quantityToProduce) || 0) <= 0}>{isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Order...</> : <>Create Production Order</>}</Button>
-                                </div>
-                            )}
-                        </form>
-                    </TabsContent>
-                </Tabs>
-            )}
-        </CardContent>
-    </Card>
-);
+                                )}
+                            </form>
+                        </TabsContent>
+                    </Tabs>
+                )}
+            </CardContent>
+        </Card>
+    );
 }
