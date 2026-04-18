@@ -1,4 +1,3 @@
-
 import type { Metadata } from 'next';
 import './globals.css';
 import './print.css';
@@ -7,10 +6,9 @@ import { cn } from '@/lib/utils';
 import AppLayout from './AppLayout';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { AuthProvider } from '@/hooks/useAuth';
-import { SpeedInsights } from "@vercel/speed-insights/next"
-import { SubscriptionCheck } from '@/components/SubscriptionCheck';
+
 export const metadata: Metadata = {
-  title: 'ClearBooks',
+  title: 'Hari Ind.',
   description: 'A comprehensive, cloud-ready accounting system, for seamless bookkeeping and financial management.',
 };
 
@@ -28,15 +26,12 @@ export default function RootLayout({
       </head>
       <body className={cn("font-body antialiased bg-cover bg-center bg-fixed")}>
         <AuthProvider>
-          {/* SubscriptionCheck will now protect your entire app */}
-          <SubscriptionCheck>
-            <LanguageProvider>
-              <AppLayout>
-                {children}
-              </AppLayout>
-              <Toaster />
-            </LanguageProvider>
-          </SubscriptionCheck>
+          <LanguageProvider>
+            <AppLayout>
+              {children}
+            </AppLayout>
+            <Toaster />
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>
