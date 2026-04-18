@@ -5,22 +5,27 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import SessionExpired from '@/components/SessionExpired';
-import { SpeedInsights } from "@vercel/speed-insights/next"
+// No import from '@/lib/auth' needed anymore
+
 interface AppLayoutProps {
     children: React.ReactNode;
 }
 
+// Updated session timeout to 24 hours as requested
 const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
 const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'mousedown'] as const;
 
 export default function AppLayout({ children }: AppLayoutProps) {
+    console.log(`%c========================================\nAPP LAYOUT COMPONENT IS RUNNING!\nSession Timeout: ${INACTIVITY_TIMEOUT / 60000} minutes\n========================================`, 'background: #222; color: #bada55; font-size: 20px;');
+
     const { user, isLoading, logout } = useAuth();
     const router = useRouter();
     const [isIdle, setIsIdle] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleIdle = useCallback(() => {
+        console.log('%c[TIMER] EXPIRED! Setting idle state and logging out.', 'color: red; font-weight: bold;');
         logout();
         setIsIdle(true);
     }, [logout]);
@@ -53,11 +58,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
         };
     }, [isLoading, user, handleIdle]);
 
+    // Redirect to login when user is logged out (either manually or by idle timer)
     useEffect(() => {
         if (!isLoading && !user) {
-          router.replace('/login');
+            if (!isIdle) {
+                console.log('%c[ROUTER] Redirecting to login (manual logout)', 'color: orange;');
+                router.replace('/login');
+            }
         }
-    }, [isLoading, user, router]);
+    }, [isLoading, user, router, isIdle]);
 
     if (isLoading) {
         return (
