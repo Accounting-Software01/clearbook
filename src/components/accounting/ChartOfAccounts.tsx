@@ -5,6 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from "@/components/ui/button";
 import { Input } from '@/components/ui/input';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Table,
   TableBody,
   TableCell,
@@ -14,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Upload, Download, Save, AlertTriangle } from 'lucide-react';
+import { Loader2, Upload, Download, Save, AlertTriangle, ChevronDown } from 'lucide-react';
 import { defaultChartOfAccounts, defaultInventoryCategoryMap } from '@/lib/default-accounting-data';
 
 // Types based on the new schema
@@ -96,24 +102,34 @@ const ChartOfAccounts = () => {
         fetchData();
     }, [fetchData]);
 
-    const handleDownloadTemplate = (type: 'coa' | 'inventory') => {
+    const handleDownload = (type: 'coa' | 'inventory', downloadType: 'template' | 'current') => {
         if (!user) return;
 
         let data, filename, headers;
 
         if (type === 'coa') {
-            data = defaultChartOfAccounts.map(a => ({...a, company_id: user.company_id }));
-            filename = "clearbook_coa_template.xlsx";
             headers = ['company_id', 'account_code', 'account_name', 'account_type', 'system_role', 'parent_account_code', 'is_control_account', 'is_active'];
+            if (downloadType === 'template') {
+                data = defaultChartOfAccounts.map(a => ({...a, company_id: user.company_id }));
+                filename = "clearbook_coa_template.xlsx";
+            } else {
+                data = accounts.map(a => ({...a, company_id: user.company_id }));
+                filename = `clearbook_coa_${user.company_id}.xlsx`;
+            }
         } else {
-            data = defaultInventoryCategoryMap.map(m => ({...m, company_id: user.company_id }));
-            filename = "clearbook_inventory_map_template.xlsx";
             headers = ['company_id', 'category_name', 'system_role'];
+            if (downloadType === 'template') {
+                data = defaultInventoryCategoryMap.map(m => ({...m, company_id: user.company_id }));
+                filename = "clearbook_inventory_map_template.xlsx";
+            } else {
+                data = inventoryMap.map(m => ({...m, company_id: user.company_id }));
+                filename = `clearbook_inventory_map_${user.company_id}.xlsx`;
+            }
         }
 
         const worksheet = XLSX.utils.json_to_sheet(data, { header: headers });
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
         XLSX.writeFile(workbook, filename);
     };
 
@@ -222,13 +238,13 @@ const ChartOfAccounts = () => {
                     <CoaTable 
                         accounts={accounts} 
                         onUpload={(e) => handleFileUpload(e, 'coa')} 
-                        onDownload={() => handleDownloadTemplate('coa')} 
+                        onDownload={(downloadType: 'template' | 'current') => handleDownload('coa', downloadType)} 
                     />
                 ) : (
                     <InventoryMapTable 
                         mappings={inventoryMap} 
                         onUpload={(e) => handleFileUpload(e, 'inventory')} 
-                        onDownload={() => handleDownloadTemplate('inventory')} 
+                        onDownload={(downloadType: 'template' | 'current') => handleDownload('inventory', downloadType)} 
                     />
                 )}
             </CardContent>
@@ -240,7 +256,17 @@ const ChartOfAccounts = () => {
 const CoaTable = ({ accounts, onUpload, onDownload }: any) => (
     <div>
         <div className="flex justify-end gap-2 mb-4">
-            <Button onClick={onDownload} variant="outline"><Download className="h-4 w-4 mr-2"/>Download Template</Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                        <Download className="h-4 w-4 mr-2" /> Download <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => onDownload('template')}>Download Template</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onDownload('current')}>Download Current COA</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
             <Button asChild variant="outline">
                 <label htmlFor="coa-upload"><Upload className="h-4 w-4 mr-2"/>Upload XLSX</label>
             </Button>
@@ -279,7 +305,17 @@ const CoaTable = ({ accounts, onUpload, onDownload }: any) => (
 const InventoryMapTable = ({ mappings, onUpload, onDownload }: any) => (
     <div>
         <div className="flex justify-end gap-2 mb-4">
-            <Button onClick={onDownload} variant="outline"><Download className="h-4 w-4 mr-2"/>Download Template</Button>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                        <Download className="h-4 w-4 mr-2" /> Download <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => onDownload('template')}>Download Template</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onDownload('current')}>Download Current Map</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
             <Button asChild variant="outline">
                 <label htmlFor="inv-map-upload"><Upload className="h-4 w-4 mr-2"/>Upload XLSX</label>
             </Button>
