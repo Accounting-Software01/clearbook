@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -21,7 +20,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from '@/components/ui/card';
 import {
   Table,
@@ -30,93 +28,29 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableCaption,
 } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import {
-  Download,
-  Printer,
-  FileText,
-  Mail,
-  Phone,
-  User,
-  Building,
-  Calendar,
-  CreditCard,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  ArrowUpRight,
-  ArrowDownRight,
-  Search,
-  Filter,
-  RefreshCw,
-  FileSpreadsheet,
-  Eye,
-  MoreHorizontal,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Edit,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertCircle,
-  BarChart3,
-  PieChart,
-  DownloadCloud,
-  Share2,
-  Copy,
-  ExternalLink,
-  Home,
-  Briefcase,
-  Wallet,
-  Shield,
-  Calculator,
-  Archive,
-  CalendarDays,
-  FileSignature,
-  Receipt,
-  CreditCardIcon,
-  Banknote,
-  Landmark,
-  Scale,
-  FileBarChart2,
-  Users,
-  Store,
-  Package,
-  Truck,
-  Factory,
-  Wrench,
-  Sparkles,
-  Loader2,
-  BadgeCheck,
+  Printer, FileText, Mail, Phone, User, Calendar, DollarSign,
+  TrendingUp, TrendingDown, ArrowDownRight, Search, FileSpreadsheet,
+  ChevronLeft, ChevronRight, Edit, CheckCircle, Clock, AlertCircle,
+  BarChart3, Home, Briefcase, Calculator, Archive, FileSignature,
+  Receipt, CreditCardIcon, Loader2, BadgeCheck, Wallet,
 } from 'lucide-react';
-
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { format, parseISO, isValid, startOfMonth, endOfMonth } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-/* =====================================================
-   BRAND PALETTE
-===================================================== */
+/* ─── Brand palette ─────────────────────────────────────────────────────────── */
 const BRAND = {
   green:  '#28a745',
   orange: '#e05030',
   blue:   '#2563c0',
+  purple: '#7c3aed',   // used for customer-credit/advance state
 } as const;
 
-/* =====================================================
-   TYPES
-===================================================== */
+/* ─── Types ──────────────────────────────────────────────────────────────────── */
 
 interface CustomerProfile {
   customer_id: string;
@@ -138,10 +72,7 @@ interface CustomerProfile {
   registration_number?: string;
   tax_id?: string;
   created_at?: string;
-  last_transaction_date?: string;
-  total_transactions?: number;
   credit_days?: number;
-  notes?: string;
   [key: string]: any;
 }
 
@@ -152,12 +83,7 @@ interface LedgerTransaction {
   description: string;
   debit: number;
   credit: number;
-  balance: number;
-  voucher_type?: string;
-  voucher_no?: string;
-  particulars?: string;
-  bill_no?: string;
-  due_date?: string;
+  balance: number;           // CAN BE NEGATIVE — customer advance/prepayment
   status?: string;
   transaction_id?: string;
 }
@@ -167,12 +93,6 @@ interface ApiResponse {
   ledger: LedgerTransaction[];
   current_balance: number;
   opening_balance: number;
-  period_summary?: {
-    opening: number;
-    closing: number;
-    total_debit: number;
-    total_credit: number;
-  };
 }
 
 interface PeriodSummary {
@@ -183,136 +103,192 @@ interface PeriodSummary {
   net_movement: number;
 }
 
-/* =====================================================
-   UTILITY FUNCTIONS
-===================================================== */
+/* ─── Accounting balance semantics ──────────────────────────────────────────────
+ *
+ *  In a customer (Accounts Receivable) context:
+ *
+ *    balance > 0   Customer owes US          → "Receivable"     (amber/red)
+ *    balance = 0   Account fully settled     → "Settled"        (green)
+ *    balance < 0   Customer has CREDIT with us                  (purple)
+ *                  (advance payment / prepayment / overpayment)
+ *
+ *  The old PHP line  max(0, $runningBalance)  artificially floored this at 0,
+ *  which hid legitimate credit positions.  Now that the backend is fixed, the
+ *  frontend must render all three states properly.
+ *
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+type BalanceState = 'receivable' | 'settled' | 'credit';
+
+interface ResolvedBalance {
+  state:     BalanceState;
+  label:     string;          // short label e.g. "Receivable"
+  sublabel:  string;          // explanatory sub-text
+  display:   string;          // formatted string e.g. "₦211,570,156.20 CR"
+  textClass: string;
+  bgClass:   string;
+  color:     string;
+}
+
+/** Normalize -0 to 0 */
+const normaliseZero = (n: number) => (Object.is(n, -0) ? 0 : n);
 
 /**
- * Format a currency amount with correct sign handling.
- *
- * Rules:
- *  • amount === 0              → "₦0.00"          (never negative)
- *  • amount > 0                → "₦X,XXX.XX"
- *  • amount < 0                → "-₦X,XXX.XX"     (use Math.abs so Intl doesn't double-sign)
+ * Format as Nigerian Naira, always positive magnitude.
+ * Caller decides whether to prefix CR / DR.
  */
-const formatCurrency = (amount: number): string => {
-  // Guard against NaN / undefined
+const formatNGN = (amount: number): string => {
   if (typeof amount !== 'number' || isNaN(amount)) return '₦0.00';
-
-  // Treat true zero as zero — prevents "-₦0.00" edge case
-  const safeAmount = Object.is(amount, -0) ? 0 : amount;
-
-  const formatted = new Intl.NumberFormat('en-NG', {
+  return new Intl.NumberFormat('en-NG', {
     style: 'currency',
     currency: 'NGN',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(safeAmount));
-
-  return safeAmount < 0 ? `-${formatted}` : formatted;
+  }).format(Math.abs(normaliseZero(amount)));
 };
 
 /**
- * Resolve a raw balance number into a display-ready object.
+ * The single source of truth for how a balance is displayed throughout the page.
  *
- *  balance > 0  → customer owes us  → "Receivable" (red)
- *  balance < 0  → we owe customer   → "Payable"    (orange)
- *  balance === 0 → settled           → "Settled"    (green)
+ * Positive  → DR (debit — customer owes us)
+ * Zero      → Settled
+ * Negative  → CR (credit — customer has advance with us)
  */
-const resolveBalance = (balance: number) => {
-  const safe = Object.is(balance, -0) ? 0 : balance;
-  if (safe === 0) {
-    return {
-      label: 'Settled',
-      color: BRAND.green,
-      bgClass: 'bg-green-50',
-      textClass: 'text-green-600',
-      display: '₦0.00',
-    };
-  }
-  if (safe > 0) {
-    return {
-      label: 'Receivable',
-      color: BRAND.orange,
-      bgClass: 'bg-red-50',
-      textClass: 'text-red-600',
-      display: formatCurrency(safe),
-    };
-  }
-  // safe < 0
+const resolveBalance = (raw: number): ResolvedBalance => {
+  const n = normaliseZero(raw);
+
+  if (n === 0) return {
+    state:     'settled',
+    label:     'Settled',
+    sublabel:  'No outstanding balance',
+    display:   '₦0.00',
+    textClass: 'text-green-600',
+    bgClass:   'bg-green-50',
+    color:     BRAND.green,
+  };
+
+  if (n > 0) return {
+    state:     'receivable',
+    label:     'Receivable',
+    sublabel:  'Customer owes you this amount',
+    display:   `${formatNGN(n)} DR`,
+    textClass: 'text-red-600',
+    bgClass:   'bg-red-50',
+    color:     BRAND.orange,
+  };
+
+  // n < 0  →  we owe the customer this amount (advance / overpayment)
   return {
-    label: 'Payable',
-    color: BRAND.blue,
-    bgClass: 'bg-blue-50',
-    textClass: 'text-blue-600',
-    display: formatCurrency(safe), // already prefixes "-"
+    state:     'credit',
+    label:     'We Owe Customer',
+    sublabel:  `Your business owes this customer ${formatNGN(n)}`,
+    display:   `${formatNGN(n)} CR`,    // e.g. "₦211,570,156.20 CR"
+    textClass: 'text-purple-700',
+    bgClass:   'bg-purple-50',
+    color:     BRAND.purple,
   };
 };
 
-const formatDate = (dateString: string): string => {
-  if (!dateString) return 'N/A';
-  const date = parseISO(dateString);
-  return isValid(date) ? format(date, 'dd-MMM-yyyy') : 'Invalid Date';
+/* ─── Utility formatters ────────────────────────────────────────────────────── */
+
+const formatDate = (s: string) => {
+  if (!s) return 'N/A';
+  const d = parseISO(s);
+  return isValid(d) ? format(d, 'dd-MMM-yyyy') : 'Invalid Date';
 };
 
-const formatDateTime = (dateString: string): string => {
-  if (!dateString) return 'N/A';
-  const date = parseISO(dateString);
-  return isValid(date) ? format(date, 'dd-MMM-yyyy HH:mm') : 'Invalid Date';
+const formatDateTime = (s: string) => {
+  if (!s) return 'N/A';
+  const d = parseISO(s);
+  return isValid(d) ? format(d, 'dd-MMM-yyyy HH:mm') : 'Invalid Date';
 };
 
 const getStatusBadge = (status: string) => {
-  const statusMap: Record<string, { color: string; icon: any }> = {
-    Active:   { color: 'bg-green-100 text-green-800', icon: CheckCircle },
-    Inactive: { color: 'bg-gray-100 text-gray-800',   icon: Clock },
-    Overdue:  { color: 'bg-red-100 text-red-800',     icon: AlertCircle },
+  const map: Record<string, { color: string; icon: any }> = {
+    Active:   { color: 'bg-green-100 text-green-800',   icon: CheckCircle },
+    Inactive: { color: 'bg-gray-100 text-gray-800',     icon: Clock },
+    Overdue:  { color: 'bg-red-100 text-red-800',       icon: AlertCircle },
     Pending:  { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    Paid:     { color: 'bg-blue-100 text-blue-800',   icon: CheckCircle },
+    Paid:     { color: 'bg-blue-100 text-blue-800',     icon: CheckCircle },
     Partial:  { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
   };
+  const cfg = map[status] || { color: 'bg-gray-100 text-gray-800', icon: Clock };
+  const Icon = cfg.icon;
+  return <Badge className={`${cfg.color} flex items-center gap-1`}><Icon className="h-3 w-3" />{status}</Badge>;
+};
 
-  const config = statusMap[status] || { color: 'bg-gray-100 text-gray-800', icon: Clock };
-  const Icon = config.icon;
+const getTxIcon = (type: string) => ({
+  Invoice:          FileText,
+  Receipt:          Receipt,
+  Payment:          CreditCardIcon,
+  'Credit Note':    FileSignature,
+  Journal:          FileText,
+  Adjustment:       Calculator,
+  Refund:           ArrowDownRight,
+  'Opening Balance': Archive,
+}[type] ?? FileText);
 
+/* ─── BalanceTile ─────────────────────────────────────────────────────────────
+ *  A reusable tile that renders any balance with the correct accounting
+ *  semantics.  Used in the summary card and in the period strip.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const BalanceTile = ({
+  label,
+  amount,
+  sub,
+  size = 'md',
+}: {
+  label: string;
+  amount: number;
+  sub?: string;
+  size?: 'sm' | 'md';
+}) => {
+  const bal = resolveBalance(amount);
   return (
-    <Badge className={`${config.color} flex items-center gap-1`}>
-      <Icon className="h-3 w-3" />
-      {status}
-    </Badge>
+    <div className={`p-4 rounded-lg ${bal.bgClass}`}>
+      <div className="text-sm text-gray-600 mb-1">{label}</div>
+      <div className={`font-bold ${size === 'sm' ? 'text-lg' : 'text-2xl'} ${bal.textClass}`}>
+        {bal.display}
+      </div>
+      {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+      <div className="flex items-center gap-1 mt-1">
+        {bal.state === 'settled'    && <BadgeCheck className="h-3 w-3 text-green-500" />}
+        {bal.state === 'receivable' && <TrendingUp  className="h-3 w-3 text-red-400" />}
+        {bal.state === 'credit'     && <Wallet      className="h-3 w-3 text-purple-500" />}
+        <span className="text-xs text-gray-500">{bal.label}</span>
+      </div>
+    </div>
   );
 };
 
-const getTransactionIcon = (type: string) => {
-  const iconMap: Record<string, any> = {
-    Invoice:          FileText,
-    Receipt:          Receipt,
-    Payment:          CreditCardIcon,
-    'Credit Note':    FileSignature,
-    Journal:          FileText,
-    Adjustment:       Calculator,
-    Refund:           ArrowDownRight,
-    'Opening Balance': Archive,
-  };
-  return iconMap[type] || FileText;
+/* ─── LedgerBalanceCell ──────────────────────────────────────────────────────
+ *  Renders the running-balance column in the ledger table.
+ *
+ *  Positive  → red     "₦X,XXX.XX DR"  (customer still owes)
+ *  Zero      → grey    "₦0.00"         (settled at this point)
+ *  Negative  → purple  "₦X,XXX.XX CR"  (customer in credit — advance)
+ * ─────────────────────────────────────────────────────────────────────────── */
+const LedgerBalanceCell = ({ raw }: { raw: number }) => {
+  const bal = resolveBalance(raw);
+  return (
+    <span className={`font-bold tabular-nums ${bal.textClass}`}>
+      {bal.display}
+    </span>
+  );
 };
 
-/* =====================================================
-   COMPONENTS
-===================================================== */
+/* ─── Components ─────────────────────────────────────────────────────────────── */
 
 const Breadcrumbs = ({ code, name }: { code?: string; name?: string }) => (
   <nav className="flex items-center space-x-2 text-sm text-gray-600 mb-6">
     <Link href="/dashboard" className="hover:text-blue-600 flex items-center gap-1">
-      <Home className="h-4 w-4" />
-      Dashboard
+      <Home className="h-4 w-4" /> Dashboard
     </Link>
     <ChevronRight className="h-4 w-4" />
-    <Link href="/customers" className="hover:text-blue-600">
-      Customers
-    </Link>
+    <Link href="/customers" className="hover:text-blue-600">Customers</Link>
     <ChevronRight className="h-4 w-4" />
     <span className="font-semibold text-gray-900">
-      {code} - {name?.substring(0, 20)}{name && name.length > 20 ? '...' : ''}
+      {code} – {name?.substring(0, 20)}{name && name.length > 20 ? '…' : ''}
     </span>
   </nav>
 );
@@ -330,48 +306,26 @@ const CustomerHeader = ({ customer }: { customer: CustomerProfile }) => (
             {getStatusBadge(customer.status)}
           </div>
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-            <span className="flex items-center gap-1">
-              <Briefcase className="h-4 w-4" />
-              {customer.customer_type}
-            </span>
-            <span className="flex items-center gap-1">
-              <Mail className="h-4 w-4" />
-              {customer.email_address || 'No email'}
-            </span>
-            <span className="flex items-center gap-1">
-              <Phone className="h-4 w-4" />
-              {customer.primary_phone_number || 'No phone'}
-            </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="h-4 w-4" />
-              Customer ID: {customer.customer_id}
-            </span>
+            <span className="flex items-center gap-1"><Briefcase className="h-4 w-4" />{customer.customer_type}</span>
+            <span className="flex items-center gap-1"><Mail className="h-4 w-4" />{customer.email_address || 'No email'}</span>
+            <span className="flex items-center gap-1"><Phone className="h-4 w-4" />{customer.primary_phone_number || 'No phone'}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />ID: {customer.customer_id}</span>
           </div>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm">
-          <Edit className="h-4 w-4 mr-2" />
-          Edit
-        </Button>
-        <Button variant="outline" size="sm">
-          <Mail className="h-4 w-4 mr-2" />
-          Contact
-        </Button>
-        <Button variant="outline" size="sm">
-          <Printer className="h-4 w-4 mr-2" />
-          Print
-        </Button>
+        <Button variant="outline" size="sm"><Edit className="h-4 w-4 mr-2" />Edit</Button>
+        <Button variant="outline" size="sm"><Mail className="h-4 w-4 mr-2" />Contact</Button>
+        <Button variant="outline" size="sm"><Printer className="h-4 w-4 mr-2" />Print</Button>
       </div>
     </div>
   </div>
 );
 
 const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
-  const infoSections = [
+  const sections = [
     {
-      title: 'Basic Information',
-      icon: User,
+      title: 'Basic Information', icon: User,
       items: [
         { label: 'Customer Type',    value: customer.customer_type },
         { label: 'Registration No.', value: customer.registration_number || 'N/A' },
@@ -380,8 +334,7 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
       ],
     },
     {
-      title: 'Contact Details',
-      icon: Phone,
+      title: 'Contact Details', icon: Phone,
       items: [
         { label: 'Primary Phone',   value: customer.primary_phone_number || 'N/A' },
         { label: 'Secondary Phone', value: customer.secondary_phone_number || 'N/A' },
@@ -390,10 +343,9 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
       ],
     },
     {
-      title: 'Financial Details',
-      icon: DollarSign,
+      title: 'Financial Details', icon: DollarSign,
       items: [
-        { label: 'Credit Limit',      value: formatCurrency(customer.credit_limit) },
+        { label: 'Credit Limit',      value: formatNGN(customer.credit_limit) },
         { label: 'Payment Terms',     value: customer.payment_terms || 'N/A' },
         { label: 'Credit Days',       value: customer.credit_days ? `${customer.credit_days} days` : 'N/A' },
         { label: 'Preferred Payment', value: customer.preferred_payment_method || 'N/A' },
@@ -403,22 +355,20 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {infoSections.map((section, index) => {
-        const Icon = section.icon;
+      {sections.map((s, i) => {
+        const Icon = s.icon;
         return (
-          <Card key={index} className="border border-gray-200">
+          <Card key={i} className="border border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <Icon className="h-5 w-5 text-blue-600" />
-                </div>
-                <CardTitle className="text-lg">{section.title}</CardTitle>
+                <div className="p-2 bg-blue-50 rounded-lg"><Icon className="h-5 w-5 text-blue-600" /></div>
+                <CardTitle className="text-lg">{s.title}</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <dl className="space-y-3">
-                {section.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between">
+                {s.items.map((item, j) => (
+                  <div key={j} className="flex justify-between">
                     <dt className="text-sm text-gray-600">{item.label}</dt>
                     <dd className="text-sm font-medium text-gray-900">{item.value}</dd>
                   </div>
@@ -432,20 +382,10 @@ const CustomerInfoCard = ({ customer }: { customer: CustomerProfile }) => {
   );
 };
 
-/* ───────────────────────────────────────────────────────
-   FinancialSummaryCard  — KEY FIX IS HERE
-   Uses resolveBalance() so zero always renders as ₦0.00
-   with a "Settled" label, never as a negative figure.
-─────────────────────────────────────────────────────── */
+/* ─── FinancialSummaryCard ───────────────────────────────────────────────────── */
 const FinancialSummaryCard = ({
-  ledger,
-  balance,
-  creditLimit,
-  customer,
-  onExportPDF,
-  onExportExcel,
-  onPrint,
-  isLoading,
+  ledger, balance, creditLimit, customer,
+  onExportPDF, onExportExcel, onPrint, isLoading,
 }: {
   ledger: LedgerTransaction[];
   balance: number;
@@ -457,18 +397,14 @@ const FinancialSummaryCard = ({
   isLoading: boolean;
 }) => {
   const totals = useMemo(() => {
-    const totalDebit  = ledger.reduce((sum, l) => sum + l.debit,  0);
-    const totalCredit = ledger.reduce((sum, l) => sum + l.credit, 0);
-    const overdueAmount = ledger
-      .filter(l => l.status === 'Overdue')
-      .reduce((sum, l) => sum + l.debit, 0);
+    const totalDebit    = ledger.reduce((s, l) => s + l.debit,  0);
+    const totalCredit   = ledger.reduce((s, l) => s + l.credit, 0);
+    const overdueAmount = ledger.filter(l => l.status === 'Overdue').reduce((s, l) => s + l.debit, 0);
     return { totalDebit, totalCredit, totalTransactions: ledger.length, overdueAmount };
   }, [ledger]);
 
-  const creditUtilization = creditLimit > 0 ? (Math.abs(balance) / creditLimit) * 100 : 0;
-
-  // ── The resolved balance object drives ALL balance-related display ──
-  const bal = resolveBalance(balance);
+  const bal                = resolveBalance(balance);
+  const creditUtilization  = creditLimit > 0 ? (Math.abs(balance) / creditLimit) * 100 : 0;
 
   return (
     <Card className="border border-gray-200 mb-6 border-t-4" style={{ borderTopColor: BRAND.green }}>
@@ -480,9 +416,7 @@ const FinancialSummaryCard = ({
             </div>
             <div>
               <CardTitle className="text-lg">Financial Summary</CardTitle>
-              <CardDescription className="text-sm">
-                As of {formatDate(new Date().toISOString())}
-              </CardDescription>
+              <CardDescription className="text-sm">As of {formatDate(new Date().toISOString())}</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -505,76 +439,63 @@ const FinancialSummaryCard = ({
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-          {/* ── Current Balance tile ── */}
-          <div className={`p-4 rounded-lg ${bal.bgClass}`}>
-            <div className="text-sm text-gray-600 mb-1">Current Balance</div>
-            <div className={`text-2xl font-bold ${bal.textClass}`}>
-              {bal.display}
-            </div>
-            <div className="flex items-center gap-1 mt-1">
-              {balance === 0
-                ? <BadgeCheck className="h-3 w-3 text-green-500" />
-                : balance > 0
-                  ? <TrendingUp className="h-3 w-3 text-red-400" />
-                  : <TrendingDown className="h-3 w-3 text-blue-400" />
-              }
-              <span className="text-xs text-gray-500">{bal.label}</span>
-            </div>
+          {/* Current balance — uses BalanceTile so semantics are consistent */}
+          <BalanceTile label="Current Balance" amount={balance} sub={bal.sublabel} />
+
+          {/* Total Debit — always positive, DR side */}
+          <div className="p-4 bg-red-50 rounded-lg">
+            <div className="text-sm text-gray-600 mb-1">Total Invoiced (DR)</div>
+            <div className="text-2xl font-bold text-red-600">{formatNGN(totals.totalDebit)}</div>
+            <div className="text-xs text-gray-500 mt-1">From {totals.totalTransactions} transactions</div>
           </div>
 
-          {/* Total Debit */}
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <div className="text-sm text-gray-600 mb-1">Total Debit</div>
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totals.totalDebit)}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              From {totals.totalTransactions} transactions
-            </div>
-          </div>
-
-          {/* Total Credit */}
+          {/* Total Credit — always positive, CR side */}
           <div className="p-4 bg-green-50 rounded-lg">
-            <div className="text-sm text-gray-600 mb-1">Total Credit</div>
-            <div className="text-2xl font-bold" style={{ color: BRAND.green }}>
-              {formatCurrency(totals.totalCredit)}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">Payments & adjustments</div>
+            <div className="text-sm text-gray-600 mb-1">Total Received (CR)</div>
+            <div className="text-2xl font-bold" style={{ color: BRAND.green }}>{formatNGN(totals.totalCredit)}</div>
+            <div className="text-xs text-gray-500 mt-1">Payments & credit notes</div>
           </div>
 
-          {/* Credit Utilization */}
+          {/* Credit utilisation */}
           <div className="p-4 bg-orange-50 rounded-lg">
             <div className="text-sm text-gray-600 mb-1">Credit Utilization</div>
-            <div className="text-2xl font-bold text-orange-600">
-              {creditUtilization.toFixed(1)}%
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Limit: {formatCurrency(creditLimit)}
-            </div>
+            <div className="text-2xl font-bold text-orange-600">{creditUtilization.toFixed(1)}%</div>
+            <div className="text-xs text-gray-500 mt-1">Limit: {formatNGN(creditLimit)}</div>
           </div>
         </div>
 
-        {/* Overdue alert */}
+        {/* Contextual banners — only one shows at a time */}
         {totals.overdueAmount > 0 && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertCircle className="h-4 w-4" />
-              <span className="font-medium">
-                Overdue Amount: {formatCurrency(totals.overdueAmount)}
-              </span>
-            </div>
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="font-medium">Overdue amount: {formatNGN(totals.overdueAmount)} DR</span>
           </div>
         )}
 
-        {/* Settled banner — shown only when balance is exactly 0 */}
-        {balance === 0 && (
-          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-2" style={{ color: BRAND.green }}>
-              <BadgeCheck className="h-4 w-4" />
-              <span className="font-medium">
-                This account is fully settled — no outstanding balance.
+        {bal.state === 'settled' && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2" style={{ color: BRAND.green }}>
+            <BadgeCheck className="h-4 w-4 shrink-0" />
+            <span className="font-medium">Account fully settled — no outstanding balance.</span>
+          </div>
+        )}
+
+        {/* ── Credit / Advance banner ──────────────────────────────────────
+         *  This is the key new state.  The customer has paid MORE than they
+         *  owe, creating a credit that can be offset against future invoices.
+         *  This was previously hidden by  max(0, $runningBalance)  in PHP.
+         * ──────────────────────────────────────────────────────────────── */}
+        {bal.state === 'credit' && (
+          <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+            <div className="flex items-center gap-2 text-purple-700 mb-1">
+              <Wallet className="h-4 w-4 shrink-0" />
+              <span className="font-semibold">
+                Your business owes this customer {bal.display}
               </span>
             </div>
+            <p className="text-xs text-purple-600 ml-6">
+              The customer has paid more than they were invoiced for. This credit must be
+              refunded or offset against a future invoice — it is a liability on your side.
+            </p>
           </div>
         )}
       </CardContent>
@@ -582,58 +503,29 @@ const FinancialSummaryCard = ({
   );
 };
 
-/* ───────────────────────────────────────────────────────
-   LedgerTable — balance column also uses formatCurrency
-   which now correctly renders 0 as ₦0.00
-─────────────────────────────────────────────────────── */
+/* ─── LedgerTable ────────────────────────────────────────────────────────────── */
 const LedgerTable = ({
-  ledger,
-  periodSummary,
+  ledger, periodSummary,
 }: {
   ledger: LedgerTransaction[];
   periodSummary?: PeriodSummary;
 }) => {
-  const [filterType, setFilterType]   = useState<string>('all');
-  const [searchTerm, setSearchTerm]   = useState<string>('');
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [filterType,   setFilterType]   = useState('all');
+  const [searchTerm,   setSearchTerm]   = useState('');
+  const [currentPage,  setCurrentPage]  = useState(1);
   const itemsPerPage = 10;
 
-  const filteredLedger = useMemo(() => {
-    return ledger.filter(transaction => {
-      const matchesType   = filterType === 'all' || transaction.type === filterType;
-      const matchesSearch =
-        searchTerm === '' ||
-        transaction.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        transaction.description.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesType && matchesSearch;
-    });
-  }, [ledger, filterType, searchTerm]);
+  const filteredLedger = useMemo(() => ledger.filter(t => {
+    const matchType   = filterType === 'all' || t.type === filterType;
+    const matchSearch = !searchTerm ||
+      t.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.description.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchType && matchSearch;
+  }), [ledger, filterType, searchTerm]);
 
-  const totalPages     = Math.ceil(filteredLedger.length / itemsPerPage);
-  const paginatedLedger = filteredLedger.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
-  );
-
-  const transactionTypes = Array.from(new Set(ledger.map(t => t.type)));
-
-  /**
-   * Render the running Balance cell.
-   *
-   * • 0 or -0  → grey "₦0.00"   (settled row — no false negative)
-   * • > 0      → red   (receivable)
-   * • < 0      → blue  (payable / credit)
-   */
-  const renderBalanceCell = (rawBalance: number) => {
-    const safe = Object.is(rawBalance, -0) ? 0 : rawBalance;
-    if (safe === 0) {
-      return <span className="text-gray-400 font-bold">₦0.00</span>;
-    }
-    if (safe > 0) {
-      return <span className="text-red-600 font-bold">{formatCurrency(safe)}</span>;
-    }
-    return <span className="font-bold" style={{ color: BRAND.blue }}>{formatCurrency(safe)}</span>;
-  };
+  const totalPages      = Math.ceil(filteredLedger.length / itemsPerPage);
+  const paginatedLedger = filteredLedger.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const txTypes         = Array.from(new Set(ledger.map(t => t.type)));
 
   return (
     <Card className="border border-gray-200 border-t-4" style={{ borderTopColor: BRAND.blue }}>
@@ -641,27 +533,22 @@ const LedgerTable = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-lg">Ledger Transactions</CardTitle>
-            <CardDescription>Showing {filteredLedger.length} transactions</CardDescription>
+            <CardDescription>
+              Showing {filteredLedger.length} transactions &mdash; balance shown per accounting convention
+              (DR = customer owes, CR = customer has credit)
+            </CardDescription>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search transactions..."
-                className="pl-9 w-full sm:w-64"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
+              <Input placeholder="Search transactions…" className="pl-9 w-full sm:w-64"
+                value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Filter by type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                {transactionTypes.map(type => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
+                {txTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -671,24 +558,25 @@ const LedgerTable = ({
       <CardContent>
         {/* Period summary strip */}
         {periodSummary && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <div className="text-sm text-gray-600">Opening Balance</div>
-                <div className="text-lg font-semibold">{formatCurrency(periodSummary.opening_balance)}</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Opening Balance</div>
+                <div className={`text-base font-semibold ${resolveBalance(periodSummary.opening_balance).textClass}`}>
+                  {resolveBalance(periodSummary.opening_balance).display}
+                </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Total Debit</div>
-                <div className="text-lg font-semibold text-red-600">{formatCurrency(periodSummary.total_debit)}</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Invoiced DR</div>
+                <div className="text-base font-semibold text-red-600">{formatNGN(periodSummary.total_debit)}</div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Total Credit</div>
-                <div className="text-lg font-semibold" style={{ color: BRAND.green }}>{formatCurrency(periodSummary.total_credit)}</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Received CR</div>
+                <div className="text-base font-semibold" style={{ color: BRAND.green }}>{formatNGN(periodSummary.total_credit)}</div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Closing Balance</div>
-                {/* Also uses resolveBalance for the closing balance pill */}
-                <div className={`text-lg font-semibold ${resolveBalance(periodSummary.closing_balance).textClass}`}>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Closing Balance</div>
+                <div className={`text-base font-semibold ${resolveBalance(periodSummary.closing_balance).textClass}`}>
                   {resolveBalance(periodSummary.closing_balance).display}
                 </div>
               </div>
@@ -704,57 +592,57 @@ const LedgerTable = ({
                 <TableHead>Voucher Type</TableHead>
                 <TableHead>Voucher No.</TableHead>
                 <TableHead>Particulars</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">Debit (DR)</TableHead>
+                <TableHead className="text-right">Credit (CR)</TableHead>
+                {/* Balance heading explains convention */}
+                <TableHead className="text-right">
+                  Balance
+                  <span className="block text-[10px] font-normal text-gray-400 leading-none">DR = owed / CR = credit</span>
+                </TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedLedger.length > 0 ? (
-                paginatedLedger.map((transaction, index) => {
-                  const TransactionIcon = getTransactionIcon(transaction.type);
-                  return (
-                    <TableRow key={index} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">{formatDate(transaction.date)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <TransactionIcon className="h-4 w-4 text-gray-500" />
-                          {transaction.type}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">{transaction.reference}</span>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">{transaction.description}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {transaction.debit > 0 ? (
-                          <span className="text-red-600">{formatCurrency(transaction.debit)}</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {transaction.credit > 0 ? (
-                          <span style={{ color: BRAND.green }}>{formatCurrency(transaction.credit)}</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      {/* Running balance — zero-safe renderer */}
-                      <TableCell className="text-right">
-                        {renderBalanceCell(transaction.balance)}
-                      </TableCell>
-                      <TableCell>
-                        {transaction.status ? getStatusBadge(transaction.status) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              ) : (
+              {paginatedLedger.length > 0 ? paginatedLedger.map((tx, i) => {
+                const Icon = getTxIcon(tx.type);
+                return (
+                  <TableRow key={i} className="hover:bg-gray-50">
+                    <TableCell className="font-medium">{formatDate(tx.date)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-gray-500" />
+                        {tx.type}
+                      </div>
+                    </TableCell>
+                    <TableCell><span className="font-mono text-sm">{tx.reference}</span></TableCell>
+                    <TableCell className="max-w-[200px] truncate">{tx.description}</TableCell>
+
+                    {/* Debit column */}
+                    <TableCell className="text-right font-medium">
+                      {tx.debit > 0
+                        ? <span className="text-red-600">{formatNGN(tx.debit)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </TableCell>
+
+                    {/* Credit column */}
+                    <TableCell className="text-right font-medium">
+                      {tx.credit > 0
+                        ? <span style={{ color: BRAND.green }}>{formatNGN(tx.credit)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </TableCell>
+
+                    {/* Running balance — uses LedgerBalanceCell for DR/CR colouring */}
+                    <TableCell className="text-right">
+                      <LedgerBalanceCell raw={tx.balance} />
+                    </TableCell>
+
+                    <TableCell>{tx.status ? getStatusBadge(tx.status) : '—'}</TableCell>
+                  </TableRow>
+                );
+              }) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-400">
+                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-200" />
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -769,32 +657,24 @@ const LedgerTable = ({
             <div className="text-sm text-gray-600">Page {currentPage} of {totalPages}</div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm"
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}>
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1}>
                 <ChevronLeft className="h-4 w-4" /> Previous
               </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 5)              pageNum = i + 1;
-                  else if (currentPage <= 3)         pageNum = i + 1;
-                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
-                  else                               pageNum = currentPage - 2 + i;
-                  return (
-                    <Button key={pageNum}
-                      variant={currentPage === pageNum ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setCurrentPage(pageNum)}
-                      className="w-8 h-8 p-0"
-                      style={currentPage === pageNum ? { backgroundColor: BRAND.green } : {}}>
-                      {pageNum}
-                    </Button>
-                  );
-                })}
-              </div>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = totalPages <= 5 ? i + 1
+                        : currentPage <= 3 ? i + 1
+                        : currentPage >= totalPages - 2 ? totalPages - 4 + i
+                        : currentPage - 2 + i;
+                return (
+                  <Button key={p} variant={currentPage === p ? 'default' : 'outline'} size="sm"
+                    onClick={() => setCurrentPage(p)} className="w-8 h-8 p-0"
+                    style={currentPage === p ? { backgroundColor: BRAND.green } : {}}>
+                    {p}
+                  </Button>
+                );
+              })}
               <Button variant="outline" size="sm"
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}>
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages}>
                 Next <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -805,109 +685,89 @@ const LedgerTable = ({
   );
 };
 
-/* =====================================================
-   PDF EXPORT
-===================================================== */
+/* ─── PDF export ─────────────────────────────────────────────────────────────── */
 
-const generateProfessionalPDF = (
-  customer: CustomerProfile,
-  ledger: LedgerTransaction[],
-  periodSummary?: PeriodSummary,
-) => {
-  const doc = new jsPDF();
-  const pageWidth  = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
+const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], periodSummary?: PeriodSummary) => {
+  const doc  = new jsPDF();
+  const pw   = doc.internal.pageSize.getWidth();
+  const ph   = doc.internal.pageSize.getHeight();
+  const bal  = resolveBalance(customer.balance);
 
   doc.setFontSize(16); doc.setTextColor(40, 40, 40);
-  doc.text('CLEARBOOKS ACCOUNTING', pageWidth / 2, 15, { align: 'center' });
+  doc.text('CLEARBOOKS ACCOUNTING', pw / 2, 15, { align: 'center' });
   doc.setFontSize(10); doc.setTextColor(100, 100, 100);
-  doc.text('Customer Ledger Report', pageWidth / 2, 22, { align: 'center' });
+  doc.text('Customer Ledger Report', pw / 2, 22, { align: 'center' });
   doc.setFontSize(9);
-  doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth - 10, 15, { align: 'right' });
-  doc.setDrawColor(200, 200, 200);
-  doc.line(10, 30, pageWidth - 10, 30);
+  doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pw - 10, 15, { align: 'right' });
+  doc.setDrawColor(200, 200, 200); doc.line(10, 30, pw - 10, 30);
 
   doc.setFontSize(11); doc.setTextColor(40, 40, 40);
   doc.text('CUSTOMER INFORMATION', 14, 40);
 
-  const balDisplay = resolveBalance(customer.balance).display;
-
-  doc.setFontSize(9);
-  const customerInfo: [string, string][] = [
+  let y = 50;
+  const info: [string, string][] = [
     ['Customer Name:', customer.customer_name],
     ['Customer ID:',   customer.customer_id],
     ['Customer Type:', customer.customer_type],
     ['Status:',        customer.status],
-    ['Balance:',       balDisplay],
-    ['Credit Limit:',  formatCurrency(customer.credit_limit)],
+    ['Balance:',       bal.display],
+    ['Balance Type:',  bal.label],
+    ['Credit Limit:',  formatNGN(customer.credit_limit)],
     ['Phone:',         customer.primary_phone_number || 'N/A'],
     ['Email:',         customer.email_address || 'N/A'],
   ];
-
-  let yPos = 50;
-  customerInfo.forEach(([label, value]) => {
-    doc.setTextColor(100, 100, 100); doc.text(label, 14, yPos);
-    doc.setTextColor(40, 40, 40);   doc.text(value,  60, yPos);
-    yPos += 6;
+  info.forEach(([l, v]) => {
+    doc.setTextColor(100, 100, 100); doc.text(l, 14, y);
+    doc.setTextColor(40, 40, 40);   doc.text(v, 60, y);
+    y += 6;
   });
 
   if (periodSummary) {
-    yPos += 5;
-    doc.setFontSize(11); doc.setTextColor(40, 40, 40);
-    doc.text('PERIOD SUMMARY', 14, yPos);
-    yPos += 10;
-    doc.setFontSize(9);
+    y += 5;
+    doc.setFontSize(11); doc.setTextColor(40, 40, 40); doc.text('PERIOD SUMMARY', 14, y);
+    y += 10; doc.setFontSize(9);
     [
-      ['Opening Balance', formatCurrency(periodSummary.opening_balance)],
-      ['Total Debit',     formatCurrency(periodSummary.total_debit)],
-      ['Total Credit',    formatCurrency(periodSummary.total_credit)],
+      ['Opening Balance', resolveBalance(periodSummary.opening_balance).display],
+      ['Total Invoiced (DR)', formatNGN(periodSummary.total_debit)],
+      ['Total Received (CR)', formatNGN(periodSummary.total_credit)],
       ['Closing Balance', resolveBalance(periodSummary.closing_balance).display],
-    ].forEach(([label, value]) => {
-      doc.setTextColor(100, 100, 100); doc.text(label, 14, yPos);
-      doc.setTextColor(40, 40, 40);   doc.text(value,  80, yPos);
-      yPos += 6;
+    ].forEach(([l, v]) => {
+      doc.setTextColor(100, 100, 100); doc.text(l, 14, y);
+      doc.setTextColor(40, 40, 40);   doc.text(v, 80, y);
+      y += 6;
     });
   }
 
-  yPos += 10;
   autoTable(doc, {
-    startY: yPos,
-    head: [['Date', 'Voucher Type', 'Voucher No.', 'Particulars', 'Debit', 'Credit', 'Balance']],
+    startY: y + 10,
+    head: [['Date', 'Voucher Type', 'Voucher No.', 'Particulars', 'Debit DR', 'Credit CR', 'Balance']],
     body: ledger.map(t => [
-      formatDate(t.date),
-      t.type,
-      t.reference,
-      t.description.substring(0, 30) + (t.description.length > 30 ? '...' : ''),
-      t.debit  > 0 ? formatCurrency(t.debit)  : '-',
-      t.credit > 0 ? formatCurrency(t.credit) : '-',
-      resolveBalance(t.balance).display,   // zero-safe here too
+      formatDate(t.date), t.type, t.reference,
+      t.description.substring(0, 30) + (t.description.length > 30 ? '…' : ''),
+      t.debit  > 0 ? formatNGN(t.debit)  : '—',
+      t.credit > 0 ? formatNGN(t.credit) : '—',
+      resolveBalance(t.balance).display,
     ]),
     theme: 'grid',
     headStyles: { fillColor: [40, 167, 69], textColor: 255, fontStyle: 'bold', fontSize: 9 },
     bodyStyles: { fontSize: 8 },
     columnStyles: {
-      0: { cellWidth: 20 },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 25 },
-      3: { cellWidth: 40 },
-      4: { cellWidth: 25, halign: 'right' },
-      5: { cellWidth: 25, halign: 'right' },
-      6: { cellWidth: 30, halign: 'right' },
+      0: { cellWidth: 20 }, 1: { cellWidth: 25 }, 2: { cellWidth: 25 }, 3: { cellWidth: 38 },
+      4: { cellWidth: 22, halign: 'right' }, 5: { cellWidth: 22, halign: 'right' },
+      6: { cellWidth: 28, halign: 'right' },
     },
     margin: { left: 14, right: 14 },
     didDrawPage: () => {
       doc.setFontSize(8); doc.setTextColor(150, 150, 150);
-      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-      doc.text('Computer-generated document. No signature required.', pageWidth / 2, pageHeight - 5, { align: 'center' });
+      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pw / 2, ph - 10, { align: 'center' });
+      doc.text('Computer-generated document. No signature required.', pw / 2, ph - 5, { align: 'center' });
     },
   });
 
   doc.save(`Customer-Ledger-${customer.customer_id}-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
 };
 
-/* =====================================================
-   MAIN PAGE COMPONENT
-===================================================== */
+/* ─── Main page ──────────────────────────────────────────────────────────────── */
 
 export default function CustomerLedgerPage() {
   const { id }    = useParams() as { id: string };
@@ -917,8 +777,8 @@ export default function CustomerLedgerPage() {
 
   const [data, setData] = useState<{
     customer: CustomerProfile;
-    ledger: LedgerTransaction[];
-    balance: number;
+    ledger:   LedgerTransaction[];
+    balance:  number;
     periodSummary?: PeriodSummary;
   } | null>(null);
 
@@ -927,8 +787,7 @@ export default function CustomerLedgerPage() {
 
   useEffect(() => {
     if (!user?.company_id || !id) return;
-
-    const fetchLedger = async () => {
+    const fetch_ = async () => {
       setLoading(true);
       try {
         const res  = await fetch(
@@ -936,18 +795,17 @@ export default function CustomerLedgerPage() {
         );
         const json: ApiResponse = await res.json();
 
-        const totalDebit  = json.ledger.reduce((sum, l) => sum + l.debit,  0);
-        const totalCredit = json.ledger.reduce((sum, l) => sum + l.credit, 0);
-
-        // Normalise: treat -0 as 0
-        const currentBalance = Object.is(json.current_balance, -0) ? 0 : json.current_balance;
+        const totalDebit    = json.ledger.reduce((s, l) => s + l.debit,  0);
+        const totalCredit   = json.ledger.reduce((s, l) => s + l.credit, 0);
+        // Normalise -0
+        const currentBalance = normaliseZero(json.current_balance);
 
         setData({
-          customer: { ...json.customer, balance: currentBalance },
-          ledger:   json.ledger,
-          balance:  currentBalance,
+          customer:      { ...json.customer, balance: currentBalance },
+          ledger:        json.ledger,
+          balance:       currentBalance,
           periodSummary: {
-            opening_balance: json.opening_balance || 0,
+            opening_balance: normaliseZero(json.opening_balance || 0),
             closing_balance: currentBalance,
             total_debit:     totalDebit,
             total_credit:    totalCredit,
@@ -955,26 +813,23 @@ export default function CustomerLedgerPage() {
           },
         });
       } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Error Loading Ledger', description: e.message || 'Failed to load customer ledger data' });
+        toast({ variant: 'destructive', title: 'Error Loading Ledger', description: e.message });
       } finally {
         setLoading(false);
       }
     };
-
-    fetchLedger();
+    fetch_();
   }, [user, id, toast]);
 
   const handleExportPDF = () => {
     if (!data) return;
     setExportLoading(true);
     try {
-      generateProfessionalPDF(data.customer, data.ledger, data.periodSummary);
-      toast({ title: 'PDF Generated', description: 'Customer ledger PDF has been downloaded', className: 'bg-green-50 border-green-200' });
+      generatePDF(data.customer, data.ledger, data.periodSummary);
+      toast({ title: 'PDF Generated', description: 'Customer ledger PDF downloaded', className: 'bg-green-50 border-green-200' });
     } catch {
       toast({ variant: 'destructive', title: 'Export Failed', description: 'Failed to generate PDF' });
-    } finally {
-      setExportLoading(false);
-    }
+    } finally { setExportLoading(false); }
   };
 
   const handleExportExcel = () => {
@@ -985,43 +840,33 @@ export default function CustomerLedgerPage() {
         `https://hariindustries.net/api/clearbook/customer-ledger-pdf.php?company_id=${user?.company_id}&customer_id=${id}&user_id=${user?.uid}&format=excel`,
         '_blank',
       );
-      toast({ title: 'Excel Export Initiated', description: 'Excel file download will begin shortly', className: 'bg-blue-50 border-blue-200' });
+      toast({ title: 'Excel Export Initiated', description: 'File download will begin shortly', className: 'bg-blue-50 border-blue-200' });
     } catch {
-      toast({ variant: 'destructive', title: 'Export Failed', description: 'Failed to export Excel file' });
-    } finally {
-      setExportLoading(false);
-    }
+      toast({ variant: 'destructive', title: 'Export Failed', description: 'Failed to export Excel' });
+    } finally { setExportLoading(false); }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" style={{ color: BRAND.blue }} />
-          <p className="text-gray-600">Loading customer ledger…</p>
-        </div>
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4" style={{ color: BRAND.blue }} />
+        <p className="text-gray-600">Loading customer ledger…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (!data) {
-    return (
-      <div className="p-8 text-center">
-        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Customer Not Found</h2>
-        <p className="text-gray-600 mb-4">The customer ledger could not be loaded.</p>
-        <Button onClick={() => router.push('/customers')}>
-          <ChevronLeft className="h-4 w-4 mr-2" /> Back to Customers
-        </Button>
-      </div>
-    );
-  }
+  if (!data) return (
+    <div className="p-8 text-center">
+      <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+      <h2 className="text-xl font-semibold mb-2">Customer Not Found</h2>
+      <Button onClick={() => router.push('/customers')}><ChevronLeft className="h-4 w-4 mr-2" />Back to Customers</Button>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         <Breadcrumbs code={data.customer.customer_id} name={data.customer.customer_name} />
-
         <CustomerHeader customer={data.customer} />
 
         <Tabs defaultValue="ledger" className="mb-6">
@@ -1034,26 +879,17 @@ export default function CustomerLedgerPage() {
 
           <TabsContent value="ledger" className="space-y-6">
             <CustomerInfoCard customer={data.customer} />
-
             <FinancialSummaryCard
-              ledger={data.ledger}
-              balance={data.balance}
-              creditLimit={Number(data.customer.credit_limit)}
-              customer={data.customer}
-              onExportPDF={handleExportPDF}
-              onExportExcel={handleExportExcel}
-              onPrint={() => window.print()}
-              isLoading={exportLoading}
+              ledger={data.ledger} balance={data.balance}
+              creditLimit={Number(data.customer.credit_limit)} customer={data.customer}
+              onExportPDF={handleExportPDF} onExportExcel={handleExportExcel}
+              onPrint={() => window.print()} isLoading={exportLoading}
             />
-
             <LedgerTable ledger={data.ledger} periodSummary={data.periodSummary} />
           </TabsContent>
 
           <TabsContent value="details">
-            <Card>
-              <CardHeader><CardTitle>Detailed Customer Information</CardTitle></CardHeader>
-              <CardContent>{/* extend as needed */}</CardContent>
-            </Card>
+            <Card><CardHeader><CardTitle>Detailed Customer Information</CardTitle></CardHeader><CardContent /></Card>
           </TabsContent>
         </Tabs>
 
