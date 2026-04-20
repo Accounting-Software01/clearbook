@@ -38,16 +38,18 @@ const formatCurrency = (amount: number): string =>
  * Returns true for any account that is an internal auto/system account.
  * These are INCLUDED in grand_total calculations but HIDDEN from display.
  *
- * Matching logic (case-insensitive):
- *   account_name starts with "auto"   → e.g. "Auto Debit Control", "Auto-generated"
- *   account_code starts with "AUTO"   → e.g. "AUTO-001"
+ * Matching logic (case-insensitive) — catches ALL of these patterns:
+ *   "Cash & Cash Equivalents (AUTO)"   ← contains "(auto)"
+ *   "Accounts Receivable (AUTO)"       ← contains "(auto)"
+ *   "Auto Debit Control"               ← starts with "auto"
+ *   "AUTO-001"  (account_code)         ← code contains "auto"
  *
- * Extend the conditions here if new patterns arise.
+ * The key fix: use .includes() not .startsWith() so trailing (AUTO) is caught.
  */
 const isAutoAccount = (account: { account_name: string; account_code: string }): boolean => {
-  const name = (account.account_name ?? '').toLowerCase().trim();
-  const code = (account.account_code ?? '').toLowerCase().trim();
-  return name.startsWith('auto') || code.startsWith('auto');
+  const name = (account.account_name ?? '').toLowerCase();
+  const code = (account.account_code ?? '').toLowerCase();
+  return name.includes('(auto)') || name.startsWith('auto') || code.includes('auto');
 };
 
 /* ================= PDF EXPORT ================= */
