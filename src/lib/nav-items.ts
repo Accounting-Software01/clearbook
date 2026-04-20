@@ -63,8 +63,8 @@ export const allNavItems = [
                 subItems: [
                     { href: '/incomes', label: 'Incomes', icon: TrendingUp, permission: 'view_incomes' },
                     { href: '/expenses', label: 'Expenses', icon: TrendingDown, permission: 'view_expenses' },
-                    { href: '/receipts', label: 'Receipts', icon: Receipt, permission: 'view_receipts' },
-                    { href: '/payments', label: 'Payments', icon: CreditCard, permission: 'view_payments' },
+                    { href: '/receipts Voucher', label: 'Receipts', icon: Receipt, permission: 'view_receipts' },
+                    { href: '/payments Voucher', label: 'Payments', icon: CreditCard, permission: 'view_payments' },
                     { href: '/journal', label: 'Journal Entries', icon: BookText, permission: 'view_journal_entries' },
                     { href: '/opening-balance', label: 'Opening Balances', icon: Database, permission: 'view_opening_balances' },
                     { href: '/reconciliation', label: 'Reconciliation', icon: GitCompare, permission: 'view_reconciliation' },
