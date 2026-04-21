@@ -594,7 +594,7 @@ const QuickActionsDropZone = () => {
                         )} />
                         {!isCollapsed && (
                             <div>
-                                <h2 className="text-2xl font-bold text-primary-foreground">Hari Ind.</h2>
+                                <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
                                 <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
                             </div>
                         )}
@@ -683,7 +683,9 @@ const QuickActionsDropZone = () => {
                         </div>
                     ) : (
                         <>
-                                                  </>
+                           
+                           
+                        </>
                     )}
                 </div>
             </aside>
