@@ -11,6 +11,9 @@ import { NotificationCenter } from '@/components/NotificationCenter';
 import { useAuth } from '@/hooks/useAuth';
 import SessionExpired from '@/components/SessionExpired';
 import { RecentActivities } from '@/components/RecentActivities';
+import { UserProfile } from '@/components/ui/UserProfile';
+import { SpeedInsights } from "@vercel/speed-insights/next"
+
 
 const navItems = [
     { href: '/dashboard', label: 'Dashboard' },
@@ -39,19 +42,20 @@ export default function AppLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { user, isLoading, logout } = useAuth();
+    const { user, subscriptionStatus, isAuthLoading, logout } = useAuth(); // Added subscriptionStatus
     const [isCardCollapsed, setIsCardCollapsed] = useState(false);
 
-    const isAuthPage = pathname === '/login' || pathname === '/signup';
+    const isPublicPage = pathname === '/' || pathname === '/login' || pathname === '/contact' || pathname === '/free-trial';
+    const isSubscriptionPage = pathname === '/subscription'; // Check for subscription page
 
     useEffect(() => {
-        if (user && isAuthPage) {
+        if (user && (pathname === '/login' || pathname === '/contact' || pathname === '/free-trial')) {
             router.replace('/dashboard');
         }
-    }, [user, isAuthPage, router]);
+    }, [user, pathname, router]);
 
 
-    if (isLoading) {
+    if (isAuthLoading || subscriptionStatus === 'loading') {
         return (
             <div className="flex items-center justify-center min-h-screen w-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -59,12 +63,13 @@ export default function AppLayout({
         );
     }
 
-    if (!user && !isAuthPage) {
+    // If not logged in and not on a public page, show session expired
+    if (!user && !isPublicPage) {
         return <SessionExpired />;
     }
 
-
-    if (isAuthPage) {
+    // For public pages or the subscription page, render children without the app shell
+    if (isPublicPage || (subscriptionStatus === 'inactive' && isSubscriptionPage)) {
         return <>{children}</>;
     }
     
@@ -73,7 +78,8 @@ export default function AppLayout({
 
     return (
          <div className="relative z-10 flex h-[100vh] w-full gap-4 p-4">
-            <Sidebar />
+            {/* Conditionally render the Sidebar */}
+            {subscriptionStatus === 'active' && <Sidebar />}
             <main className="flex-1 h-full overflow-hidden">
                 <Card className="w-full h-full flex flex-col shadow-2xl bg-card/80 backdrop-blur-xl transition-all duration-300">
                     <CardHeader className="flex flex-row items-center justify-between p-2 border-b">
@@ -92,14 +98,11 @@ export default function AppLayout({
                                 <RecentActivities currentTitle={title} />
                             </div>
                         </div>
-                         <div className="flex items-center gap-2">
-                             {user && <NotificationCenter userRole={user.role} userCompanyId={user.company_id} />}
-                             
-                             <Button variant="ghost" size="sm" onClick={logout}>
-                                <LogOut className="mr-2 h-4 w-4" />
-                                Logout
-                            </Button>
-                         </div>
+                        <div className="flex items-center gap-2">
+    {user && <NotificationCenter userRole={user.role} userCompanyId={user.company_id} />}
+    {user && <UserProfile />}
+</div>
+
                     </CardHeader>
                    <div
                         className={cn(
