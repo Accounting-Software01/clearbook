@@ -18,6 +18,7 @@ import ChartOfAccounts from '@/components/accounting/ChartOfAccounts'
 import BankAccounts from '@/components/accounting/BankAccounts'
 import Taxes from '@/components/accounting/Taxes'
 import TaxAuthorities from '@/components/accounting/TaxAuthorities'
+import Profile from '@/components/profile'
 
 const settingsNav = [
   { title: 'Company', href: 'company', component: <CompanySettings /> },
@@ -37,6 +38,7 @@ const settingsNav = [
   { title: 'Notifications', href: 'notifications', component: <NotificationsAndAlerts /> },
   { title: 'Security & Audit', href: 'security-audit', component: <SecurityAndAudit /> },
   { title: 'Preferences', href: 'preferences', component: <SystemPreferences /> },
+  { title: 'Profile', href: 'profile', component: <Profile /> },
 ]
 
 const SettingsPage = () => {
