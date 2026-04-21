@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image'; // <-- ADD THIS
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Library, Loader2, Shield, Eye, EyeOff, Lock } from 'lucide-react';
+import { Loader2, Shield, Eye, EyeOff, Lock } from 'lucide-react'; // <-- REMOVED Library
 import { useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import ReCAPTCHA from 'react-google-recaptcha';
@@ -66,10 +67,9 @@ export default function LoginPage() {
 
       // Use router.push instead of window.location for smoother transition
       // Use window.location.href for a full page reload to ensure the new session is applied
-setTimeout(() => {
-  window.location.href = '/dashboard';
-}, 1000);
-
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1000);
     } catch (error: any) {
       // Reset captcha on error
       recaptchaRef.current?.reset();
@@ -154,8 +154,15 @@ setTimeout(() => {
               <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary/80 to-primary/60" />
               <div className="relative z-10 space-y-6">
                 <div className="flex flex-col items-center">
+                  {/* Custom Logo Image - Replaces Library icon */}
                   <div className="p-3 bg-white/10 backdrop-blur-sm rounded-full mb-4">
-                    <Library className="h-12 w-12 text-white" />
+                    <Image
+                      src="/logo.png"
+                      alt="Hari Industries Ltd. Logo"
+                      width={48}
+                      height={48}
+                      className="rounded-md"
+                    />
                   </div>
                   <h2 className="text-3xl font-bold tracking-tight">
                     Hari Industries Ltd.
