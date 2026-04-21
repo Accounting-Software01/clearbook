@@ -88,7 +88,7 @@ export default function AppLayout({
                                <button className="h-3 w-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors"></button>
                            </div>
                            <div className="flex items-center gap-4 border-l pl-4">
-                                <h1 className="text-sm font-semibold">{title}</h1>
+                                <h1 className="text-sm font-semibold">Hari Ind. </h1>
                                 <RecentActivities currentTitle={title} />
                             </div>
                         </div>
