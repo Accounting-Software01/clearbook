@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import Image from 'next/image'; // <-- ADD THIS
 import {
     LayoutDashboard,
     FilePlus,
@@ -13,7 +14,7 @@ import {
     Landmark,
     ArrowRightLeft,
     Users,
-    Library,
+    // Library, // <-- REMOVED (no longer needed)
     Boxes,
     ChevronDown,
     ChevronLeft,
@@ -92,8 +93,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useAuth } from '@/hooks/useAuth';
 import { allNavItems } from '@/lib/nav-items';
-import Image from 'next/image';
-// --- ADD THESE DND-KIT IMPORTS ---
+// --- DND-KIT IMPORTS ---
 import {
     DndContext,
     closestCenter,
@@ -105,9 +105,9 @@ import {
     useDroppable,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react'; // Also add GripVertical
+import { GripVertical } from 'lucide-react';
 
-// --- ADD THESE TYPE DEFINITIONS ---
+// --- TYPE DEFINITIONS ---
 interface NavItem {
     href: string;
     label: string;
@@ -116,18 +116,17 @@ interface NavItem {
 }
 
 interface QuickActionItem extends NavItem {
-    id: string; // Unique ID for each quick action
+    id: string;
 }
 
 // --- DRAGGABLE NAV ITEM COMPONENT ---
 function DraggableNavItem({ item }: { item: NavItem }) {
     const { attributes, listeners, setNodeRef, transform } = useDraggable({
         id: `draggable-${item.href}`,
-        data: item, // Pass the item data with the drag event
+        data: item,
     });
     
     const style = {
-        // This makes the item follow the cursor while dragging
         transform: CSS.Translate.toString(transform),
     };
 
@@ -146,7 +145,6 @@ function DraggableNavItem({ item }: { item: NavItem }) {
                 <item.icon className="h-5 w-5" />
                 <span className="font-medium">{item.label}</span>
             </Link>
-            {/* This is the handle you will click and drag */}
             <div 
                 {...listeners} 
                 {...attributes} 
@@ -158,7 +156,6 @@ function DraggableNavItem({ item }: { item: NavItem }) {
         </div>
     );
 }
-// --- END OF COMPONENT ---
 
 function getFlattenedNavItems(items: any[]): NavItem[] {
     const flatList: NavItem[] = [];
@@ -176,7 +173,6 @@ function getFlattenedNavItems(items: any[]): NavItem[] {
     return flatList;
 }
 
-
 export function Sidebar() {
     const pathname = usePathname();
     const { user, logout } = useAuth();
@@ -185,129 +181,109 @@ export function Sidebar() {
     const [isMobile, setIsMobile] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
 
-    // --- ADD THIS CODE ---
-// State to hold the list of quick action items
-const [quickActions, setQuickActions] = useState<QuickActionItem[]>([]);
+    // --- QUICK ACTIONS LOGIC ---
+    const [quickActions, setQuickActions] = useState<QuickActionItem[]>([]);
 
-// Load and re-hydrate actions from local storage on mount
-useEffect(() => {
-    const savedActions = localStorage.getItem('clearbooks-quick-actions');
-    if (savedActions) {
-        const parsedActions: Omit<QuickActionItem, 'icon'>[] = JSON.parse(savedActions);
-        const flattenedNavItems = getFlattenedNavItems(allNavItems);
+    useEffect(() => {
+        const savedActions = localStorage.getItem('clearbooks-quick-actions');
+        if (savedActions) {
+            const parsedActions: Omit<QuickActionItem, 'icon'>[] = JSON.parse(savedActions);
+            const flattenedNavItems = getFlattenedNavItems(allNavItems);
+            const hydratedActions = parsedActions.map(action => {
+                const originalItem = flattenedNavItems.find(item => item.href === action.href);
+                return {
+                    ...action,
+                    icon: originalItem ? originalItem.icon : Users,
+                };
+            }).filter(action => action.icon);
+            setQuickActions(hydratedActions as QuickActionItem[]);
+        }
+    }, []);
 
-        const hydratedActions = parsedActions.map(action => {
-            const originalItem = flattenedNavItems.find(item => item.href === action.href);
-            return {
-                ...action,
-                icon: originalItem ? originalItem.icon : Users, // Fallback icon
-            };
-        }).filter(action => action.icon); // Ensure item is valid
+    const saveQuickActions = (actions: QuickActionItem[]) => {
+        setQuickActions(actions);
+        const serializableActions = actions.map(({ icon, ...rest }) => rest);
+        localStorage.setItem('clearbooks-quick-actions', JSON.stringify(serializableActions));
+    };
 
-        setQuickActions(hydratedActions as QuickActionItem[]);
-    }
-}, []);
+    const addQuickAction = (item: NavItem) => {
+        if (!quickActions.some(action => action.href === item.href) && quickActions.length < 4) {
+            const newAction = { ...item, id: `qa-${item.href}` };
+            saveQuickActions([...quickActions, newAction]);
+        }
+    };
 
-// Helper to save actions to both state and local storage
-// Helper to save actions to both state and local storage
-const saveQuickActions = (actions: QuickActionItem[]) => {
-    setQuickActions(actions);
-    // Create a serializable version for localStorage by removing the icon component
-    const serializableActions = actions.map(({ icon, ...rest }) => rest);
-    localStorage.setItem('clearbooks-quick-actions', JSON.stringify(serializableActions));
-};
+    const removeQuickAction = (href: string) => {
+        saveQuickActions(quickActions.filter(action => action.href !== href));
+    };
 
+    // --- DND-KIT SETUP ---
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor)
+    );
 
-// Adds a new item to quick actions if it's not already there
-const addQuickAction = (item: NavItem) => {
-    // Prevent duplicates and limit to 4 actions
-    if (!quickActions.some(action => action.href === item.href) && quickActions.length < 4) {
-        const newAction = { ...item, id: `qa-${item.href}` }; // Create a unique ID
-        saveQuickActions([...quickActions, newAction]);
-    }
-};
-
-// Removes an item from quick actions
-const removeQuickAction = (href: string) => {
-    saveQuickActions(quickActions.filter(action => action.href !== href));
-};
-// --- END OF CODE TO ADD ---
-   
-// --- ADD THIS DND-KIT LOGIC ---
-// Sets up sensors for pointer (mouse/touch) and keyboard
-const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor)
-);
-
-// This function is called when a draggable item is dropped
-function handleDragEnd(event: any) {
-    // Check if the item was dropped over the quick actions area
-    if (event.over && event.over.id === 'quick-actions-drop-zone') {
-        const item = event.active.data.current;
-        if (item) {
-            addQuickAction(item); // Add the dropped item to our actions
+    function handleDragEnd(event: any) {
+        if (event.over && event.over.id === 'quick-actions-drop-zone') {
+            const item = event.active.data.current;
+            if (item) {
+                addQuickAction(item);
+            }
         }
     }
-}
-// --- END DND-KIT LOGIC ---
 
-// --- QUICK ACTIONS DROP ZONE COMPONENT ---
-const QuickActionsDropZone = () => {
-    const { setNodeRef, isOver } = useDroppable({
-        id: 'quick-actions-drop-zone',
-    });
+    // --- QUICK ACTIONS DROP ZONE ---
+    const QuickActionsDropZone = () => {
+        const { setNodeRef, isOver } = useDroppable({
+            id: 'quick-actions-drop-zone',
+        });
 
-    return (
-        <div className="p-4 border-t border-white/20">
-            <h3 className="text-sm font-semibold text-primary-foreground/80 mb-2 px-1">
-                Quick Actions
-            </h3>
-            <div 
-                ref={setNodeRef}
-                className={cn(
-                    "grid grid-cols-2 gap-2 min-h-[88px] p-2 rounded-lg border-2 border-dashed border-white/20 transition-colors",
-                    // Highlight the drop zone when an item is dragged over it
-                    isOver ? "bg-white/20 border-white/40" : ""
-                )}
-            >
-                {quickActions.map(action => (
-                    <div key={action.id} className="relative group">
-                        <Link 
-                            href={action.href} 
-                            className="p-2 bg-white/10 hover:bg-white/20 rounded-lg flex flex-col items-center justify-center text-center h-full transition-colors aspect-square"
-                            title={action.label}
-                        >
-                            <action.icon className="h-5 w-5 text-primary-foreground mb-1" />
-                            <span className="text-xs text-primary-foreground leading-tight">
-                                {action.label}
-                            </span>
-                        </Link>
-                        {/* Remove button */}
-                        <button
-                            onClick={() => removeQuickAction(action.href)}
-                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            title={`Remove '${action.label}'`}
-                        >
-                            <X className="h-3 w-3" />
-                        </button>
-                    </div>
-                ))}
-                {quickActions.length === 0 && (
-                     <div className="col-span-2 flex items-center justify-center">
-                        <p className="text-xs text-center text-primary-foreground/50 p-4">
-                            Drag a tab here for quick navigation.
-                        </p>
-                    </div>
-                )}
+        return (
+            <div className="p-4 border-t border-white/20">
+                <h3 className="text-sm font-semibold text-primary-foreground/80 mb-2 px-1">
+                    Quick Actions
+                </h3>
+                <div 
+                    ref={setNodeRef}
+                    className={cn(
+                        "grid grid-cols-2 gap-2 min-h-[88px] p-2 rounded-lg border-2 border-dashed border-white/20 transition-colors",
+                        isOver ? "bg-white/20 border-white/40" : ""
+                    )}
+                >
+                    {quickActions.map(action => (
+                        <div key={action.id} className="relative group">
+                            <Link 
+                                href={action.href} 
+                                className="p-2 bg-white/10 hover:bg-white/20 rounded-lg flex flex-col items-center justify-center text-center h-full transition-colors aspect-square"
+                                title={action.label}
+                            >
+                                <action.icon className="h-5 w-5 text-primary-foreground mb-1" />
+                                <span className="text-xs text-primary-foreground leading-tight">
+                                    {action.label}
+                                </span>
+                            </Link>
+                            <button
+                                onClick={() => removeQuickAction(action.href)}
+                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title={`Remove '${action.label}'`}
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
+                        </div>
+                    ))}
+                    {quickActions.length === 0 && (
+                        <div className="col-span-2 flex items-center justify-center">
+                            <p className="text-xs text-center text-primary-foreground/50 p-4">
+                                Drag a tab here for quick navigation.
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    );
-};
-// --- END OF COMPONENT ---
+        );
+    };
 
-
-    // Check if mobile
+    // --- MOBILE DETECTION ---
     useEffect(() => {
         const checkMobile = () => {
             setIsMobile(window.innerWidth < 768);
@@ -315,12 +291,12 @@ const QuickActionsDropZone = () => {
                 setMobileOpen(false);
             }
         };
-        
         checkMobile();
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
 
+    // --- LOADING STATE (NO USER) ---
     if (!user || !user.permissions) {
         return (
             <aside className={cn(
@@ -329,12 +305,16 @@ const QuickActionsDropZone = () => {
             )}>
                 <div className="p-4 flex items-center justify-between border-b border-white/20">
                     <div className="flex items-center gap-2">
-                        <Library className={cn(
-                            "text-primary-foreground transition-all",
-                            isCollapsed ? "h-6 w-6" : "h-8 w-8"
-                        )} />
+                        {/* Logo image in loading state */}
+                        <Image
+                            src="/logo.png"
+                            alt="ClearBooks Logo"
+                            width={isCollapsed ? 24 : 32}
+                            height={isCollapsed ? 24 : 32}
+                            className="rounded-md"
+                        />
                         {!isCollapsed && (
-                            <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+                            <h2 className="text-2xl font-bold text-primary-foreground">Hari Ind.</h2>
                         )}
                     </div>
                 </div>
@@ -342,6 +322,7 @@ const QuickActionsDropZone = () => {
         );
     }
 
+    // --- PERMISSION FILTERING ---
     const isAdmin = user.role === 'admin';
 
     const filterItems = (items: any[]) => {
@@ -360,7 +341,7 @@ const QuickActionsDropZone = () => {
                 if (item.permission) {
                     return user.permissions?.includes(item.permission) ? item : null;
                 }
-                return item; // For titles
+                return item;
             })
             .filter((item): item is NonNullable<typeof item> => item !== null);
     };
@@ -375,7 +356,6 @@ const QuickActionsDropZone = () => {
     };
 
     const getSectionIcon = (sectionLabel: string) => {
-        // Map section labels to icons for collapsed state
         const iconMap: Record<string, any> = {
             'Financial Management': Landmark,
             'Business Operations': Building,
@@ -396,7 +376,6 @@ const QuickActionsDropZone = () => {
             
             if (item.isTitle) {
                 if (isCollapsed) {
-                    // Show icon-only tooltip for titles in collapsed mode
                     const SectionIcon = getSectionIcon(item.label);
                     return (
                         <li key={itemKey} className="relative group">
@@ -405,7 +384,6 @@ const QuickActionsDropZone = () => {
                                     <SectionIcon className="h-5 w-5 text-primary-foreground/70" />
                                 </div>
                             </div>
-                            {/* Tooltip */}
                             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
                                 {item.label}
                             </div>
@@ -430,7 +408,6 @@ const QuickActionsDropZone = () => {
                 const isOpen = openSections[item.label];
                 
                 if (isCollapsed) {
-                    // Collapsed view for submenus
                     return (
                         <li key={itemKey} className="relative group">
                             <button
@@ -445,17 +422,14 @@ const QuickActionsDropZone = () => {
                                     )} />
                                 </div>
                             </button>
-                            {/* Tooltip */}
                             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
                                 {item.label}
                             </div>
-                            {/* Dropdown for collapsed submenu */}
                             {isOpen && (
                                 <div className="absolute left-full ml-1 top-0 bg-primary border border-white/10 rounded-lg shadow-xl z-40 py-2 min-w-[180px]">
                                     <ul className="space-y-1">
                                         {item.subItems.map((subItem: any, subIndex: number) => {
                                             if (subItem.subItems) {
-                                                // Nested submenu in dropdown
                                                 return (
                                                     <div key={subIndex} className="px-3 py-1">
                                                         <div className="text-xs text-primary-foreground/60 font-semibold mb-1">
@@ -494,7 +468,6 @@ const QuickActionsDropZone = () => {
                     );
                 }
 
-                // Expanded view for submenus
                 return (
                     <li key={itemKey}>
                         <Collapsible
@@ -524,7 +497,6 @@ const QuickActionsDropZone = () => {
                 );
             }
 
-            // Single item
             const isActive = pathname === item.href;
             
             if (isCollapsed) {
@@ -541,7 +513,6 @@ const QuickActionsDropZone = () => {
                         >
                             <item.icon className="h-5 w-5" />
                         </Link>
-                        {/* Tooltip */}
                         <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
                             {item.label}
                             {item.permission && (
@@ -559,13 +530,10 @@ const QuickActionsDropZone = () => {
                     <DraggableNavItem item={item} />
                 </li>
             );
-            
-
-            
         });
     };
 
-    // Mobile sidebar
+    // --- MOBILE SIDEBAR TOGGLE BUTTON ---
     if (isMobile && !mobileOpen) {
         return (
             <button
@@ -576,6 +544,8 @@ const QuickActionsDropZone = () => {
             </button>
         );
     }
+
+    // --- MAIN SIDEBAR CONTENT ---
     const sidebarContent = (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <aside className={cn(
@@ -583,42 +553,27 @@ const QuickActionsDropZone = () => {
                 isCollapsed ? "w-16" : "w-64",
                 isMobile ? "fixed inset-y-0 left-0 z-50" : "relative"
             )}>
-                {/* Header */}
+                {/* Header with Logo */}
                 <div className={cn(
                     "p-4 flex items-center justify-between border-b border-white/20",
                     isCollapsed ? "flex-col gap-2" : ""
                 )}>
-                    // At the top of the file, add:
-
-
-// Then inside the header section, replace the <Library> icon with:
-<div className="flex items-center gap-2">
-  {isCollapsed ? (
-    // Collapsed state: show a small version of the logo (e.g., 32x32)
-    <Image
-      src="/logo.png"
-      alt="ClearBooks Logo"
-      width={32}
-      height={32}
-      className="rounded-md"
-    />
-  ) : (
-    // Expanded state: show larger logo + text
-    <Image
-      src="/logo.png"
-      alt="ClearBooks Logo"
-      width={40}
-      height={40}
-      className="rounded-md"
-    />
-  )}
-  {!isCollapsed && (
-    <div>
-      <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
-      <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
-    </div>
-  )}
-</div>
+                    <div className="flex items-center gap-2">
+                        {/* Custom Logo Image */}
+                        <Image
+                            src="/logo.png"
+                            alt="Hari Ind. Logo"
+                            width={isCollapsed ? 24 : 32}
+                            height={isCollapsed ? 24 : 32}
+                            className="rounded-md"
+                        />
+                        {!isCollapsed && (
+                            <div>
+                                <h2 className="text-2xl font-bold text-primary-foreground">Hari Ind.</h2>
+                                <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
+                            </div>
+                        )}
+                    </div>
                     
                     {/* Collapse Toggle */}
                     <button
@@ -643,7 +598,7 @@ const QuickActionsDropZone = () => {
                     )}
                 </div>
     
-                {/* User Info (Only in expanded mode) */}
+                {/* User Info (Expanded only) */}
                 {!isCollapsed && (
                     <div className="p-4 border-b border-white/20">
                         <div className="flex items-center gap-3">
@@ -677,12 +632,8 @@ const QuickActionsDropZone = () => {
                     </nav>
                 </ScrollArea>
     
-                {/* Quick Actions (Only in expanded mode) */}
-                
-                    {!isCollapsed && <QuickActionsDropZone />}
-
-                   
-                
+                {/* Quick Actions Drop Zone (Expanded only) */}
+                {!isCollapsed && <QuickActionsDropZone />}
     
                 {/* Footer */}
                 <div className="p-4 border-t border-white/20">
@@ -703,8 +654,7 @@ const QuickActionsDropZone = () => {
                         </div>
                     ) : (
                         <>
-                           
-                           
+                            {/* You can add logout button or settings here if needed */}
                         </>
                     )}
                 </div>
@@ -712,8 +662,7 @@ const QuickActionsDropZone = () => {
         </DndContext>
     );
     
-
-    // For mobile, add overlay
+    // --- MOBILE OVERLAY ---
     if (isMobile) {
         return (
             <>
