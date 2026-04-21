@@ -92,6 +92,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useAuth } from '@/hooks/useAuth';
 import { allNavItems } from '@/lib/nav-items';
+import Image from 'next/image';
 // --- ADD THESE DND-KIT IMPORTS ---
 import {
     DndContext,
@@ -587,18 +588,37 @@ const QuickActionsDropZone = () => {
                     "p-4 flex items-center justify-between border-b border-white/20",
                     isCollapsed ? "flex-col gap-2" : ""
                 )}>
-                    <div className="flex items-center gap-2">
-                        <Library className={cn(
-                            "text-primary-foreground transition-all",
-                            isCollapsed ? "h-6 w-6" : "h-8 w-8"
-                        )} />
-                        {!isCollapsed && (
-                            <div>
-                                <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
-                                <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
-                            </div>
-                        )}
-                    </div>
+                    // At the top of the file, add:
+
+
+// Then inside the header section, replace the <Library> icon with:
+<div className="flex items-center gap-2">
+  {isCollapsed ? (
+    // Collapsed state: show a small version of the logo (e.g., 32x32)
+    <Image
+      src="/logo.png"
+      alt="ClearBooks Logo"
+      width={32}
+      height={32}
+      className="rounded-md"
+    />
+  ) : (
+    // Expanded state: show larger logo + text
+    <Image
+      src="/logo.png"
+      alt="ClearBooks Logo"
+      width={40}
+      height={40}
+      className="rounded-md"
+    />
+  )}
+  {!isCollapsed && (
+    <div>
+      <h2 className="text-2xl font-bold text-primary-foreground">ClearBooks</h2>
+      <p className="text-xs text-primary-foreground/70">Accounting Pro</p>
+    </div>
+  )}
+</div>
                     
                     {/* Collapse Toggle */}
                     <button
