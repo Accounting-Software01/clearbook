@@ -69,7 +69,7 @@ export default function AppLayout({
     }
     
     const currentNavItem = navItems.find(item => pathname.startsWith(item.href));
-    const title = currentNavItem?.label || 'ClearBooks';
+    const title = currentNavItem?.label || 'Hari Industries';
 
     return (
          <div className="relative z-10 flex h-[100vh] w-full gap-4 p-4">
