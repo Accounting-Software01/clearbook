@@ -8,12 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, GanttChartSquare, Workflow, Eye, ArrowLeft, AlertCircle } from 'lucide-react';
+import { PlusCircle, Factory, Loader2, RefreshCw, CheckCircle, Package, ListChecks, PackageCheck, PlayCircle, DollarSign, Notebook, GanttChartSquare, Workflow, Eye, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { InventoryItem } from '@/types/inventory';
 
-// --- NEW COMPREHENSIVE INTERFACES ---
 interface Bom {
     id: number;
     bom_code: string;
@@ -28,6 +27,7 @@ interface BomComponent {
     uom: string;
     item_id: number;
     average_unit_cost: number;
+    quantity_on_hand?: number; // Added this field
 }
 
 interface BomOperation {
@@ -64,8 +64,6 @@ interface ProductionOrder {
     notes?: string;
 }
 
-// --- Add these new interfaces below the ProductionOrder interface (around line 65) ---
-
 interface ProductionOrderHeader extends ProductionOrder {
     total_material_cost: string | null;
     total_overhead_cost: string | null;
@@ -98,13 +96,10 @@ interface ProductionOrderDetails {
     journals: OrderJournal[];
 }
 
-// --- HELPER COMPONENTS ---
-
-// Helper to format amounts safely into Naira (₦)
 const formatNaira = (amount: string | number) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     if (isNaN(num)) {
-        return '₦0.00'; // Return a default value for invalid numbers
+        return '₦0.00';
     }
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(num);
 };
@@ -132,6 +127,7 @@ const OrderList = ({ orders, onStart, onComplete, onView }: { orders: Production
         </div>
     );
 };
+
 const CostingSummary = ({ costs }: { costs: any }) => (
     <Card className="bg-green-50 border-green-200">
         <CardHeader><CardTitle className="text-lg text-green-900">Estimated Production Cost</CardTitle></CardHeader>
@@ -170,7 +166,6 @@ const OrderDetailView = ({ details, onClose }: { details: ProductionOrderDetails
                     <div className="font-semibold"><strong>Total Overhead Cost:</strong> {formatNaira(header.total_overhead_cost || 0)}</div>
                     
                     <div className="font-bold text-base text-primary"><strong>Total Production Cost:</strong> {formatNaira((parseFloat(header.total_material_cost || '0') + parseFloat(header.total_overhead_cost || '0')))}</div>
-
                 </CardContent>
             </Card>
 
@@ -232,22 +227,19 @@ const OrderDetailView = ({ details, onClose }: { details: ProductionOrderDetails
     );
 };
 
-// --- MAIN PAGE COMPONENT ---
 export default function ProductionPage() {
     const { toast } = useToast();
     const { user } = useAuth();
 
-    // State
     const [orders, setOrders] = useState<ProductionOrder[]>([]);
     const [boms, setBoms] = useState<Bom[]>([]);
-    const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+    const [products, setProducts] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isBomLoading, setIsBomLoading] = useState(false);
     const [viewingOrderDetails, setViewingOrderDetails] = useState<ProductionOrderDetails | null>(null);
     const [isDetailLoading, setIsDetailLoading] = useState(false);
 
-    // Form State
     const [selectedBomId, setSelectedBomId] = useState<string>("");
     const [selectedBomDetails, setSelectedBomDetails] = useState<BomDetails | null>(null);
     const [quantityToProduce, setQuantityToProduce] = useState<string>("1");
@@ -269,7 +261,7 @@ export default function ProductionPage() {
             
             const itemsData = await itemsRes.json();
             if(!itemsRes.ok) throw new Error(itemsData.message || 'Failed to fetch items');
-            setInventoryItems((itemsData.products || []).map((p: any) => ({ ...p, id: parseInt(p.id, 10), quantity_on_hand: parseFloat(p.quantity_on_hand) || 0 })));
+            setProducts((itemsData.products || []).map((p: any) => ({ ...p, id: parseInt(p.id, 10) })));
             
             const bomsData = await bomsRes.json();
             if(!bomsRes.ok) throw new Error(bomsData.message || 'Failed to fetch BOMs');
@@ -298,7 +290,11 @@ export default function ProductionPage() {
                 if (data.success) {
                      const bomWithCosts = {
                         ...data.bom_details,
-                        components: data.bom_details.components.map((c:any) => ({ ...c, average_unit_cost: parseFloat(c.average_unit_cost) || 0 })),
+                        components: data.bom_details.components.map((c:any) => ({ 
+                            ...c, 
+                            average_unit_cost: parseFloat(c.average_unit_cost) || 0,
+                            quantity_on_hand: parseFloat(c.quantity_on_hand) || 0 // Added this
+                        })),
                         overheads: data.bom_details.overheads.map((o:any) => ({ ...o, cost: parseFloat(o.cost) || 0 }))
                     };
                     setSelectedBomDetails(bomWithCosts);
@@ -317,27 +313,9 @@ export default function ProductionPage() {
     }, [selectedBomId, toast]);
 
     const bomOptions = useMemo(() => {
-        const productMap = new Map(inventoryItems.map(p => [p.id, p.name]));
+        const productMap = new Map(products.map(p => [p.id, p.name]));
         return boms.map(bom => ({ ...bom, finished_good_name: productMap.get(bom.finished_good_id) || 'Unknown Product' }));
-    }, [boms, inventoryItems]);
-
-    const materialRequirements = useMemo(() => {
-        if (!selectedBomDetails?.components) return [];
-        const inventoryMap = new Map(inventoryItems.map(item => [item.id, item.quantity_on_hand || 0]));
-        const batchQty = parseFloat(quantityToProduce) || 0;
-        return selectedBomDetails.components.map(c => {
-            const requiredQty = c.quantity * batchQty;
-            const availableQty = inventoryMap.get(c.item_id) || 0;
-            return {
-                ...c,
-                requiredQty,
-                availableQty,
-                isShortage: requiredQty > availableQty,
-            };
-        });
-    }, [selectedBomDetails, quantityToProduce, inventoryItems]);
-
-    const hasShortage = useMemo(() => materialRequirements.some(m => m.isShortage), [materialRequirements]);
+    }, [boms, products]);
 
     const calculatedCosts = useMemo(() => {
         if (!selectedBomDetails) return null;
@@ -371,23 +349,36 @@ export default function ProductionPage() {
 
     const handleCreateOrder = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        const shortages = materialRequirements.filter(m => m.isShortage);
-        if (shortages.length > 0) {
-            const shortageList = shortages.map(s => `\n- ${s.item_name} (Required: ${s.requiredQty.toFixed(2)}, Available: ${s.availableQty.toFixed(2)})`).join('');
-            toast({
-                title: "Insufficient Material Stock",
-                description: `Cannot create production order. The following materials are short:${shortageList}`,
-                variant: 'destructive',
-                duration: 10000,
-            });
-            return;
-        }
-
         if (!user || !selectedBomId) {
             toast({ title: "Missing Information", description: "Please select a Bill of Materials.", variant: 'destructive' });
             return;
         }
+        
+        // Check stock availability before creating order
+        if (selectedBomDetails) {
+            const batchQty = parseFloat(quantityToProduce) || 0;
+            const stockIssues: string[] = [];
+            
+            selectedBomDetails.components.forEach(component => {
+                const requiredQty = component.quantity * batchQty;
+                const availableQty = component.quantity_on_hand || 0;
+                
+                if (availableQty < requiredQty) {
+                    stockIssues.push(`${component.item_name}: Need ${requiredQty.toFixed(4)} ${component.uom}, Available: ${availableQty.toFixed(4)} ${component.uom}`);
+                }
+            });
+            
+            if (stockIssues.length > 0) {
+                toast({ 
+                    title: "Insufficient Stock", 
+                    description: `The following materials are insufficient:\n${stockIssues.join('\n')}`,
+                    variant: 'destructive',
+                    duration: 10000
+                });
+                return;
+            }
+        }
+        
         setIsSubmitting(true);
         try {
             const payload = {
@@ -406,7 +397,6 @@ export default function ProductionPage() {
             if (!response.ok) throw new Error(result.message);
             toast({ title: "Success", description: "Production order created successfully." });
             fetchData();
-            // Reset form
             setSelectedBomId("");
             setSelectedBomDetails(null);
             setQuantityToProduce("1");
@@ -417,7 +407,7 @@ export default function ProductionPage() {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleViewOrder = useCallback(async (orderId: number) => {
         if (!user?.company_id) return;
         setIsDetailLoading(true);
@@ -439,7 +429,6 @@ export default function ProductionPage() {
         }
     }, [user?.company_id, toast]);
 
- 
     const updateOrderStatus = async (orderId: number, status: 'In Progress' | 'Completed') => {
         if (!user) return;
         try {
@@ -510,25 +499,58 @@ export default function ProductionPage() {
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                             <div className="lg:col-span-2 space-y-6">
                                                 <Card>
-                                                    <CardHeader><CardTitle className="text-lg flex items-center"><GanttChartSquare className="h-5 w-5 mr-2" />2. Material Requirements & Stock Check</CardTitle></CardHeader>
+                                                    <CardHeader><CardTitle className="text-lg flex items-center"><GanttChartSquare className="h-5 w-5 mr-2" />2. Material Requirements</CardTitle></CardHeader>
                                                     <CardContent>
                                                         <Table>
-                                                            <TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Available</TableHead><TableHead className="text-right">Required</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                                                            <TableHeader>
+                                                                <TableRow>
+                                                                    <TableHead>Material</TableHead>
+                                                                    <TableHead className="text-right">Required Qty</TableHead>
+                                                                    <TableHead>Unit</TableHead>
+                                                                    <TableHead className="text-right">Stock Available</TableHead>
+                                                                    <TableHead>Status</TableHead>
+                                                                </TableRow>
+                                                            </TableHeader>
                                                             <TableBody>
-                                                                {materialRequirements.map(req => (
-                                                                    <TableRow key={req.id} className={req.isShortage ? 'bg-red-50 dark:bg-red-900/20' : ''}>
-                                                                        <TableCell>{req.item_name}</TableCell>
-                                                                        <TableCell className={req.isShortage ? 'text-red-500 font-bold' : ''}>{req.availableQty.toFixed(2)}</TableCell>
-                                                                        <TableCell className="text-right font-medium">{(req.requiredQty).toFixed(2)}</TableCell>
-                                                                        <TableCell>
-                                                                            {req.isShortage ? (
-                                                                                <span className="flex items-center text-red-600 font-bold"><AlertCircle className="h-4 w-4 mr-1" />Shortage</span>
-                                                                            ) : (
-                                                                                <span className="flex items-center text-green-600"><CheckCircle className="h-4 w-4 mr-1" />OK</span>
-                                                                            )}
-                                                                        </TableCell>
-                                                                    </TableRow>
-                                                                ))}
+                                                                {selectedBomDetails.components.map(c => {
+                                                                    const batchQty = parseFloat(quantityToProduce) || 0;
+                                                                    const requiredQty = c.quantity * batchQty;
+                                                                    const availableQty = c.quantity_on_hand || 0;
+                                                                    const isSufficient = availableQty >= requiredQty;
+                                                                    
+                                                                    return (
+                                                                        <TableRow key={c.id} className={!isSufficient ? 'bg-red-50' : ''}>
+                                                                            <TableCell className="font-medium">{c.item_name}</TableCell>
+                                                                            <TableCell className="text-right">{requiredQty.toFixed(4)}</TableCell>
+                                                                            <TableCell>{c.uom}</TableCell>
+                                                                            <TableCell className="text-right">
+                                                                                <span className={availableQty < requiredQty ? 'text-red-600 font-bold' : 'text-green-600'}>
+                                                                                    {availableQty.toFixed(4)}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                {!isSufficient && (
+                                                                                    <div className="flex items-center text-red-600">
+                                                                                        <AlertTriangle className="h-4 w-4 mr-1" />
+                                                                                        <span className="text-xs">Shortage: {(requiredQty - availableQty).toFixed(4)}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {isSufficient && availableQty > 0 && (
+                                                                                    <div className="flex items-center text-green-600">
+                                                                                        <CheckCircle className="h-4 w-4 mr-1" />
+                                                                                        <span className="text-xs">Sufficient</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {availableQty === 0 && !isSufficient && (
+                                                                                    <div className="flex items-center text-red-600">
+                                                                                        <AlertTriangle className="h-4 w-4 mr-1" />
+                                                                                        <span className="text-xs">Out of Stock</span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    );
+                                                                })}
                                                             </TableBody>
                                                         </Table>
                                                     </CardContent>
@@ -575,9 +597,7 @@ export default function ProductionPage() {
                                                 {calculatedCosts && <CostingSummary costs={calculatedCosts} />}
                                             </div>
                                         </div>
-                                        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isBomLoading || !selectedBomId || hasShortage || (parseFloat(quantityToProduce) || 0) <= 0}>
-                                            {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Order...</> : hasShortage ? <><AlertCircle className="mr-2 h-4 w-4" />Insufficient Stock</> : <>Create Production Order</>}
-                                        </Button>
+                                        <Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isBomLoading || !selectedBomId || (parseFloat(quantityToProduce) || 0) <= 0}>{isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Order...</> : <>Create Production Order</>}</Button>
                                     </div>
                                 )}
                             </form>
