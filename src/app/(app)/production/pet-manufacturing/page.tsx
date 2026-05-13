@@ -797,252 +797,564 @@ const PETProductionPage = () => {
                 </TabsContent>
             </Tabs>
 
-            {/* CREATE/EDIT PRODUCTION ORDER DIALOG */}
-            <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
-                <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                        <DialogTitle>Record {newOrderStage === 'injection' ? 'Injection' : 'Blowing'} Production</DialogTitle>
-                        <DialogDescription>
-                            {newOrderStage === 'injection' 
-                                ? 'Enter the number of bags produced to calculate total preforms made.' 
-                                : 'Enter bottle production details to calculate preform consumption.'}
-                        </DialogDescription>
-                    </DialogHeader>
-                    
-                    <div className="py-4 px-1 max-h-[65vh] overflow-y-auto">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4">
-                            <Label className="text-right pt-2 md:col-span-1">BOM</Label>
-                            <Select value={newOrderBomId} onValueChange={setNewOrderBomId}>
-                                <SelectTrigger className="md:col-span-3">
-                                    <SelectValue placeholder="Select a BOM" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(newOrderStage === 'injection' ? injectionBoms : blowingBoms).map(bom => 
-                                        <SelectItem key={bom.id} value={bom.id}>{bom.bom_name}</SelectItem>
-                                    )}
-                                </SelectContent>
-                            </Select>
-                            
-                            <Label className="text-right pt-2 md:col-span-1">Date</Label>
-                            <Input 
-                                type="date" 
-                                value={newOrderDate} 
-                                onChange={e => setNewOrderDate(e.target.value)} 
-                                className="md:col-span-3" 
-                            />
-                        </div>
+           // RECORD INJECTION PRODUCTION MODAL - COMPLETE VERSION
+<Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
+    <DialogContent className="max-w-4xl">
+        <DialogHeader>
+            <DialogTitle>Record {newOrderStage === 'injection' ? 'Injection' : 'Blowing'} Production</DialogTitle>
+            <DialogDescription>
+                {newOrderStage === 'injection' 
+                    ? 'Enter the number of bags produced to calculate total preforms made and material consumption.' 
+                    : 'Enter bottle production details to calculate preform consumption.'}
+            </DialogDescription>
+        </DialogHeader>
+        
+        <div className="py-4 px-1 max-h-[65vh] overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4">
+                <Label className="text-right pt-2 md:col-span-1">BOM</Label>
+                <Select value={newOrderBomId} onValueChange={setNewOrderBomId}>
+                    <SelectTrigger className="md:col-span-3">
+                        <SelectValue placeholder="Select a BOM" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {(newOrderStage === 'injection' ? injectionBoms : blowingBoms).map(bom => 
+                            <SelectItem key={bom.id} value={bom.id}>{bom.bom_name}</SelectItem>
+                        )}
+                    </SelectContent>
+                </Select>
+                
+                <Label className="text-right pt-2 md:col-span-1">Date</Label>
+                <Input 
+                    type="date" 
+                    value={newOrderDate} 
+                    onChange={e => setNewOrderDate(e.target.value)} 
+                    className="md:col-span-3" 
+                />
+            </div>
 
-                        {newOrderStage === 'injection' ? (
-                            <div className="px-4">
-                                <Card className="mt-4">
-                                    <CardHeader>
-                                        <CardTitle className="text-lg">Bag Production Details</CardTitle>
-                                        <CardDescription>Enter the number of finished bags produced from your injection run.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-6">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {newOrderStage === 'injection' ? (
+                <div className="px-4">
+                    {/* PRODUCTION RUN PARAMETERS CARD */}
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle className="text-lg">Production Run Parameters</CardTitle>
+                            <CardDescription>
+                                Calculate preform output based on finished bag production
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-6">
+                                {/* Bag Input Section */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Number of Bags Produced</Label>
+                                        <Input 
+                                            type="number" 
+                                            placeholder="Enter number of bags"
+                                            value={newOrderBagsCount}
+                                            onChange={e => {
+                                                setNewOrderBagsCount(Number(e.target.value));
+                                                setNewOrderDefectiveQty(0);
+                                            }}
+                                            className="text-lg"
+                                        />
+                                        <p className="text-xs text-muted-foreground">Total bags filled with preforms</p>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Bag Weight (kg)</Label>
+                                        <Select value={newOrderBagWeight} onValueChange={(val) => {
+                                            setNewOrderBagWeight(val);
+                                            setNewOrderDefectiveQty(0);
+                                        }}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select bag weight" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="25">25 kg bag</SelectItem>
+                                                <SelectItem value="30">30 kg bag</SelectItem>
+                                                <SelectItem value="50">50 kg bag</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">Weight of each finished bag</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Preform Weight (grams)</Label>
+                                        <Select value={newOrderPreformWeight} onValueChange={(val) => {
+                                            setNewOrderPreformWeight(val);
+                                            setNewOrderDefectiveQty(0);
+                                        }}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select preform weight" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="14">14 gram preform</SelectItem>
+                                                <SelectItem value="18">18 gram preform</SelectItem>
+                                                <SelectItem value="20">20 gram preform</SelectItem>
+                                                <SelectItem value="24">24 gram preform</SelectItem>
+                                                <SelectItem value="28">28 gram preform</SelectItem>
+                                                <SelectItem value="32">32 gram preform</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">Weight of each individual preform</p>
+                                    </div>
+                                </div>
+
+                                {/* Calculation Results with Manual Defect Input */}
+                                {newOrderBagsCount > 0 && newOrderBagWeight && newOrderPreformWeight && (
+                                    <div className="bg-primary/5 rounded-lg p-4 space-y-3">
+                                        <h4 className="font-semibold text-sm">Production Calculation</h4>
+                                        
+                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                            <div>
+                                                <p className="text-muted-foreground">Total Raw Material Used:</p>
+                                                <p className="font-bold text-lg">
+                                                    {((newOrderBagsCount * parseFloat(newOrderBagWeight)) / 1000).toFixed(2)} tons
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    ({newOrderBagsCount} bags × {newOrderBagWeight}kg = {(newOrderBagsCount * parseFloat(newOrderBagWeight)).toLocaleString()} kg)
+                                                </p>
+                                            </div>
+                                            
+                                            <div>
+                                                <p className="text-muted-foreground">Gross Preforms Produced:</p>
+                                                <p className="font-bold text-xl text-blue-600">
+                                                    {Math.floor((newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight)).toLocaleString()} units
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    ({newOrderBagsCount} × {newOrderBagWeight}kg × 1000 ÷ {newOrderPreformWeight}g)
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Manual Defective Quantity Input */}
+                                        <div className="border-t pt-4 mt-2">
+                                            <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Number of Bags Produced</Label>
+                                                    <Label className="text-sm font-medium">Defective Preforms</Label>
                                                     <Input 
                                                         type="number" 
-                                                        placeholder="Enter number of bags"
-                                                        value={newOrderBagsCount}
+                                                        placeholder="Enter defective units"
+                                                        value={newOrderDefectiveQty}
                                                         onChange={e => {
-                                                            setNewOrderBagsCount(Number(e.target.value));
-                                                            setNewOrderDefectiveQty(0);
+                                                            const defectQty = Number(e.target.value);
+                                                            const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                            
+                                                            if (defectQty <= totalPreforms) {
+                                                                setNewOrderDefectiveQty(defectQty);
+                                                            } else {
+                                                                toast({ 
+                                                                    title: "Invalid Input", 
+                                                                    description: `Defective quantity cannot exceed total preforms produced (${Math.floor(totalPreforms).toLocaleString()} units)`, 
+                                                                    variant: "destructive" 
+                                                                });
+                                                            }
                                                         }}
                                                         className="text-lg"
                                                     />
+                                                    <p className="text-xs text-muted-foreground">Enter the actual number of defective preforms</p>
                                                 </div>
                                                 
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Bag Weight (kg)</Label>
-                                                    <Select value={newOrderBagWeight} onValueChange={setNewOrderBagWeight}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select bag weight" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="25">25 kg bag</SelectItem>
-                                                            <SelectItem value="30">30 kg bag</SelectItem>
-                                                            <SelectItem value="50">50 kg bag</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Preform Weight (grams)</Label>
-                                                    <Select value={newOrderPreformWeight} onValueChange={setNewOrderPreformWeight}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select preform weight" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="14">14 gram preform</SelectItem>
-                                                            <SelectItem value="18">18 gram preform</SelectItem>
-                                                            <SelectItem value="20">20 gram preform</SelectItem>
-                                                            <SelectItem value="24">24 gram preform</SelectItem>
-                                                            <SelectItem value="28">28 gram preform</SelectItem>
-                                                            <SelectItem value="32">32 gram preform</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                                                    <Label className="text-sm font-medium">Defect Percentage</Label>
+                                                    <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-center">
+                                                        <p className="text-2xl font-bold text-red-600">
+                                                            {(() => {
+                                                                const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                                if (totalPreforms > 0 && newOrderDefectiveQty > 0) {
+                                                                    return ((newOrderDefectiveQty / totalPreforms) * 100).toFixed(2);
+                                                                }
+                                                                return "0.00";
+                                                            })()}%
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">Calculated automatically</p>
+                                                    </div>
                                                 </div>
                                             </div>
-
-                                            {newOrderBagsCount > 0 && (
-                                                <div className="bg-primary/5 rounded-lg p-4">
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <p className="text-muted-foreground">Total Preforms Produced:</p>
-                                                            <p className="font-bold text-2xl text-blue-600">
-                                                                {Math.floor((newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight)).toLocaleString()} units
-                                                            </p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-muted-foreground">Total Output Weight:</p>
-                                                            <p className="font-bold text-lg">
-                                                                {(newOrderBagsCount * parseFloat(newOrderBagWeight)).toLocaleString()} kg
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t">
-                                                        <div className="space-y-2">
-                                                            <Label>Defective Preforms</Label>
-                                                            <Input 
-                                                                type="number" 
-                                                                placeholder="Enter defective units"
-                                                                value={newOrderDefectiveQty}
-                                                                onChange={e => setNewOrderDefectiveQty(Number(e.target.value))}
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <Label>Defect Percentage</Label>
-                                                            <div className="bg-slate-100 p-2 rounded-md text-center">
-                                                                <p className="text-xl font-bold text-red-600">
-                                                                    {((newOrderDefectiveQty / ((newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight))) * 100).toFixed(2)}%
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                            
+                                            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-semibold">Net Good Preforms:</span>
+                                                    <span className="text-2xl font-bold text-green-600">
+                                                        {(() => {
+                                                            const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                            const goodQty = totalPreforms - newOrderDefectiveQty;
+                                                            return Math.floor(goodQty).toLocaleString();
+                                                        })()} units
+                                                    </span>
                                                 </div>
-                                            )}
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Gross production minus defective quantity
+                                                </p>
+                                            </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            // BLOWING PRODUCTION FORM
-                            <div className="px-4">
-                                <Card className="mt-4">
-                                    <CardHeader>
-                                        <CardTitle className="text-lg">Bottle Production Details</CardTitle>
-                                        <CardDescription>Enter bottle production details to calculate preform consumption.</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-6">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Number of Bottles Produced</Label>
-                                                    <Input 
-                                                        type="number" 
-                                                        placeholder="Enter number of bottles"
-                                                        value={newOrderBottlesCount}
-                                                        onChange={e => setNewOrderBottlesCount(Number(e.target.value))}
-                                                        className="text-lg"
-                                                    />
-                                                </div>
-                                                
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Bottle Size</Label>
-                                                    <Select value={newOrderBottleType} onValueChange={setNewOrderBottleType}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select bottle size" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="33cl">33cl (0.33L)</SelectItem>
-                                                            <SelectItem value="50cl">50cl (0.5L)</SelectItem>
-                                                            <SelectItem value="75cl">75cl (0.75L)</SelectItem>
-                                                            <SelectItem value="100cl">100cl (1L)</SelectItem>
-                                                            <SelectItem value="150cl">150cl (1.5L)</SelectItem>
-                                                            <SelectItem value="200cl">200cl (2L)</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
+                        </CardContent>
+                    </Card>
 
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Preform Type (grams)</Label>
-                                                    <Select value={newOrderPreformType} onValueChange={setNewOrderPreformType}>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select preform type" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="14">14 gram preform</SelectItem>
-                                                            <SelectItem value="18">18 gram preform</SelectItem>
-                                                            <SelectItem value="20">20 gram preform</SelectItem>
-                                                            <SelectItem value="24">24 gram preform</SelectItem>
-                                                            <SelectItem value="28">28 gram preform</SelectItem>
-                                                            <SelectItem value="32">32 gram preform</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
+                    {/* ESTIMATED MATERIAL CONSUMPTION & COST ANALYSIS CARD */}
+                    {(() => {
+                        const selectedBom = petBoms.find(b => b.id === newOrderBomId);
+                        if (!selectedBom || !newOrderBagsCount || !newOrderBagWeight || !newOrderPreformWeight) return null;
+
+                        const totalOutputKg = newOrderBagsCount * parseFloat(newOrderBagWeight);
+                        const totalPreforms = (totalOutputKg * 1000) / parseFloat(newOrderPreformWeight);
+                        const defectiveQty = newOrderDefectiveQty;
+                        const goodQty = totalPreforms - defectiveQty;
+
+                        const detailedComponents = selectedBom.components.map(comp => {
+                            const itemDetail = inventoryItems.find(item => item.id == comp.component_item_id);
+                            
+                            // Calculate consumption based on BOM (per bag)
+                            let totalConsumption;
+                            if (comp.unit_of_measure === 'kg') {
+                                totalConsumption = newOrderBagsCount * comp.quantity_required;
+                            } else {
+                                totalConsumption = totalPreforms * comp.quantity_required;
+                            }
+                            
+                            const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
+                            const quantityOnHand = itemDetail ? Number(itemDetail.quantity_on_hand) : 0;
+
+                            return {
+                                ...comp,
+                                name: itemDetail ? itemDetail.name : `ID: ${comp.component_item_id}`,
+                                totalConsumption: totalConsumption,
+                                cost: cost,
+                                quantity_on_hand: quantityOnHand,
+                                isShortage: quantityOnHand < totalConsumption,
+                                hasNoCost: itemDetail ? itemDetail.unit_cost == 0 : true
+                            };
+                        });
+
+                        const totalMaterialCost = detailedComponents.reduce((acc, comp) => acc + comp.cost, 0);
+                        const costPerKg = totalOutputKg > 0 ? totalMaterialCost / totalOutputKg : 0;
+                        const costPerPreform = totalPreforms > 0 ? totalMaterialCost / totalPreforms : 0;
+                        const defectPercentage = totalPreforms > 0 ? (defectiveQty / totalPreforms) * 100 : 0;
+
+                        return (
+                            <Card className="mt-4 border-dashed">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-lg">Material Consumption & Cost Analysis</CardTitle>
+                                    <CardDescription>
+                                        Based on {newOrderBagsCount} bag(s) of {newOrderBagWeight}kg each ({totalOutputKg.toLocaleString()} kg total output)
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {/* Production Summary */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Total Output Weight</p>
+                                            <p className="font-bold">{totalOutputKg.toLocaleString()} kg</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Gross Preforms</p>
+                                            <p className="font-bold text-blue-600">{Math.floor(totalPreforms).toLocaleString()} units</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Defective Preforms</p>
+                                            <p className="font-bold text-red-600">{defectiveQty.toLocaleString()} units ({defectPercentage.toFixed(2)}%)</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Good Preforms</p>
+                                            <p className="font-bold text-green-600">{Math.floor(goodQty).toLocaleString()} units</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Cost Summary */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Total Material Cost</p>
+                                            <p className="font-bold text-lg text-green-600">
+                                                {totalMaterialCost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Cost per kg of Output</p>
+                                            <p className="font-bold text-lg text-purple-600">
+                                                {costPerKg.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Cost per Preform</p>
+                                            <p className="font-bold text-lg text-orange-600">
+                                                {costPerPreform.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Raw Material Details */}
+                                    {detailedComponents.length > 0 ? (
+                                        <div className="space-y-3">
+                                            <h4 className="font-semibold text-sm">Raw Material Consumed</h4>
+                                            <ul className="space-y-2 text-sm">
+                                                {detailedComponents.map(comp => (
+                                                    <li key={comp.component_item_id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-medium text-slate-800 dark:text-slate-100">{comp.name}</span>
+                                                            <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                                                                {comp.totalConsumption.toLocaleString(undefined, { maximumFractionDigits: 2 })} {comp.unit_of_measure}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                                            <span>Cost: {comp.cost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}</span>
+                                                            <span>On Hand: {comp.quantity_on_hand.toLocaleString()} {comp.unit_of_measure}</span>
+                                                        </div>
+                                                        {comp.isShortage && (
+                                                            <div className="mt-2 text-xs font-semibold text-red-600 flex items-center gap-2 bg-red-100/50 dark:bg-red-900/20 p-2 rounded-md">
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                                <span>Warning: Insufficient stock for this production run!</span>
+                                                            </div>
+                                                        )}
+                                                        {comp.hasNoCost && comp.totalConsumption > 0 && !comp.isShortage && (
+                                                            <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-2 bg-amber-100/50 dark:bg-amber-900/20 p-2 rounded-md">
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                                <span>Notice: Unit cost is NGN 0, affecting total cost accuracy.</span>
+                                                            </div>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground text-center py-4">
+                                            This BOM has no components defined. Please add raw materials to the BOM.
+                                        </p>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        );
+                    })()}
+                </div>
+            ) : (
+                // BLOWING PRODUCTION FORM - COMPLETE VERSION
+                <div className="px-4">
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle className="text-lg">Bottle Production Details</CardTitle>
+                            <CardDescription>Enter bottle production details to calculate preform consumption.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Number of Bottles Produced</Label>
+                                        <Input 
+                                            type="number" 
+                                            placeholder="Enter number of bottles"
+                                            value={newOrderBottlesCount}
+                                            onChange={e => setNewOrderBottlesCount(Number(e.target.value))}
+                                            className="text-lg"
+                                        />
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Bottle Size</Label>
+                                        <Select value={newOrderBottleType} onValueChange={setNewOrderBottleType}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select bottle size" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="33cl">33cl (0.33L)</SelectItem>
+                                                <SelectItem value="50cl">50cl (0.5L)</SelectItem>
+                                                <SelectItem value="75cl">75cl (0.75L)</SelectItem>
+                                                <SelectItem value="100cl">100cl (1L)</SelectItem>
+                                                <SelectItem value="150cl">150cl (1.5L)</SelectItem>
+                                                <SelectItem value="200cl">200cl (2L)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium">Preform Type (grams)</Label>
+                                        <Select value={newOrderPreformType} onValueChange={setNewOrderPreformType}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select preform type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="14">14 gram preform</SelectItem>
+                                                <SelectItem value="18">18 gram preform</SelectItem>
+                                                <SelectItem value="20">20 gram preform</SelectItem>
+                                                <SelectItem value="24">24 gram preform</SelectItem>
+                                                <SelectItem value="28">28 gram preform</SelectItem>
+                                                <SelectItem value="32">32 gram preform</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                {newOrderBottlesCount > 0 && (
+                                    <div className="bg-primary/5 rounded-lg p-4 space-y-3">
+                                        <h4 className="font-semibold text-sm">Production Calculation</h4>
+                                        
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <p className="text-muted-foreground">Preforms Used:</p>
+                                                <p className="font-bold text-2xl text-blue-600">
+                                                    {(() => {
+                                                        let multiplier = 1;
+                                                        if (newOrderBottleType === "150cl" || newOrderBottleType === "200cl") multiplier = 2;
+                                                        return (newOrderBottlesCount * multiplier).toLocaleString();
+                                                    })()} units
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-muted-foreground">Preform Weight Used:</p>
+                                                <p className="font-bold text-lg">
+                                                    {(() => {
+                                                        let multiplier = 1;
+                                                        if (newOrderBottleType === "150cl" || newOrderBottleType === "200cl") multiplier = 2;
+                                                        return ((newOrderBottlesCount * multiplier * parseFloat(newOrderPreformType)) / 1000).toLocaleString();
+                                                    })()} kg
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t">
+                                            <div className="space-y-2">
+                                                <Label>Defective Bottles</Label>
+                                                <Input 
+                                                    type="number" 
+                                                    placeholder="Enter defective units"
+                                                    value={newOrderBlowingDefectiveQty}
+                                                    onChange={e => setNewOrderBlowingDefectiveQty(Number(e.target.value))}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Defect Percentage</Label>
+                                                <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-center">
+                                                    <p className="text-xl font-bold text-red-600">
+                                                        {((newOrderBlowingDefectiveQty / newOrderBottlesCount) * 100).toFixed(2)}%
+                                                    </p>
                                                 </div>
                                             </div>
+                                        </div>
+                                        
+                                        <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-semibold">Net Good Bottles:</span>
+                                                <span className="text-2xl font-bold text-green-600">
+                                                    {(newOrderBottlesCount - newOrderBlowingDefectiveQty).toLocaleString()} units
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
-                                            {newOrderBottlesCount > 0 && (
-                                                <div className="bg-primary/5 rounded-lg p-4">
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <p className="text-muted-foreground">Preforms Used:</p>
-                                                            <p className="font-bold text-2xl text-blue-600">
-                                                                {newOrderBottlesCount.toLocaleString()} units
-                                                                {newOrderBottleType === "150cl" || newOrderBottleType === "200cl" ? 
-                                                                    ` (${newOrderBottlesCount * 2} preforms needed for large bottles)` : ""}
-                                                            </p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-muted-foreground">Preform Weight Used:</p>
-                                                            <p className="font-bold text-lg">
-                                                                {((newOrderBottlesCount * parseFloat(newOrderPreformType)) / 1000).toLocaleString()} kg
-                                                            </p>
-                                                        </div>
+                                {/* Blowing Material Cost Analysis */}
+                                {(() => {
+                                    const selectedBom = petBoms.find(b => b.id === newOrderBomId);
+                                    if (!selectedBom || !newOrderBottlesCount) return null;
+
+                                    let multiplier = 1;
+                                    if (newOrderBottleType === "150cl" || newOrderBottleType === "200cl") multiplier = 2;
+                                    const totalPreformsUsed = newOrderBottlesCount * multiplier;
+                                    const goodBottles = newOrderBottlesCount - newOrderBlowingDefectiveQty;
+
+                                    const detailedComponents = selectedBom.components.map(comp => {
+                                        const itemDetail = inventoryItems.find(item => item.id == comp.component_item_id);
+                                        const totalConsumption = totalPreformsUsed * comp.quantity_required;
+                                        const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
+                                        const quantityOnHand = itemDetail ? Number(itemDetail.quantity_on_hand) : 0;
+
+                                        return {
+                                            ...comp,
+                                            name: itemDetail ? itemDetail.name : `ID: ${comp.component_item_id}`,
+                                            totalConsumption: totalConsumption,
+                                            cost: cost,
+                                            quantity_on_hand: quantityOnHand,
+                                            isShortage: quantityOnHand < totalConsumption,
+                                            hasNoCost: itemDetail ? itemDetail.unit_cost == 0 : true
+                                        };
+                                    });
+
+                                    const totalMaterialCost = detailedComponents.reduce((acc, comp) => acc + comp.cost, 0);
+                                    const costPerBottle = goodBottles > 0 ? totalMaterialCost / goodBottles : 0;
+
+                                    return (
+                                        <Card className="mt-4 border-dashed">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-lg">Material Cost Analysis</CardTitle>
+                                                <CardDescription>
+                                                    Based on {newOrderBottlesCount.toLocaleString()} bottles produced
+                                                </CardDescription>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Total Preforms Used</p>
+                                                        <p className="font-bold">{totalPreformsUsed.toLocaleString()} units</p>
                                                     </div>
-                                                    
-                                                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t">
-                                                        <div className="space-y-2">
-                                                            <Label>Defective Bottles</Label>
-                                                            <Input 
-                                                                type="number" 
-                                                                placeholder="Enter defective units"
-                                                                value={newOrderBlowingDefectiveQty}
-                                                                onChange={e => setNewOrderBlowingDefectiveQty(Number(e.target.value))}
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <Label>Defect Percentage</Label>
-                                                            <div className="bg-slate-100 p-2 rounded-md text-center">
-                                                                <p className="text-xl font-bold text-red-600">
-                                                                    {((newOrderBlowingDefectiveQty / newOrderBottlesCount) * 100).toFixed(2)}%
-                                                                </p>
-                                                            </div>
-                                                        </div>
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Total Material Cost</p>
+                                                        <p className="font-bold text-green-600">
+                                                            {totalMaterialCost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Cost per Bottle</p>
+                                                        <p className="font-bold text-purple-600">
+                                                            {costPerBottle.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Good Bottles</p>
+                                                        <p className="font-bold text-green-600">{goodBottles.toLocaleString()} units</p>
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        )}
-                    </div>
 
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                        <Button onClick={handleSaveOrder} disabled={isSubmitting}>
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            Record Production
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                                                {detailedComponents.length > 0 && (
+                                                    <div className="space-y-3">
+                                                        <h4 className="font-semibold text-sm">Preform Consumption Details</h4>
+                                                        <ul className="space-y-2 text-sm">
+                                                            {detailedComponents.map(comp => (
+                                                                <li key={comp.component_item_id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className="font-medium">{comp.name}</span>
+                                                                        <span className="font-mono font-semibold">
+                                                                            {comp.totalConsumption.toLocaleString()} {comp.unit_of_measure}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                                                        <span>Cost: {comp.cost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}</span>
+                                                                        <span>On Hand: {comp.quantity_on_hand.toLocaleString()} {comp.unit_of_measure}</span>
+                                                                    </div>
+                                                                    {comp.isShortage && (
+                                                                        <div className="mt-2 text-xs font-semibold text-red-600 flex items-center gap-2">
+                                                                            <AlertTriangle className="h-3 w-3" />
+                                                                            <span>Warning: Insufficient preform stock!</span>
+                                                                        </div>
+                                                                    )}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })()}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+        </div>
+
+        <DialogFooter className="mt-4">
+            <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleSaveOrder} disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                Record Production
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
 
             {/* VIEW BOM DIALOG */}
             <Dialog open={isViewBomDialogOpen} onOpenChange={setIsViewBomDialogOpen}>
