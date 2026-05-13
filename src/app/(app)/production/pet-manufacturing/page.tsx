@@ -644,7 +644,7 @@ const PETProductionPage = () => {
                                                         }}
                                                         className="text-lg"
                                                     />
-                                                    <p className="text-xs text-muted-foreground">Each bag contains raw material (resin/granules)</p>
+                                                    <p className="text-xs text-muted-foreground">Each bag contains raw material (18/15 gram pet preform)</p>
                                                 </div>
                                                 
                                                 <div className="space-y-2">
