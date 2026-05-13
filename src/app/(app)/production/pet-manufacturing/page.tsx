@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, PlusCircle, Factory, Droplets, PackagePlus, AlertTriangle, X, Bot, TestTube2, Scale, Plus } from 'lucide-react';
+import { Loader2, PlusCircle, Factory, Droplets, PackagePlus, AlertTriangle, X, Plus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from "@/components/ui/badge";
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
@@ -112,14 +112,14 @@ const PETProductionPage = () => {
     const [newBomName, setNewBomName] = useState('');
     const [newBomStage, setNewBomStage] = useState<'injection' | 'blowing'>('injection');
     const [newBomOutputItem, setNewBomOutputItem] = useState('');
-    const [newBomComponents, setNewBomComponents] = useState<Partial<PetBomComponent>[]>([{ component_item_id: '', quantity_required: 0, unit_of_measure: 'pcs' }]);
+    const [newBomComponents, setNewBomComponents] = useState<Partial<PetBomComponent>[]>([{ component_item_id: '', quantity_required: 0, unit_of_measure: 'kg' }]);
 
     const [newOrderStage, setNewOrderStage] = useState<'injection' | 'blowing'>('injection');
     const [newOrderBomId, setNewOrderBomId] = useState('');
     const [newOrderQuantity, setNewOrderQuantity] = useState<number>(0);
     const [newOrderDate, setNewOrderDate] = useState(new Date().toISOString().split('T')[0]);
     
-    // New form states for bag-based production
+    // Form states for bag-based OUTPUT production
     const [newOrderBagsCount, setNewOrderBagsCount] = useState<number>(0);
     const [newOrderBagWeight, setNewOrderBagWeight] = useState<string>("30");
     const [newOrderPreformWeight, setNewOrderPreformWeight] = useState<string>("18");
@@ -208,7 +208,6 @@ const PETProductionPage = () => {
     };
 
     const handleSaveOrder = async () => {
-        // Updated validation for bag-based production
         if (!newOrderBomId || !newOrderDate) {
             toast({ title: "Validation Error", description: "Please select a BOM and a date.", variant: "destructive" });
             return;
@@ -216,7 +215,7 @@ const PETProductionPage = () => {
 
         if (newOrderStage === 'injection') {
             if (newOrderBagsCount <= 0 || !newOrderBagWeight || !newOrderPreformWeight) {
-                toast({ title: "Validation Error", description: "Please enter number of bags, bag weight, and preform weight.", variant: "destructive" });
+                toast({ title: "Validation Error", description: "Please enter number of bags produced, bag weight, and preform weight.", variant: "destructive" });
                 return;
             }
         } else {
@@ -231,23 +230,18 @@ const PETProductionPage = () => {
         let productionQuantities;
         let totalMaterialCost = 0;
 
-        // Find the selected BOM to get component details for cost calculation
         const selectedBom = petBoms.find(b => b.id === newOrderBomId);
 
-        // Step 1: Calculate Gross, Net (Good), and Defective quantities
         if (newOrderStage === 'injection') {
-            // Calculate based on bag consumption
-            const totalRawMaterialKg = newOrderBagsCount * parseFloat(newOrderBagWeight);
-            const preformWeightGrams = parseFloat(newOrderPreformWeight);
-            const grossOutput = (totalRawMaterialKg * 1000) / preformWeightGrams;
-            const defectiveQty = newOrderDefectiveQty; // Use manual input
-            const goodQty = grossOutput - defectiveQty;
+            // CORRECTED: Calculate total preforms from bags produced
+            const totalPreformsOutput = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+            const defectiveQty = newOrderDefectiveQty;
+            const goodQty = totalPreformsOutput - defectiveQty;
             
-            // Validate that defective quantity doesn't exceed gross output
-            if (defectiveQty > grossOutput) {
+            if (defectiveQty > totalPreformsOutput) {
                 toast({ 
                     title: "Validation Error", 
-                    description: `Defective quantity (${defectiveQty}) cannot exceed gross production (${Math.floor(grossOutput)} units).`, 
+                    description: `Defective quantity (${defectiveQty}) cannot exceed total preforms produced (${Math.floor(totalPreformsOutput)} units).`, 
                     variant: "destructive" 
                 });
                 setIsSubmitting(false);
@@ -255,27 +249,39 @@ const PETProductionPage = () => {
             }
             
             productionQuantities = {
-                gross: grossOutput,
+                gross: totalPreformsOutput,
                 good: goodQty,
                 defective: defectiveQty
             };
 
-            // Calculate Total Material Cost
+            // Calculate material cost based on BOM (BOM should be per bag or per kg)
             if (selectedBom) {
+                // Calculate total weight of output in kg
+                const totalOutputKg = newOrderBagsCount * parseFloat(newOrderBagWeight);
+                
                 totalMaterialCost = selectedBom.components.reduce((costAcc, bomComp) => {
                     const itemDetail = inventoryItems.find(item => item.id == bomComp.component_item_id);
-                    // Cost is based on total *gross* output, as all materials are consumed regardless of defects
-                    const totalConsumption = productionQuantities.gross * bomComp.quantity_required;
+                    // Determine if BOM quantity is per bag or per kg
+                    let totalConsumption;
+                    
+                    if (bomComp.quantity_required < 1 && bomComp.quantity_required > 0) {
+                        // Small quantity suggests it's per kg of output
+                        totalConsumption = totalOutputKg * bomComp.quantity_required;
+                    } else {
+                        // Larger quantity suggests it's per bag
+                        totalConsumption = newOrderBagsCount * bomComp.quantity_required;
+                    }
+                    
                     const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
                     return costAcc + cost;
                 }, 0);
             }
 
-        } else { // Simplified logic for 'blowing' stage
+        } else {
             productionQuantities = {
                 gross: newOrderQuantity,
                 good: newOrderQuantity,
-                defective: 0, // Assume no defects are planned for blowing orders
+                defective: 0,
             };
             if (selectedBom) {
                 totalMaterialCost = selectedBom.components.reduce((costAcc, bomComp) => {
@@ -295,7 +301,6 @@ const PETProductionPage = () => {
             return;
         }
         
-        // Step 3: Calculate the cost per *good* unit produced
         const costPerUnitProduced = totalQuantityToProduce > 0 ? totalMaterialCost / totalQuantityToProduce : 0;
 
         try {
@@ -310,9 +315,8 @@ const PETProductionPage = () => {
                 cost_per_unit_produced: costPerUnitProduced
             };
 
-            // Add bag-based production details for injection orders
             if (newOrderStage === 'injection') {
-                payload.bags_count = newOrderBagsCount;
+                payload.bags_produced = newOrderBagsCount;
                 payload.bag_weight_kg = parseFloat(newOrderBagWeight);
                 payload.preform_weight_grams = parseFloat(newOrderPreformWeight);
             }
@@ -325,10 +329,9 @@ const PETProductionPage = () => {
 
             const result = await response.json();
             if (!response.ok) throw new Error(result.message);
-            toast({ title: "Production Order Created", description: `New order for ${Math.floor(totalQuantityToProduce).toLocaleString()} units added.` });
+            toast({ title: "Production Order Created", description: `New order for ${Math.floor(totalQuantityToProduce).toLocaleString()} preforms added.` });
             fetchData();
             setIsOrderDialogOpen(false);
-            // Reset form
             setNewOrderBagsCount(0);
             setNewOrderBagWeight("30");
             setNewOrderPreformWeight("18");
@@ -341,8 +344,7 @@ const PETProductionPage = () => {
         }
     }
     
-    // BOM Component Form Handlers
-    const addBomComponent = () => setNewBomComponents([...newBomComponents, { component_item_id: '', quantity_required: 0, unit_of_measure: 'pcs' }]);
+    const addBomComponent = () => setNewBomComponents([...newBomComponents, { component_item_id: '', quantity_required: 0, unit_of_measure: 'kg' }]);
     const removeBomComponent = (index: number) => setNewBomComponents(newBomComponents.filter((_, i) => i !== index));
     const handleComponentChange = (index: number, field: keyof PetBomComponent, value: string | number) => {
         const updated = [...newBomComponents];
@@ -351,12 +353,11 @@ const PETProductionPage = () => {
         setNewBomComponents(updated);
     };
 
-    // Reset functions for dialogs
     useEffect(() => {
         if (!isBomDialogOpen) {
             setNewBomName('');
             setNewBomOutputItem('');
-            setNewBomComponents([{ component_item_id: '', quantity_required: 0, unit_of_measure: 'pcs' }]);
+            setNewBomComponents([{ component_item_id: '', quantity_required: 0, unit_of_measure: 'kg' }]);
         }
     }, [isBomDialogOpen]);
 
@@ -391,17 +392,20 @@ const PETProductionPage = () => {
         }
     }, [newBomOutputItem, inventoryItems]);
     
-    // Filtered data for UI
     const injectionBoms = petBoms.filter(b => b.production_stage === 'injection');
     const blowingBoms = petBoms.filter(b => b.production_stage === 'blowing');
     const injectionOrders = petOrders.filter(o => injectionBoms.some(b => b.id === o.pet_bom_id));
     const blowingOrders = petOrders.filter(o => blowingBoms.some(b => b.id === o.pet_bom_id));
 
-    const rawMaterials = inventoryItems.filter(i => i.item_type === 'raw_material');
-    const preforms = inventoryItems.filter(i => i.category === 'Semi_finished'); 
-    const emptyBottles = inventoryItems.filter(i => ['Sub-assemblies', 'Intermediate Products'].includes(i.category));
-    const finishedGoods = inventoryItems.filter(i => i.item_type === 'product');
+    const rawMaterials = inventoryItems.filter(i => i.category === 'Raw Materials Inventory');
 
+const preformBags = inventoryItems.filter(i => i.category === 'Semi_finished'); // for BOM OUTPUT (injection)
+
+const preformComponents = inventoryItems.filter(i => i.category === 'Semi_finished'); // for BOM COMPONENTS (blowing inputs)
+
+const emptyBottles = inventoryItems.filter(i => 
+    i.category === 'Sub-assemblies' || i.category === 'sub_assemblies'  // note: you have both casings in your DB!
+);
     const renderOrderTable = (orders: PetProductionOrder[], bomsForStage: PetBom[]) => (
         <Table>
             <TableHeader>
@@ -451,11 +455,11 @@ const PETProductionPage = () => {
 
     return (
         <div className="space-y-6">
-            {/* ==================== PAGE HEADER ==================== */}
+            {/* PAGE HEADER */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">PET Production Module</h1>
-                    <p className="text-muted-foreground">Manage multi-stage production for preforms and bottles.</p>
+                    <p className="text-muted-foreground">Track preform production based on finished bag output.</p>
                 </div>
                 <Dialog open={isBomDialogOpen} onOpenChange={setIsBomDialogOpen}>
                     <DialogTrigger asChild>
@@ -467,16 +471,18 @@ const PETProductionPage = () => {
                     <DialogContent className="max-w-3xl"> 
                         <DialogHeader>
                             <DialogTitle>Create New Bill of Materials</DialogTitle>
+                            <DialogDescription>
+                                Set up material requirements per bag of finished preforms.
+                            </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="bom-name" className="text-right">BOM Name</Label>
+                                <Label className="text-right">BOM Name</Label>
                                 <Input 
-                                    id="bom-name" 
                                     value={newBomName} 
-                                    readOnly 
-                                    placeholder="Auto-generated from Output Item" 
-                                    className="col-span-3 bg-muted/50" 
+                                    onChange={(e) => setNewBomName(e.target.value)}
+                                    placeholder="e.g., 18g Preform - 30kg Bag BOM"
+                                    className="col-span-3" 
                                 />
                             </div>
 
@@ -490,7 +496,7 @@ const PETProductionPage = () => {
                                         <SelectItem value="injection">
                                             <div className='flex items-center'>
                                                 <Droplets className="mr-2 h-4 w-4"/>
-                                                Injection (Raw Material → Preform)
+                                                Injection (Raw Material → Preform Bags)
                                             </div>
                                         </SelectItem>
                                         <SelectItem value="blowing">
@@ -504,14 +510,14 @@ const PETProductionPage = () => {
                             </div>
                             
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Output Item</Label>
+                                <Label className="text-right">Output Item (Bag)</Label>
                                 <div className="col-span-3 flex items-center gap-2">
                                     <Select value={newBomOutputItem} onValueChange={setNewBomOutputItem}>
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select an output item" />
+                                            <SelectValue placeholder="Select output item (bag of preforms)" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {(newBomStage === 'injection' ? preforms : emptyBottles).map(item => (
+                                            {(newBomStage === 'injection' ? preformBags : emptyBottles).map(item => (
                                                 <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                                             ))}
                                         </SelectContent>
@@ -523,28 +529,30 @@ const PETProductionPage = () => {
                             </div>
 
                             <div>
-                                <Label className="font-semibold">Components (Raw Materials)</Label>
+                                <Label className="font-semibold">Raw Material Components (per bag of output)</Label>
+                                <p className="text-xs text-muted-foreground mt-1">Example: For a 30kg bag of 18g preforms, you need ~29.4kg PET Resin and ~0.6kg Master Batch</p>
                             </div>
                             {newBomComponents.map((comp, index) => (
                                 <div key={index} className="grid grid-cols-12 items-center gap-2 pl-4 border-l-2">
-                                    <div className="col-span-6">
+                                    <div className="col-span-5">
                                         <Select value={comp.component_item_id} onValueChange={v => handleComponentChange(index, 'component_item_id', v)}>
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select component" />
+                                                <SelectValue placeholder="Select raw material" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {(newBomStage === 'injection' ? rawMaterials : preforms).map(item => 
-                                                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                                                )}
-                                            </SelectContent>
+    {(newBomStage === 'blowing' ? preformComponents : rawMaterials).map(item => 
+        <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+    )}
+</SelectContent>
                                         </Select>
                                     </div>
                                     <div className="col-span-3">
                                         <Input 
                                             type="number" 
-                                            placeholder="Qty" 
+                                            step="0.01"
+                                            placeholder="Quantity" 
                                             value={comp.quantity_required} 
-                                            onChange={e => handleComponentChange(index, 'quantity_required', e.target.value)} 
+                                            onChange={e => handleComponentChange(index, 'quantity_required', parseFloat(e.target.value))} 
                                         />
                                     </div>
                                     <div className="col-span-2">
@@ -553,8 +561,8 @@ const PETProductionPage = () => {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="pcs">pcs</SelectItem>
                                                 <SelectItem value="kg">kg</SelectItem>
+                                                <SelectItem value="pcs">pcs</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -583,14 +591,14 @@ const PETProductionPage = () => {
                 </Dialog>
             </div>
             
-            {/* ==================== CREATE NEW ORDER DIALOG ==================== */}
+            {/* CREATE NEW ORDER DIALOG */}
             <Dialog open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen}>
                 <DialogContent className="max-w-4xl">
                     <DialogHeader>
-                        <DialogTitle>Create New {newOrderStage === 'injection' ? 'Injection' : 'Blowing'} Order</DialogTitle>
+                        <DialogTitle>Record {newOrderStage === 'injection' ? 'Injection' : 'Blowing'} Production</DialogTitle>
                         <DialogDescription>
                             {newOrderStage === 'injection' 
-                                ? 'Enter bag consumption details to calculate preform production.' 
+                                ? 'Enter the number of bags produced and their details to calculate total preforms made.' 
                                 : 'Enter the quantity of bottles to produce from preforms.'}
                         </DialogDescription>
                     </DialogHeader>
@@ -620,20 +628,18 @@ const PETProductionPage = () => {
 
                         {newOrderStage === 'injection' ? (
                             <div className="px-4">
-                                {/* ==================== PRODUCTION RUN PARAMETERS (BAG-BASED) ==================== */}
                                 <Card className="mt-4">
                                     <CardHeader>
-                                        <CardTitle className="text-lg">Production Run Parameters</CardTitle>
+                                        <CardTitle className="text-lg">Bag Production Details</CardTitle>
                                         <CardDescription>
-                                            Calculate preform output based on raw material bag consumption
+                                            Enter the number of finished bags produced from your injection run
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="space-y-6">
-                                            {/* Bag Input Section */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Number of Bags</Label>
+                                                    <Label className="text-sm font-medium">Number of Bags Produced</Label>
                                                     <Input 
                                                         type="number" 
                                                         placeholder="Enter number of bags"
@@ -644,7 +650,7 @@ const PETProductionPage = () => {
                                                         }}
                                                         className="text-lg"
                                                     />
-                                                    <p className="text-xs text-muted-foreground">Each bag contains raw material (resin/granules)</p>
+                                                    <p className="text-xs text-muted-foreground">Total bags filled with preforms</p>
                                                 </div>
                                                 
                                                 <div className="space-y-2">
@@ -662,85 +668,81 @@ const PETProductionPage = () => {
                                                             <SelectItem value="50">50 kg bag</SelectItem>
                                                         </SelectContent>
                                                     </Select>
-                                                    <p className="text-xs text-muted-foreground">Standard bag weight options</p>
+                                                    <p className="text-xs text-muted-foreground">Weight of each finished bag</p>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium">Preform Weight (grams)</Label>
+                                                    <Select value={newOrderPreformWeight} onValueChange={(val) => {
+                                                        setNewOrderPreformWeight(val);
+                                                        setNewOrderDefectiveQty(0);
+                                                    }}>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select preform weight" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="14">14 gram preform</SelectItem>
+                                                            <SelectItem value="18">18 gram preform</SelectItem>
+                                                            <SelectItem value="20">20 gram preform</SelectItem>
+                                                            <SelectItem value="24">24 gram preform</SelectItem>
+                                                            <SelectItem value="28">28 gram preform</SelectItem>
+                                                            <SelectItem value="32">32 gram preform</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <p className="text-xs text-muted-foreground">Weight of each individual preform</p>
                                                 </div>
                                             </div>
 
-                                            {/* Preform Type Selection */}
-                                            <div className="space-y-2">
-                                                <Label className="text-sm font-medium">Preform Weight (grams)</Label>
-                                                <Select value={newOrderPreformWeight} onValueChange={(val) => {
-                                                    setNewOrderPreformWeight(val);
-                                                    setNewOrderDefectiveQty(0);
-                                                }}>
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select preform weight" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="14">14 gram preform</SelectItem>
-                                                        <SelectItem value="18">18 gram preform</SelectItem>
-                                                        <SelectItem value="20">20 gram preform</SelectItem>
-                                                        <SelectItem value="24">24 gram preform</SelectItem>
-                                                        <SelectItem value="28">28 gram preform</SelectItem>
-                                                        <SelectItem value="32">32 gram preform</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <p className="text-xs text-muted-foreground">Weight of each individual preform</p>
-                                            </div>
-
-                                            {/* Calculation Results with Manual Defect Input */}
                                             {newOrderBagsCount > 0 && newOrderBagWeight && newOrderPreformWeight && (
                                                 <div className="bg-primary/5 rounded-lg p-4 space-y-3">
                                                     <h4 className="font-semibold text-sm">Production Calculation</h4>
                                                     
                                                     <div className="grid grid-cols-2 gap-4 text-sm">
                                                         <div>
-                                                            <p className="text-muted-foreground">Total Raw Material:</p>
-                                                            <p className="font-bold text-lg">
-                                                                {((newOrderBagsCount * parseFloat(newOrderBagWeight)) / 1000).toFixed(2)} tons
-                                                            </p>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                ({newOrderBagsCount} bags × {newOrderBagWeight}kg = {(newOrderBagsCount * parseFloat(newOrderBagWeight)).toLocaleString()} kg)
-                                                            </p>
-                                                        </div>
-                                                        
-                                                        <div>
-                                                            <p className="text-muted-foreground">Gross Production:</p>
-                                                            <p className="font-bold text-xl text-blue-600">
+                                                            <p className="text-muted-foreground">Total Preforms Produced:</p>
+                                                            <p className="font-bold text-2xl text-blue-600">
                                                                 {Math.floor((newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight)).toLocaleString()} units
                                                             </p>
                                                             <p className="text-xs text-muted-foreground">
-                                                                ({newOrderBagsCount} × {newOrderBagWeight}kg × 1000 ÷ {newOrderPreformWeight}g)
+                                                                ({newOrderBagsCount} bags × {newOrderBagWeight}kg × 1000 ÷ {newOrderPreformWeight}g)
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-muted-foreground">Total Output Weight:</p>
+                                                            <p className="font-bold text-lg">
+                                                                {(newOrderBagsCount * parseFloat(newOrderBagWeight)).toLocaleString()} kg
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                ({newOrderBagsCount} bags × {newOrderBagWeight}kg)
                                                             </p>
                                                         </div>
                                                     </div>
 
-                                                    {/* Manual Defective Quantity Input */}
                                                     <div className="border-t pt-4 mt-2">
                                                         <div className="grid grid-cols-2 gap-4">
                                                             <div className="space-y-2">
-                                                                <Label className="text-sm font-medium">Defective Quantity (manual input)</Label>
+                                                                <Label className="text-sm font-medium">Defective Preforms</Label>
                                                                 <Input 
                                                                     type="number" 
                                                                     placeholder="Enter defective units"
                                                                     value={newOrderDefectiveQty}
                                                                     onChange={e => {
                                                                         const defectQty = Number(e.target.value);
-                                                                        const grossQty = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                                        const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
                                                                         
-                                                                        if (defectQty <= grossQty) {
+                                                                        if (defectQty <= totalPreforms) {
                                                                             setNewOrderDefectiveQty(defectQty);
                                                                         } else {
                                                                             toast({ 
                                                                                 title: "Invalid Input", 
-                                                                                description: `Defective quantity cannot exceed gross production (${Math.floor(grossQty).toLocaleString()} units)`, 
+                                                                                description: `Defective quantity cannot exceed total preforms produced (${Math.floor(totalPreforms).toLocaleString()} units)`, 
                                                                                 variant: "destructive" 
                                                                             });
                                                                         }
                                                                     }}
                                                                     className="text-lg"
                                                                 />
-                                                                <p className="text-xs text-muted-foreground">Enter the actual number of defective units</p>
+                                                                <p className="text-xs text-muted-foreground">Enter actual number of defective preforms</p>
                                                             </div>
                                                             
                                                             <div className="space-y-2">
@@ -748,32 +750,28 @@ const PETProductionPage = () => {
                                                                 <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-md text-center">
                                                                     <p className="text-2xl font-bold text-red-600">
                                                                         {(() => {
-                                                                            const grossQty = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
-                                                                            if (grossQty > 0 && newOrderDefectiveQty > 0) {
-                                                                                return ((newOrderDefectiveQty / grossQty) * 100).toFixed(2);
+                                                                            const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                                            if (totalPreforms > 0 && newOrderDefectiveQty > 0) {
+                                                                                return ((newOrderDefectiveQty / totalPreforms) * 100).toFixed(2);
                                                                             }
                                                                             return "0.00";
                                                                         })()}%
                                                                     </p>
-                                                                    <p className="text-xs text-muted-foreground">Calculated automatically</p>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         
                                                         <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                                                             <div className="flex justify-between items-center">
-                                                                <span className="font-semibold">Net Good Output:</span>
+                                                                <span className="font-semibold">Net Good Preforms:</span>
                                                                 <span className="text-2xl font-bold text-green-600">
                                                                     {(() => {
-                                                                        const grossQty = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
-                                                                        const goodQty = grossQty - newOrderDefectiveQty;
+                                                                        const totalPreforms = (newOrderBagsCount * parseFloat(newOrderBagWeight) * 1000) / parseFloat(newOrderPreformWeight);
+                                                                        const goodQty = totalPreforms - newOrderDefectiveQty;
                                                                         return Math.floor(goodQty).toLocaleString();
                                                                     })()} units
                                                                 </span>
                                                             </div>
-                                                            <p className="text-xs text-muted-foreground mt-1">
-                                                                Gross production minus defective quantity
-                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -782,26 +780,27 @@ const PETProductionPage = () => {
                                     </CardContent>
                                 </Card>
 
-                                {/* ==================== ESTIMATED MATERIAL CONSUMPTION CARD ==================== */}
+                                {/* Material Consumption Card */}
                                 {(() => {
                                     const selectedBom = petBoms.find(b => b.id === newOrderBomId);
-                                    if (!selectedBom || !newOrderBagsCount || !newOrderBagWeight || !newOrderPreformWeight) return null;
+                                    if (!selectedBom || !newOrderBagsCount || !newOrderBagWeight) return null;
 
-                                    // Calculate total raw material in kg
-                                    const totalRawMaterialKg = newOrderBagsCount * parseFloat(newOrderBagWeight);
-                                    const preformWeightGrams = parseFloat(newOrderPreformWeight);
-                                    
-                                    // Calculate gross output (total preforms possible)
-                                    const grossOutput = (totalRawMaterialKg * 1000) / preformWeightGrams;
-                                    
-                                    // Use manual defective quantity
+                                    const totalOutputKg = newOrderBagsCount * parseFloat(newOrderBagWeight);
+                                    const totalPreforms = (totalOutputKg * 1000) / parseFloat(newOrderPreformWeight);
                                     const defectiveQty = newOrderDefectiveQty;
-                                    const goodQty = grossOutput - defectiveQty;
+                                    const goodQty = totalPreforms - defectiveQty;
 
                                     const detailedComponents = selectedBom.components.map(comp => {
                                         const itemDetail = inventoryItems.find(item => item.id == comp.component_item_id);
-                                        // Total consumption based on gross output (all raw material is consumed)
-                                        const totalConsumption = grossOutput * comp.quantity_required;
+                                        
+                                        // Calculate consumption based on BOM (per bag)
+                                        let totalConsumption;
+                                        if (comp.unit_of_measure === 'kg') {
+                                            totalConsumption = newOrderBagsCount * comp.quantity_required;
+                                        } else {
+                                            totalConsumption = totalPreforms * comp.quantity_required;
+                                        }
+                                        
                                         const cost = itemDetail ? totalConsumption * itemDetail.unit_cost : 0;
                                         const quantityOnHand = itemDetail ? Number(itemDetail.quantity_on_hand) : 0;
 
@@ -817,77 +816,75 @@ const PETProductionPage = () => {
                                     });
 
                                     const totalMaterialCost = detailedComponents.reduce((acc, comp) => acc + comp.cost, 0);
-                                    const defectPercentage = grossOutput > 0 ? (defectiveQty / grossOutput) * 100 : 0;
+                                    const costPerKg = totalOutputKg > 0 ? totalMaterialCost / totalOutputKg : 0;
+                                    const costPerPreform = totalPreforms > 0 ? totalMaterialCost / totalPreforms : 0;
 
                                     return (
                                         <Card className="mt-4 border-dashed">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-lg">Estimated Material Consumption & Production Output</CardTitle>
+                                                <CardTitle className="text-lg">Material Consumption & Cost Analysis</CardTitle>
                                                 <CardDescription>
-                                                    Based on {newOrderBagsCount} bag(s) of {newOrderBagWeight}kg each for {newOrderPreformWeight}g preforms
+                                                    Based on {newOrderBagsCount} bag(s) of {newOrderBagWeight}kg each ({totalOutputKg.toLocaleString()} kg total output)
                                                 </CardDescription>
                                             </CardHeader>
                                             <CardContent>
-                                                {/* Production Summary */}
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                                                     <div>
-                                                        <p className="text-xs text-muted-foreground">Raw Material</p>
-                                                        <p className="font-bold">{totalRawMaterialKg.toLocaleString()} kg</p>
+                                                        <p className="text-xs text-muted-foreground">Total Output Weight</p>
+                                                        <p className="font-bold">{totalOutputKg.toLocaleString()} kg</p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-xs text-muted-foreground">Gross Output</p>
-                                                        <p className="font-bold text-blue-600">{Math.floor(grossOutput).toLocaleString()} units</p>
+                                                        <p className="text-xs text-muted-foreground">Total Preforms</p>
+                                                        <p className="font-bold text-blue-600">{Math.floor(totalPreforms).toLocaleString()} units</p>
                                                     </div>
                                                     <div>
-                                                        <p className="text-xs text-muted-foreground">Defective</p>
-                                                        <p className="font-bold text-red-600">{defectiveQty.toLocaleString()} units ({defectPercentage.toFixed(2)}%)</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-muted-foreground">Good Output</p>
+                                                        <p className="text-xs text-muted-foreground">Good Preforms</p>
                                                         <p className="font-bold text-green-600">{Math.floor(goodQty).toLocaleString()} units</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-muted-foreground">Cost per Preform</p>
+                                                        <p className="font-bold text-purple-600">{costPerPreform.toFixed(2)} NGN</p>
                                                     </div>
                                                 </div>
 
                                                 {detailedComponents.length > 0 ? (
                                                     <div className="space-y-3">
-                                                        <h4 className="font-semibold text-sm">Raw Material Requirements</h4>
+                                                        <h4 className="font-semibold text-sm">Raw Material Consumed</h4>
                                                         <ul className="space-y-2 text-sm">
                                                             {detailedComponents.map(comp => (
-                                                                <li key={comp.component_item_id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                                                                <li key={comp.component_item_id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border">
                                                                     <div className="flex justify-between items-center">
-                                                                        <span className="font-medium text-slate-800 dark:text-slate-100">{comp.name}</span>
-                                                                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                                                                        <span className="font-medium">{comp.name}</span>
+                                                                        <span className="font-mono font-semibold">
                                                                             {comp.totalConsumption.toLocaleString(undefined, { maximumFractionDigits: 2 })} {comp.unit_of_measure}
                                                                         </span>
                                                                     </div>
-                                                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                                                        Available on hand: {(comp.quantity_on_hand || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {comp.unit_of_measure}
+                                                                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                                                        <span>Cost: {comp.cost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}</span>
+                                                                        <span>On Hand: {comp.quantity_on_hand.toLocaleString()} {comp.unit_of_measure}</span>
                                                                     </div>
                                                                     {comp.isShortage && (
-                                                                        <div className="mt-2 text-xs font-semibold text-red-600 flex items-center gap-2 bg-red-100/50 dark:bg-red-900/20 p-2 rounded-md">
-                                                                            <AlertTriangle className="h-4 w-4" />
-                                                                            <span>Warning: Insufficient stock for this production run.</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {comp.hasNoCost && comp.totalConsumption > 0 && !comp.isShortage && (
-                                                                        <div className="mt-2 text-xs font-semibold text-amber-600 flex items-center gap-2 bg-amber-100/50 dark:bg-amber-900/20 p-2 rounded-md">
-                                                                            <AlertTriangle className="h-4 w-4" />
-                                                                            <span>Notice: Unit cost is NGN 0, affecting total cost accuracy.</span>
+                                                                        <div className="mt-2 text-xs font-semibold text-red-600 flex items-center gap-2">
+                                                                            <AlertTriangle className="h-3 w-3" />
+                                                                            <span>Warning: Insufficient stock!</span>
                                                                         </div>
                                                                     )}
                                                                 </li>
                                                             ))}
                                                         </ul>
-                                                        <div className="flex justify-between items-center border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
-                                                            <span className="text-base font-bold text-gray-700 dark:text-slate-200">Total Estimated Material Cost</span>
-                                                            <span className="text-lg font-bold text-gray-900 dark:text-slate-50">
+                                                        <div className="flex justify-between items-center border-t pt-3 mt-3">
+                                                            <span className="text-base font-bold">Total Material Cost</span>
+                                                            <span className="text-xl font-bold text-green-600">
                                                                 {totalMaterialCost.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
                                                             </span>
+                                                        </div>
+                                                        <div className="text-sm text-muted-foreground">
+                                                            Cost per kg of output: {costPerKg.toLocaleString('en-US', { style: 'currency', currency: 'NGN' })}
                                                         </div>
                                                     </div>
                                                 ) : (
                                                     <p className="text-sm text-muted-foreground text-center py-4">
-                                                        This Bill of Materials has no components defined.
+                                                        This BOM has no components defined. Please add raw materials to the BOM.
                                                     </p>
                                                 )}
                                             </CardContent>
@@ -896,7 +893,6 @@ const PETProductionPage = () => {
                                 })()}
                             </div>
                         ) : (
-                            // SIMPLE UI FOR BLOWING ORDERS
                             <div className="grid grid-cols-4 items-center gap-4 pt-4 px-4">
                                 <Label className="text-right">Quantity to Produce (bottles)</Label>
                                 <Input 
@@ -916,13 +912,13 @@ const PETProductionPage = () => {
                         </DialogClose>
                         <Button onClick={handleSaveOrder} disabled={isSubmitting}>
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            Create Order
+                            Record Production
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* ==================== MAIN CONTENT TABS ==================== */}
+            {/* MAIN CONTENT TABS */}
             <Tabs defaultValue="injection">
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="injection">
@@ -937,12 +933,12 @@ const PETProductionPage = () => {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle>Preform Injection Orders</CardTitle>
-                                <CardDescription>Track the production of preforms from raw materials (bag-based consumption).</CardDescription>
+                                <CardTitle>Preform Injection Production Records</CardTitle>
+                                <CardDescription>Track preform production based on finished bag output.</CardDescription>
                             </div>
                             <Button variant="outline" onClick={() => { setNewOrderStage('injection'); setIsOrderDialogOpen(true); }}>
                                 <PackagePlus className="mr-2 h-4 w-4"/>
-                                New Injection Order
+                                Record Production
                             </Button>
                         </CardHeader>
                         <CardContent>
@@ -955,12 +951,12 @@ const PETProductionPage = () => {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
-                                <CardTitle>Bottle Blowing Orders</CardTitle>
-                                <CardDescription>Track the production of bottles from preforms.</CardDescription>
+                                <CardTitle>Bottle Blowing Production Records</CardTitle>
+                                <CardDescription>Track bottle production from preforms.</CardDescription>
                             </div>
                             <Button variant="outline" onClick={() => { setNewOrderStage('blowing'); setIsOrderDialogOpen(true); }}>
                                 <PackagePlus className="mr-2 h-4 w-4"/>
-                                New Blowing Order
+                                Record Production
                             </Button>
                         </CardHeader>
                         <CardContent>
@@ -970,18 +966,17 @@ const PETProductionPage = () => {
                 </TabsContent>
             </Tabs>
             
-            {/* ==================== COMPLETE ORDER DIALOG ==================== */}
+            {/* COMPLETE ORDER DIALOG */}
             <Dialog open={isCompleteDialogOpen} onOpenChange={setIsCompleteDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Complete Production Order</DialogTitle>
-                        <DialogDescription>Enter quantities produced. This will consume inputs and add output to inventory.</DialogDescription>
+                        <DialogDescription>Enter actual quantities produced. This will update inventory.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="actual-qty" className="text-right">Good Quantity</Label>
+                            <Label className="text-right">Good Quantity</Label>
                             <Input 
-                                id="actual-qty" 
                                 type="number" 
                                 value={actualQuantity} 
                                 onChange={(e) => setActualQuantity(Number(e.target.value))} 
@@ -989,9 +984,8 @@ const PETProductionPage = () => {
                             />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="defective-qty" className="text-right">Defective Qty</Label>
+                            <Label className="text-right">Defective Qty</Label>
                             <Input 
-                                id="defective-qty" 
                                 type="number" 
                                 value={defectiveQuantity} 
                                 onChange={(e) => setDefectiveQuantity(Number(e.target.value))} 
@@ -1001,7 +995,7 @@ const PETProductionPage = () => {
                         <Alert variant="destructive">
                             <AlertTriangle className="h-4 w-4" />
                             <AlertDescription>
-                                This action is irreversible and will permanently adjust your inventory levels and costs.
+                                This action is irreversible and will adjust inventory levels.
                             </AlertDescription>
                         </Alert>
                     </div>
