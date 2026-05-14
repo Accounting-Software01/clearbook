@@ -94,7 +94,10 @@ export const allNavItems = [
                         label: 'Accounting Reports',
                         icon: Landmark,
                         subItems: [
+                            { href: '/reports/general-ledger', label: 'General Ledger', icon: Archive, permission: 'view_reports_accounting' },
                             { href: '/reports/account-balances', label: 'Account Balances', icon: Scale, permission: 'view_reports_accounting' },
+
+                            
                             { href: '/reports/trial-balance', label: 'Trial Balance', icon: BookOpen, permission: 'view_reports_accounting' },
                             { href: '/reports/balance-sheet', label: 'Balance Sheet', icon: Landmark, permission: 'view_reports_accounting' },
                             { href: '/reports/income-statement', label: 'Income Statement', icon: LineChart, permission: 'view_reports_accounting' },
