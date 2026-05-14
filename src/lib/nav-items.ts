@@ -63,8 +63,8 @@ export const allNavItems = [
                 subItems: [
                     { href: '/incomes', label: 'Incomes', icon: TrendingUp, permission: 'view_incomes' },
                     { href: '/expenses', label: 'Expenses', icon: TrendingDown, permission: 'view_expenses' },
-                    { href: '/receipts', label: 'Receipts Voucher', icon: Receipt, permission: 'view_receipts' },
-                    { href: '/payments', label: 'Payments Voucher', icon: CreditCard, permission: 'view_payments' },
+                    { href: '/receipts', label: 'Receipts', icon: Receipt, permission: 'view_receipts' },
+                    { href: '/payments', label: 'Payments', icon: CreditCard, permission: 'view_payments' },
                     { href: '/journal', label: 'Journal Entries', icon: BookText, permission: 'view_journal_entries' },
                     { href: '/opening-balance', label: 'Opening Balances', icon: Database, permission: 'view_opening_balances' },
                     { href: '/reconciliation', label: 'Reconciliation', icon: GitCompare, permission: 'view_reconciliation' },
@@ -81,6 +81,11 @@ export const allNavItems = [
                 //    { href: '/budget-alerts', label: 'Budget Alerts', icon: Bell, permission: 'view_budget_alerts' },
               //  ]
            // },
+
+           { href: '/reports/fixed-assets', label: 'Fixed Assets', icon: Database, permission: 'view_reports_transactions' },
+                 
+
+
             {
                 label: 'Reports',
                 icon: FileBarChart2,
@@ -100,7 +105,13 @@ export const allNavItems = [
                             { href: '/reports/vat-report', label: 'VAT Report', icon: FileText, permission: 'view_reports_accounting' },
                         ]
                     },
-                    {
+
+
+                  
+                  
+                                   
+
+                      {
                         label: 'Transaction Reports',
                         icon: ClipboardList,
                         subItems: [
@@ -109,7 +120,7 @@ export const allNavItems = [
                             { href: '/reports/liability-analysis', label: 'Liability Analysis', icon: ShieldAlert, permission: 'view_reports_transactions' },
                             { href: '/reports/cash-outflow', label: 'Cash Outflow', icon: ArrowDown, permission: 'view_reports_transactions' },
                             { href: '/reports/cash-inflow', label: 'Cash Inflow', icon: ArrowUp, permission: 'view_reports_transactions' },
-                          //  { href: '/reports/income-analysis', label: 'Income Analysis', icon: TrendingUp, permission: 'view_reports_transactions' },
+                           
                           //  { href: '/reports/bank-reconciliation-report', label: 'Bank Reconciliation Report', icon: RefreshCw, permission: 'view_reports_transactions' },
                         ]
                     },
