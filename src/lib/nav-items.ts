@@ -138,6 +138,18 @@ export const allNavItems = [
                  //   }
                 ]
             },
+    {
+  label: 'HR Management',
+  icon: Landmark,
+  subItems: [
+    {
+      href: '/hr',
+      label: 'HR Module',
+      icon: Users,           // Recommended icon for HR
+      permission: 'view_hr_module',
+    },
+  ],
+},
             {
                 label: 'Business Operations',
                 isTitle: true,
