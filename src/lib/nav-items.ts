@@ -143,7 +143,7 @@ export const allNavItems = [
   icon: Landmark,
   subItems: [
     {
-      href: '/hr',
+      href: '/hrmodule',
       label: 'HR Module',
       icon: Users,           // Recommended icon for HR
       permission: 'view_hr_module',
