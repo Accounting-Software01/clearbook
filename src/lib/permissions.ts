@@ -44,6 +44,10 @@ export const allPermissions = [
     { id: 'view_inventory_safety_stock', label: 'Inventory - Safety Stock' },
     { id: 'view_inventory_quality_hold', label: 'Inventory - Quality-Hold' },
     { id: 'view_inventory_consignment', label: 'Inventory - Consignment' },
+
+    //HR Management Permission
+    { id: ' view_hr_module', label: 'HR Module' },
+   
     
     // Sales
     { id: 'view_pos', label: 'Sales - Point of Sale (POS)' },
