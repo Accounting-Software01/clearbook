@@ -7,27 +7,33 @@ import {
   Save, 
   X, 
   TrendingUp,
+  AlertCircle,
+  CheckCircle,
   Users,
   Calculator,
   Plus,
   RefreshCw,
-  AlertCircle,
-  CheckCircle,
   Building2,
   Shield,
-  Percent
+  Percent,
+  Briefcase,
+  Heart,
+  Home,
+  Landmark
 } from 'lucide-react';
 import { api, hrAPI } from '@/lib/api';
 
 interface SalaryStructureData {
   id: number;
   staff_id: number;
-  staff_code: string;
   first_name: string;
   last_name: string;
+  staff_code: string;
   dept_name: string;
   position_name: string;
-  grade_level: string;
+  grade_level_id: number;
+  grade_code: string;
+  grade_name: string;
   basic_salary: number;
   housing_allowance: number;
   transport_allowance: number;
@@ -36,30 +42,31 @@ interface SalaryStructureData {
   communication_allowance: number;
   risk_allowance: number;
   other_allowances: number;
-  total_monthly: number;
   currency_code: string;
   effective_from: string;
   is_current: boolean;
-  // Reliefs
+  // New fields for advanced calculations
+  salary_percentage_basic: number;
+  salary_percentage_housing: number;
+  salary_percentage_transport: number;
+  salary_percentage_others: number;
+  // Tax Reliefs
   house_rental_relief: number;
   life_assurance: number;
   gratuity: number;
   mortgage_interest: number;
   // Pension
+  pfa_id: number;
   pfa_name: string;
   pension_pin: string;
   nhf_number: string;
-  // Percentages
-  salary_percentage_basic: number;
-  salary_percentage_transport: number;
-  salary_percentage_housing: number;
-  salary_percentage_others: number;
 }
 
 interface GradeLevel {
   id: number;
   grade_code: string;
   grade_name: string;
+  step: number;
   basic_salary: number;
   housing_allowance: number;
   transport_allowance: number;
@@ -81,7 +88,9 @@ const SalaryStructure = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<GradeLevel | null>(null);
+  const [showReliefModal, setShowReliefModal] = useState(false);
+  const [selectedSalary, setSelectedSalary] = useState<SalaryStructureData | null>(null);
+  const [activeTab, setActiveTab] = useState<'salary' | 'reliefs' | 'pension'>('salary');
   const [newSalary, setNewSalary] = useState({
     staff_id: '',
     effective_from: new Date().toISOString().split('T')[0],
@@ -94,6 +103,12 @@ const SalaryStructure = () => {
     risk_allowance: '',
     other_allowances: '',
     currency_code: 'NGN',
+    // Advanced fields
+    grade_level_id: '',
+    salary_percentage_basic: '50',
+    salary_percentage_housing: '22',
+    salary_percentage_transport: '15',
+    salary_percentage_others: '13',
     // Reliefs
     house_rental_relief: '',
     life_assurance: '',
@@ -102,38 +117,40 @@ const SalaryStructure = () => {
     // Pension
     pfa_id: '',
     pension_pin: '',
-    nhf_number: '',
-    // Grade
-    grade_level_id: '',
-    // Percentages
-    salary_percentage_basic: '50',
-    salary_percentage_transport: '15',
-    salary_percentage_housing: '22',
-    salary_percentage_others: '13'
+    nhf_number: ''
   });
 
   useEffect(() => {
-    fetchSalaryData();
-    fetchGradeLevels();
-    fetchPFAs();
+    fetchAllData();
   }, []);
 
-  const fetchSalaryData = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const response = await api<any>('/SalaryStructureController.php');
-      const staffResponse = await hrAPI.getStaff();
-      
-      if (response.success) {
-        setSalaries(response.data || []);
-      }
-      if (staffResponse.success) {
-        setStaff(staffResponse.data || []);
-      }
+      await Promise.all([
+        fetchSalaryData(),
+        fetchGradeLevels(),
+        fetchPFAs(),
+        fetchStaff()
+      ]);
     } catch (error) {
-      console.error('Error fetching salary data:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSalaryData = async () => {
+    const response = await api<any>('/SalaryStructureController.php');
+    if (response.success) {
+      setSalaries(response.data || []);
+    }
+  };
+
+  const fetchStaff = async () => {
+    const response = await hrAPI.getStaff();
+    if (response.success) {
+      setStaff(response.data || []);
     }
   };
 
@@ -162,7 +179,6 @@ const SalaryStructure = () => {
   const handleGradeSelect = (gradeId: string) => {
     const grade = gradeLevels.find(g => g.id.toString() === gradeId);
     if (grade) {
-      setSelectedGrade(grade);
       setNewSalary({
         ...newSalary,
         basic_salary: grade.basic_salary.toString(),
@@ -172,6 +188,107 @@ const SalaryStructure = () => {
         grade_level_id: gradeId
       });
     }
+  };
+
+  const handleEdit = (salary: SalaryStructureData) => {
+    setEditingId(salary.id);
+    setEditForm({
+      basic_salary: salary.basic_salary,
+      housing_allowance: salary.housing_allowance,
+      transport_allowance: salary.transport_allowance,
+      meal_allowance: salary.meal_allowance,
+      medical_allowance: salary.medical_allowance,
+      communication_allowance: salary.communication_allowance,
+      risk_allowance: salary.risk_allowance,
+      other_allowances: salary.other_allowances,
+      house_rental_relief: salary.house_rental_relief,
+      life_assurance: salary.life_assurance,
+      gratuity: salary.gratuity,
+      mortgage_interest: salary.mortgage_interest,
+      pfa_id: salary.pfa_id,
+      pension_pin: salary.pension_pin,
+      nhf_number: salary.nhf_number
+    });
+  };
+
+  const handleSave = async (id: number) => {
+    try {
+      await api('/SalaryStructureController.php', {
+        method: 'PUT',
+        body: JSON.stringify({ id, ...editForm })
+      });
+      setEditingId(null);
+      fetchSalaryData();
+    } catch (error) {
+      console.error('Error saving salary structure:', error);
+      alert('Failed to save changes');
+    }
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const handleAddSalary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api('/SalaryStructureController.php', {
+        method: 'POST',
+        body: JSON.stringify(newSalary)
+      });
+      setShowAddModal(false);
+      resetNewSalaryForm();
+      fetchSalaryData();
+    } catch (error) {
+      console.error('Error adding salary structure:', error);
+      alert('Failed to add salary structure');
+    }
+  };
+
+  const handleUpdateReliefs = async () => {
+    if (!selectedSalary) return;
+    try {
+      await api('/SalaryStructureController.php', {
+        method: 'PUT',
+        body: JSON.stringify({ id: selectedSalary.id, ...editForm })
+      });
+      setShowReliefModal(false);
+      setSelectedSalary(null);
+      fetchSalaryData();
+      alert('Reliefs updated successfully');
+    } catch (error) {
+      console.error('Error updating reliefs:', error);
+      alert('Failed to update reliefs');
+    }
+  };
+
+  const resetNewSalaryForm = () => {
+    setNewSalary({
+      staff_id: '',
+      effective_from: new Date().toISOString().split('T')[0],
+      basic_salary: '',
+      housing_allowance: '',
+      transport_allowance: '',
+      meal_allowance: '',
+      medical_allowance: '',
+      communication_allowance: '',
+      risk_allowance: '',
+      other_allowances: '',
+      currency_code: 'NGN',
+      grade_level_id: '',
+      salary_percentage_basic: '50',
+      salary_percentage_housing: '22',
+      salary_percentage_transport: '15',
+      salary_percentage_others: '13',
+      house_rental_relief: '',
+      life_assurance: '',
+      gratuity: '',
+      mortgage_interest: '',
+      pfa_id: '',
+      pension_pin: '',
+      nhf_number: ''
+    });
   };
 
   const calculateTotal = (salary: SalaryStructureData) => {
@@ -196,52 +313,20 @@ const SalaryStructure = () => {
     return 56000 + (total - 320000) * 0.24;
   };
 
-  const handleAddSalary = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api('/SalaryStructureController.php', {
-        method: 'POST',
-        body: JSON.stringify(newSalary)
-      });
-      setShowAddModal(false);
-      setNewSalary({
-        staff_id: '',
-        effective_from: new Date().toISOString().split('T')[0],
-        basic_salary: '',
-        housing_allowance: '',
-        transport_allowance: '',
-        meal_allowance: '',
-        medical_allowance: '',
-        communication_allowance: '',
-        risk_allowance: '',
-        other_allowances: '',
-        currency_code: 'NGN',
-        house_rental_relief: '',
-        life_assurance: '',
-        gratuity: '',
-        mortgage_interest: '',
-        pfa_id: '',
-        pension_pin: '',
-        nhf_number: '',
-        grade_level_id: '',
-        salary_percentage_basic: '50',
-        salary_percentage_transport: '15',
-        salary_percentage_housing: '22',
-        salary_percentage_others: '13'
-      });
-      setSelectedGrade(null);
-      fetchSalaryData();
-    } catch (error) {
-      console.error('Error adding salary structure:', error);
-      alert('Failed to add salary structure');
-    }
+  const calculateAnnualTaxRelief = (reliefs: any) => {
+    const houseRelief = Math.min((reliefs.house_rental_relief || 0) * 0.20, 500000);
+    const lifeRelief = Math.min((reliefs.life_assurance || 0) * 0.15, 200000);
+    const gratuityRelief = Math.min((reliefs.gratuity || 0) * 0.10, 300000);
+    const mortgageRelief = Math.min((reliefs.mortgage_interest || 0) * 0.15, 300000);
+    return houseRelief + lifeRelief + gratuityRelief + mortgageRelief;
   };
 
   const summary = {
     totalMonthlyWage: salaries.reduce((sum, s) => sum + calculateTotal(s), 0),
     averageSalary: salaries.length ? (salaries.reduce((sum, s) => sum + calculateTotal(s), 0) / salaries.length) : 0,
     highestSalary: salaries.length ? Math.max(...salaries.map(s => calculateTotal(s))) : 0,
-    lowestSalary: salaries.length ? Math.min(...salaries.map(s => calculateTotal(s))) : 0
+    lowestSalary: salaries.length ? Math.min(...salaries.map(s => calculateTotal(s))) : 0,
+    totalPotentialRelief: salaries.reduce((sum, s) => sum + calculateAnnualTaxRelief(s), 0)
   };
 
   const getCurrencySymbol = (currencyCode: string) => {
@@ -274,8 +359,8 @@ const SalaryStructure = () => {
         </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Summary Cards - Enhanced */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <div className="bg-white rounded-lg border p-5">
           <div className="flex items-center justify-between">
             <div>
@@ -312,13 +397,39 @@ const SalaryStructure = () => {
             <Calculator className="h-8 w-8 text-gray-400" />
           </div>
         </div>
+        <div className="bg-white rounded-lg border p-5 bg-green-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-green-700">Annual Tax Reliefs</p>
+              <p className="text-2xl font-semibold text-green-700">₦{formatNumber(summary.totalPotentialRelief)}</p>
+            </div>
+            <Shield className="h-8 w-8 text-green-600" />
+          </div>
+        </div>
+      </div>
+
+      {/* Salary Breakdown Info Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Percent className="h-5 w-5 text-blue-600 mt-0.5" />
+          <div className="text-sm text-blue-800">
+            <p className="font-medium">Salary Percentage Breakdown (Standard Nigerian Structure)</p>
+            <p className="mt-1">Basic: 50% | Housing: 22% | Transport: 15% | Other Allowances: 13%</p>
+            <p className="text-xs mt-1 opacity-75">Pension is calculated on Basic + Housing + Transport (8% Employee | 10% Employer)</p>
+          </div>
+        </div>
       </div>
 
       {/* Salary Table */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h3 className="text-md font-medium text-gray-900">Staff Salary Details</h3>
-          <p className="text-xs text-gray-500 mt-1">Showing {salaries.length} salary structure(s)</p>
+        <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+          <div>
+            <h3 className="text-md font-medium text-gray-900">Staff Salary Details</h3>
+            <p className="text-xs text-gray-500 mt-1">Showing {salaries.length} salary structure(s)</p>
+          </div>
+          <button onClick={fetchSalaryData} className="text-gray-400 hover:text-gray-600">
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
         
         {loading ? (
@@ -329,6 +440,7 @@ const SalaryStructure = () => {
           <div className="text-center py-12">
             <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No salary structures found</p>
+            <p className="text-xs text-gray-400 mt-2">Click "Add Salary Structure" to create one</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -342,12 +454,14 @@ const SalaryStructure = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500">Transport</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500">Total</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">PFA</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500">Actions</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500">Reliefs</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {salaries.map((salary) => {
                   const total = calculateTotal(salary);
+                  const totalRelief = calculateAnnualTaxRelief(salary);
                   return (
                     <tr key={salary.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
@@ -363,14 +477,48 @@ const SalaryStructure = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{salary.grade_level || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {salary.grade_code || '-'}
+                      </td>
                       <td className="px-6 py-4 text-sm text-right">₦{formatNumber(salary.basic_salary)}</td>
                       <td className="px-6 py-4 text-sm text-right">₦{formatNumber(salary.housing_allowance)}</td>
                       <td className="px-6 py-4 text-sm text-right">₦{formatNumber(salary.transport_allowance)}</td>
                       <td className="px-6 py-4 text-sm text-right font-bold">₦{formatNumber(total)}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{salary.pfa_name || '-'}</td>
                       <td className="px-6 py-4 text-center">
-                        <button className="text-blue-600 hover:text-blue-800">
+                        {totalRelief > 0 ? (
+                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                            ₦{formatNumber(totalRelief)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Not set</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2">
+                        <button
+                          onClick={() => {
+                            setSelectedSalary(salary);
+                            setEditForm({
+                              house_rental_relief: salary.house_rental_relief,
+                              life_assurance: salary.life_assurance,
+                              gratuity: salary.gratuity,
+                              mortgage_interest: salary.mortgage_interest,
+                              pfa_id: salary.pfa_id,
+                              pension_pin: salary.pension_pin,
+                              nhf_number: salary.nhf_number
+                            });
+                            setShowReliefModal(true);
+                          }}
+                          className="text-purple-600 hover:text-purple-800"
+                          title="Edit Reliefs & Pension"
+                        >
+                          <Shield className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(salary)}
+                          className="text-blue-600 hover:text-blue-800"
+                          title="Edit Salary"
+                        >
                           <Edit className="h-4 w-4" />
                         </button>
                       </td>
@@ -378,12 +526,19 @@ const SalaryStructure = () => {
                   );
                 })}
               </tbody>
+              <tfoot className="bg-gray-50">
+                <tr className="font-bold">
+                  <td colSpan={5} className="px-6 py-4 text-right">GRAND TOTAL:</td>
+                  <td className="px-6 py-4 text-right">₦{formatNumber(summary.totalMonthlyWage)}</td>
+                  <td colSpan={3}></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
       </div>
 
-      {/* Add Salary Modal */}
+      {/* Add Salary Modal - Enhanced */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50">
           <div className="flex items-center justify-center min-h-screen p-4">
@@ -395,7 +550,7 @@ const SalaryStructure = () => {
                 </button>
               </div>
               <form onSubmit={handleAddSalary} className="p-6 space-y-4">
-                {/* Staff Selection & Grade */}
+                {/* Staff & Grade Selection */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member *</label>
@@ -418,9 +573,9 @@ const SalaryStructure = () => {
                       onChange={(e) => handleGradeSelect(e.target.value)}
                       className="w-full border rounded-lg px-3 py-2"
                     >
-                      <option value="">Select Grade</option>
+                      <option value="">Select Grade (Auto-fill salary)</option>
                       {gradeLevels.map(g => (
-                        <option key={g.id} value={g.id}>{g.grade_code} - {g.grade_name}</option>
+                        <option key={g.id} value={g.id}>{g.grade_code} - {g.grade_name} (₦{formatNumber(g.basic_salary)})</option>
                       ))}
                     </select>
                   </div>
@@ -492,59 +647,50 @@ const SalaryStructure = () => {
                       className="w-full border rounded-lg px-3 py-2"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Medical Allowance</label>
+                    <input
+                      type="number"
+                      value={newSalary.medical_allowance}
+                      onChange={(e) => setNewSalary({...newSalary, medical_allowance: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Risk Allowance</label>
+                    <input
+                      type="number"
+                      value={newSalary.risk_allowance}
+                      onChange={(e) => setNewSalary({...newSalary, risk_allowance: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                  </div>
                 </div>
 
-                {/* Tax Reliefs Section */}
-                <div className="border-t pt-4">
-                  <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Tax Reliefs (Annual)
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">House Rental Relief</label>
-                      <input
-                        type="number"
-                        value={newSalary.house_rental_relief}
-                        onChange={(e) => setNewSalary({...newSalary, house_rental_relief: e.target.value})}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="₦0"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Max ₦500,000 (20% of rental)</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Life Assurance</label>
-                      <input
-                        type="number"
-                        value={newSalary.life_assurance}
-                        onChange={(e) => setNewSalary({...newSalary, life_assurance: e.target.value})}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="₦0"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Max ₦200,000 (15% of premium)</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Gratuity</label>
-                      <input
-                        type="number"
-                        value={newSalary.gratuity}
-                        onChange={(e) => setNewSalary({...newSalary, gratuity: e.target.value})}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="₦0"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Max ₦300,000 (10% of gratuity)</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Mortgage Interest</label>
-                      <input
-                        type="number"
-                        value={newSalary.mortgage_interest}
-                        onChange={(e) => setNewSalary({...newSalary, mortgage_interest: e.target.value})}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="₦0"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Max ₦300,000 (15% of interest)</p>
-                    </div>
+                {/* Effective Date & Currency */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Effective From *</label>
+                    <input
+                      type="date"
+                      required
+                      value={newSalary.effective_from}
+                      onChange={(e) => setNewSalary({...newSalary, effective_from: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+                    <select
+                      value={newSalary.currency_code}
+                      onChange={(e) => setNewSalary({...newSalary, currency_code: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2"
+                    >
+                      <option value="NGN">Nigerian Naira (₦)</option>
+                      <option value="USD">US Dollar ($)</option>
+                      <option value="GBP">British Pound (£)</option>
+                      <option value="EUR">Euro (€)</option>
+                    </select>
                   </div>
                 </div>
 
@@ -575,6 +721,7 @@ const SalaryStructure = () => {
                         value={newSalary.pension_pin}
                         onChange={(e) => setNewSalary({...newSalary, pension_pin: e.target.value})}
                         className="w-full border rounded-lg px-3 py-2"
+                        placeholder="e.g., 1234567890"
                       />
                     </div>
                     <div>
@@ -583,16 +730,6 @@ const SalaryStructure = () => {
                         type="text"
                         value={newSalary.nhf_number}
                         onChange={(e) => setNewSalary({...newSalary, nhf_number: e.target.value})}
-                        className="w-full border rounded-lg px-3 py-2"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Effective From</label>
-                      <input
-                        type="date"
-                        required
-                        value={newSalary.effective_from}
-                        onChange={(e) => setNewSalary({...newSalary, effective_from: e.target.value})}
                         className="w-full border rounded-lg px-3 py-2"
                       />
                     </div>
@@ -615,6 +752,162 @@ const SalaryStructure = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reliefs & Pension Modal */}
+      {showReliefModal && selectedSalary && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50">
+          <div className="flex items-center justify-center min-h-screen p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
+              <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
+                <h3 className="text-lg font-medium">Tax Reliefs & Pension Details</h3>
+                <button onClick={() => setShowReliefModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                {/* Tabs */}
+                <div className="flex border-b">
+                  <button
+                    onClick={() => setActiveTab('reliefs')}
+                    className={`px-4 py-2 text-sm font-medium ${activeTab === 'reliefs' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}
+                  >
+                    <Home className="h-4 w-4 inline mr-2" />
+                    Tax Reliefs
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('pension')}
+                    className={`px-4 py-2 text-sm font-medium ${activeTab === 'pension' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}
+                  >
+                    <Landmark className="h-4 w-4 inline mr-2" />
+                    Pension & NHF
+                  </button>
+                </div>
+
+                {/* Tax Reliefs Tab */}
+                {activeTab === 'reliefs' && (
+                  <div className="space-y-4">
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <p className="text-sm text-green-800">
+                        <strong>Annual Tax Reliefs</strong> - These reduce your taxable income
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        House Rental Relief (Annual)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.house_rental_relief || ''}
+                        onChange={(e) => setEditForm({...editForm, house_rental_relief: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="₦0.00"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Max relief: ₦500,000 (20% of rental value)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Life Assurance Premium (Annual)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.life_assurance || ''}
+                        onChange={(e) => setEditForm({...editForm, life_assurance: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="₦0.00"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Max relief: ₦200,000 (15% of premium)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Gratuity (Annual)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.gratuity || ''}
+                        onChange={(e) => setEditForm({...editForm, gratuity: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="₦0.00"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Max relief: ₦300,000 (10% of gratuity)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Mortgage Interest (Annual)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.mortgage_interest || ''}
+                        onChange={(e) => setEditForm({...editForm, mortgage_interest: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="₦0.00"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Max relief: ₦300,000 (15% of interest)</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pension & NHF Tab */}
+                {activeTab === 'pension' && (
+                  <div className="space-y-4">
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <p className="text-sm text-purple-800">
+                        <strong>Pension (PRA 2014):</strong> Employee 8% | Employer 10% of Basic + Housing + Transport
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">PFA (Pension Administrator)</label>
+                      <select
+                        value={editForm.pfa_id || ''}
+                        onChange={(e) => setEditForm({...editForm, pfa_id: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                      >
+                        <option value="">Select PFA</option>
+                        {pfas.map(p => (
+                          <option key={p.id} value={p.id}>{p.pfa_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Pension PIN</label>
+                      <input
+                        type="text"
+                        value={editForm.pension_pin || ''}
+                        onChange={(e) => setEditForm({...editForm, pension_pin: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="e.g., 1234567890"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">NHF Number</label>
+                      <input
+                        type="text"
+                        value={editForm.nhf_number || ''}
+                        onChange={(e) => setEditForm({...editForm, nhf_number: e.target.value})}
+                        className="w-full border rounded-lg px-3 py-2"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 pt-4 border-t">
+                  <button
+                    onClick={() => setShowReliefModal(false)}
+                    className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpdateReliefs}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
