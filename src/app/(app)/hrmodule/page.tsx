@@ -37,10 +37,13 @@ const HRModule = () => {
     fetchDashboardStats();
   }, []);
 
+  // ✅ FIXED: Use correct API endpoint for dashboard stats
   const fetchDashboardStats = async () => {
     try {
-      const response = await api.get('/hr/dashboard-stats');
-      setStats(response.data);
+      const response = await api<any>('/DashboardController.php');
+      if (response.success) {
+        setStats(response.data);
+      }
       setLoading(false);
     } catch (error) {
       console.error('Error fetching stats:', error);
