@@ -445,6 +445,30 @@ export const postPayrollToJournals = async (month: string, createdBy: number) =>
     });
 };
 
+// Add these to your hrAPI object
+
+/**
+ * Lock payroll for a month
+ */
+lockPayroll: async (month: string) => {
+  const response = await api('/PayrollController.php', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'lock', month })
+  });
+  return response;
+},
+
+/**
+ * Unlock payroll for a month
+ */
+unlockPayroll: async (month: string) => {
+  const response = await api('/PayrollController.php', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'unlock', month })
+  });
+  return response;
+},
+
 // ============================================
 // HR PAYSLIP APIS
 // ============================================
