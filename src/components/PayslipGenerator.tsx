@@ -37,6 +37,8 @@ interface PayslipData {
   pension_employer: number;
   nhf_employee: number;
   nhf_employer: number;
+  nhis_employee: number;      // ✅ Added NHIS employee
+  nhis_employer: number;      // ✅ Added NHIS employer
   advance_deduction: number;
   loan_deduction: number;
   other_deductions: number;
@@ -191,7 +193,6 @@ const PayslipGenerator = () => {
     }
   };
 
-  // Print using about:blank
   const printPayslip = (payslip: PayslipData) => {
     const printWindow = window.open('about:blank', '_blank');
     if (printWindow) {
@@ -224,7 +225,6 @@ const PayslipGenerator = () => {
     return months;
   };
 
-  // Clean White Payslip HTML - Matching the image format
   const getPayslipHTML = (payslip: PayslipData, company: any) => {
     const monthYear = payslip.payroll_month ? 
       new Date(payslip.payroll_month + '-01').toLocaleDateString('en-NG', { 
@@ -241,7 +241,13 @@ const PayslipGenerator = () => {
     
     const totalDeductions = payslip.total_deductions ||
       ((payslip.paye_tax || 0) + (payslip.pension_employee || 0) + (payslip.nhf_employee || 0) +
-       (payslip.advance_deduction || 0) + (payslip.loan_deduction || 0) + (payslip.other_deductions || 0));
+       (payslip.nhis_employee || 0) + (payslip.advance_deduction || 0) + (payslip.loan_deduction || 0) + 
+       (payslip.other_deductions || 0));
+
+    // Calculate pension percentage for display
+    const pensionablePay = payslip.basic_salary + (payslip.housing_allowance || 0) + (payslip.transport_allowance || 0);
+    const employeePensionPercent = pensionablePay > 0 ? ((payslip.pension_employee / pensionablePay) * 100).toFixed(1) : 0;
+    const employerPensionPercent = pensionablePay > 0 ? ((payslip.pension_employer / pensionablePay) * 100).toFixed(1) : 0;
 
     return `
       <!DOCTYPE html>
@@ -270,7 +276,6 @@ const PayslipGenerator = () => {
             padding: 25px 30px;
           }
           
-          /* Header */
           .header {
             text-align: center;
             margin-bottom: 20px;
@@ -300,7 +305,6 @@ const PayslipGenerator = () => {
             margin-top: 3px;
           }
           
-          /* Employee Info Grid */
           .info-grid {
             margin: 15px 0;
             border: 1px solid #ddd;
@@ -324,7 +328,6 @@ const PayslipGenerator = () => {
             padding: 6px 12px;
           }
           
-          /* Two Column Layout */
           .two-column {
             display: flex;
             margin: 15px 0;
@@ -362,7 +365,6 @@ const PayslipGenerator = () => {
             border-top: 1px solid #000;
           }
           
-          /* Net Pay Section */
           .net-pay-section {
             margin: 20px 0 15px;
             padding-top: 10px;
@@ -389,7 +391,6 @@ const PayslipGenerator = () => {
             border-top: 1px solid #ccc;
           }
           
-          /* Footer */
           .footer {
             margin-top: 20px;
             padding-top: 10px;
@@ -419,7 +420,6 @@ const PayslipGenerator = () => {
       </head>
       <body>
         <div class="payslip-container">
-          <!-- Header -->
           <div class="header">
             <div class="company-name">${company?.company_name || 'COMPANY NAME'}</div>
             <div class="company-address">
@@ -429,7 +429,6 @@ const PayslipGenerator = () => {
             <div class="pay-period">${monthYear} [Month End]</div>
           </div>
           
-          <!-- Employee Information -->
           <div class="info-grid">
             <div class="info-row">
               <div class="info-label">Personal No.</div>
@@ -461,9 +460,7 @@ const PayslipGenerator = () => {
             </div>
           </div>
           
-          <!-- Earnings and Deductions -->
           <div class="two-column">
-            <!-- Earnings Column -->
             <div class="column">
               <div class="section-title">EARNINGS</div>
               <div class="earning-item">
@@ -500,7 +497,6 @@ const PayslipGenerator = () => {
               </div>
             </div>
             
-            <!-- Deductions Column -->
             <div class="column">
               <div class="section-title">DEDUCTIONS</div>
               <div class="deduction-item">
@@ -508,11 +504,15 @@ const PayslipGenerator = () => {
                 <span class="item-amount">${currencySymbol}${formatNumber(payslip.paye_tax)}</span>
               </div>
               <div class="deduction-item">
-                <span class="item-label">Pension Fund Dues</span>
+                <span class="item-label">Pension (Employee 8%)</span>
                 <span class="item-amount">${currencySymbol}${formatNumber(payslip.pension_employee)}</span>
               </div>
               <div class="deduction-item">
-                <span class="item-label">National Housing Fund (NHF)</span>
+                <span class="item-label">NHIS (Employee 5%)</span>
+                <span class="item-amount">${currencySymbol}${formatNumber(payslip.nhis_employee || 0)}</span>
+              </div>
+              <div class="deduction-item">
+                <span class="item-label">National Housing Fund (NHF 2.5%)</span>
                 <span class="item-amount">${currencySymbol}${formatNumber(payslip.nhf_employee)}</span>
               </div>
               ${(payslip.advance_deduction || 0) > 0 ? `
@@ -540,7 +540,6 @@ const PayslipGenerator = () => {
             </div>
           </div>
           
-          <!-- Net Pay -->
           <div class="net-pay-section">
             <div class="net-pay-row">
               <span class="net-pay-label">NET PAY</span>
@@ -552,12 +551,13 @@ const PayslipGenerator = () => {
             </div>
           </div>
           
-          <!-- Footer -->
           <div class="footer">
             <div>Generated on: ${new Date().toLocaleString('en-NG')}</div>
             <div class="note">
-              This payslip is computer-generated and requires no signature.
-              Pension: Employee 4% | Employer 4% (Total 8% to PFA)
+              <strong>📝 Note:</strong> This payslip is computer-generated and requires no signature.<br>
+              Pension (PRA 2014): Employee 8% | Employer 10% of Basic + Housing + Transport<br>
+              NHIS (NHIA 2022): Employee 5% | Employer 10% of Basic Salary<br>
+              NHF: 2.5% of Basic Salary
             </div>
           </div>
         </div>
@@ -568,7 +568,6 @@ const PayslipGenerator = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-lg font-medium text-gray-900">Payslip Generator</h2>
