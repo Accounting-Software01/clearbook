@@ -659,7 +659,58 @@ const DepreciationModule = () => {
             default: return method;
         }
     };
+const handleUpdateAsset = async () => {
+    if (!editingAsset) return;
+    setIsSubmitting(true);
+    try {
+        const response = await fetch(`https://hariindustries.net/api/clearbook/update-fixed-asset.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: user?.company_id,
+                asset_id: editingAsset.id,
+                ...editingAsset
+            })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        
+        toast({ title: "Asset Updated", description: "Fixed asset has been updated successfully." });
+        fetchData();
+        setIsEditAssetDialogOpen(false);
+        setEditingAsset(null);
+    } catch (error: any) {
+        toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
 
+const handleDeleteAsset = async () => {
+    if (!deletingAsset) return;
+    setIsSubmitting(true);
+    try {
+        const response = await fetch(`https://hariindustries.net/api/clearbook/delete-fixed-asset.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: user?.company_id,
+                asset_id: deletingAsset.id
+            })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message);
+        
+        toast({ title: "Asset Deleted", description: "Fixed asset has been removed." });
+        fetchData();
+        setIsDeleteAssetDialogOpen(false);
+        setDeletingAsset(null);
+    } catch (error: any) {
+        toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
     const getStatusBadge = (status: string, isActive: boolean) => {
         if (!isActive) return <Badge className="bg-gray-500">Inactive</Badge>;
         switch (status) {
