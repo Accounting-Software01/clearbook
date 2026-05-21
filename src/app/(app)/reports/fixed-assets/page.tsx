@@ -755,7 +755,8 @@ const handleDeleteAsset = async () => {
                     <Button 
                         variant="outline" 
                         onClick={() => setIsRunDepreciationDialogOpen(true)}
-                        disabled={activeAssets.length === 0}
+                       
+                      // disabled={activeAssets.length === 0}  // Comment out
                     >
                         <Calculator className="mr-2 h-4 w-4" />
                         Run Depreciation
