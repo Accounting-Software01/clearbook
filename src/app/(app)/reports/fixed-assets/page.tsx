@@ -790,7 +790,7 @@ const DepreciationModule = () => {
         }
     };
 
-    const activeAssets = assets.filter(a => a.status === 'active' && a.is_active === true);
+   const activeAssets = assets.filter(a => a.status === 'active');
 
     if (isLoading) {
         return (
