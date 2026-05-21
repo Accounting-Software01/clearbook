@@ -324,6 +324,7 @@ const DepreciationModule = () => {
     const [runUnitsProduction, setRunUnitsProduction] = useState<Record<string, number>>({});
     const [runDepreciationExpenseAccount, setRunDepreciationExpenseAccount] = useState('');
     const [runAccumulatedDepreciationAccount, setRunAccumulatedDepreciationAccount] = useState('');
+    const [runAssetAccount, setRunAssetAccount] = useState('');
 
     // Preview unique identifier
     const [previewIdentifier, setPreviewIdentifier] = useState('');
@@ -737,6 +738,7 @@ const DepreciationModule = () => {
                     period_date: runPeriodDate,
                     asset_ids: assetIdsToProcess,
                     units_production: runUnitsProduction,
+                    asset_account: runAssetAccount,
                     depreciation_expense_account: runDepreciationExpenseAccount,
                     accumulated_depreciation_account: runAccumulatedDepreciationAccount
                 })
@@ -756,6 +758,7 @@ const DepreciationModule = () => {
                 setRunAssetIds([]);
                 setRunSelectAll(true);
                 setRunUnitsProduction({});
+                setRunAssetAccount('');
                 setRunDepreciationExpenseAccount('');
                 setRunAccumulatedDepreciationAccount('');
             } else {
@@ -1471,277 +1474,300 @@ const DepreciationModule = () => {
                 </DialogContent>
             </Dialog>
 
-            {/* RUN DEPRECIATION DIALOG */}
-            <Dialog open={isRunDepreciationDialogOpen} onOpenChange={setIsRunDepreciationDialogOpen}>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Run Depreciation</DialogTitle>
-                        <DialogDescription>Calculate and post depreciation for selected assets.</DialogDescription>
-                    </DialogHeader>
-                    
-                    <div className="space-y-6 py-4">
-                        {/* Period Selection */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Period Type</Label>
-                                <Select value={runPeriodType} onValueChange={(v: any) => setRunPeriodType(v)}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="monthly">Monthly</SelectItem>
-                                        <SelectItem value="yearly">Yearly</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Period Date</Label>
-                                <Input 
-                                    type="date" 
-                                    value={runPeriodDate}
-                                    onChange={e => setRunPeriodDate(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    {runPeriodType === 'monthly' 
-                                        ? 'Last day of the month is recommended' 
-                                        : 'Year end date'}
-                                </p>
-                            </div>
-                        </div>
+           {/* RUN DEPRECIATION DIALOG */}
+<Dialog open={isRunDepreciationDialogOpen} onOpenChange={setIsRunDepreciationDialogOpen}>
+    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+            <DialogTitle>Run Depreciation</DialogTitle>
+            <DialogDescription>Calculate and post depreciation for selected assets.</DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6 py-4">
+            {/* Period Selection */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Period Type</Label>
+                    <Select value={runPeriodType} onValueChange={(v: any) => setRunPeriodType(v)}>
+                        <SelectTrigger>
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="yearly">Yearly</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Period Date</Label>
+                    <Input 
+                        type="date" 
+                        value={runPeriodDate}
+                        onChange={e => setRunPeriodDate(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        {runPeriodType === 'monthly' 
+                            ? 'Last day of the month is recommended' 
+                            : 'Year end date'}
+                    </p>
+                </div>
+            </div>
 
-                        {/* Chart of Accounts for Depreciation */}
-                        <div className="border-t pt-4">
-                            <h3 className="font-semibold text-md mb-3">Depreciation Posting Accounts</h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Depreciation Expense Account *</Label>
-                                    <Select 
-                                        value={runDepreciationExpenseAccount} 
-                                        onValueChange={setRunDepreciationExpenseAccount}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select expense account" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {expenseAccounts.map(acc => (
-                                                <SelectItem key={acc.account_code} value={acc.account_code}>
-                                                    {acc.account_code} - {acc.account_name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">Debit account for depreciation expense</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Accumulated Depreciation Account *</Label>
-                                    <Select 
-                                        value={runAccumulatedDepreciationAccount} 
-                                        onValueChange={setRunAccumulatedDepreciationAccount}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select accumulated depreciation account" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {accumulatedAccounts.map(acc => (
-                                                <SelectItem key={acc.account_code} value={acc.account_code}>
-                                                    {acc.account_code} - {acc.account_name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">Credit account for accumulated depreciation</p>
-                                </div>
-                            </div>
-                        </div>
+            {/* Chart of Accounts Mapping — all 3 accounts */}
+            <div className="border-t pt-4">
+                <h3 className="font-semibold text-md mb-3">Chart of Accounts Mapping</h3>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                        <Label>Asset Account *</Label>
+                        <Select
+                            value={runAssetAccount}
+                            onValueChange={setRunAssetAccount}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select asset account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {isLoadingAccounts ? (
+                                    <SelectItem value="loading" disabled>Loading...</SelectItem>
+                                ) : (
+                                    assetAccounts.map(acc => (
+                                        <SelectItem key={acc.account_code} value={acc.account_code}>
+                                            {acc.account_code} - {acc.account_name}
+                                        </SelectItem>
+                                    ))
+                                )}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Fixed asset account (104xxx series)</p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Accumulated Depreciation Account *</Label>
+                        <Select
+                            value={runAccumulatedDepreciationAccount}
+                            onValueChange={setRunAccumulatedDepreciationAccount}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select accumulated depreciation account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {accumulatedAccounts.map(acc => (
+                                    <SelectItem key={acc.account_code} value={acc.account_code}>
+                                        {acc.account_code} - {acc.account_name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Credit account (1052xx series)</p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Depreciation Expense Account *</Label>
+                        <Select
+                            value={runDepreciationExpenseAccount}
+                            onValueChange={setRunDepreciationExpenseAccount}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select expense account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {expenseAccounts.map(acc => (
+                                    <SelectItem key={acc.account_code} value={acc.account_code}>
+                                        {acc.account_code} - {acc.account_name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Debit account (506xxx series)</p>
+                    </div>
+                </div>
+            </div>
 
-                        {/* Asset Selection */}
-                        <div className="border-t pt-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <Label>Select Assets</Label>
-                                <div className="flex items-center space-x-4">
-                                    <label className="flex items-center space-x-2 text-sm">
+            {/* Asset Selection */}
+            <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-3">
+                    <Label>Select Assets</Label>
+                    <div className="flex items-center space-x-4">
+                        <label className="flex items-center space-x-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={runSelectAll}
+                                onChange={(e) => {
+                                    setRunSelectAll(e.target.checked);
+                                    if (e.target.checked) setRunAssetIds([]);
+                                }}
+                                className="rounded border-gray-300"
+                            />
+                            <span>Select All Active Assets</span>
+                        </label>
+                        <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                                fetchData();
+                                toast({ title: "Refreshed", description: "Asset list updated." });
+                            }}
+                        >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Refresh
+                        </Button>
+                    </div>
+                </div>
+                
+                <div className="border rounded-md p-4 max-h-60 overflow-y-auto">
+                    {activeAssets.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-4">
+                            No active assets found. Please add assets first.
+                        </p>
+                    ) : (
+                        <div className="space-y-2">
+                            {activeAssets.map(asset => {
+                                const monthlyDep = calculateDepreciation(asset, runPeriodType);
+                                return (
+                                    <div key={asset.id} className="flex items-center space-x-3 py-2 border-b last:border-0">
                                         <input
                                             type="checkbox"
-                                            checked={runSelectAll}
+                                            id={`asset-${asset.id}`}
+                                            checked={runSelectAll || runAssetIds.includes(asset.id)}
                                             onChange={(e) => {
-                                                setRunSelectAll(e.target.checked);
-                                                if (e.target.checked) {
-                                                    setRunAssetIds([]);
+                                                if (runSelectAll) {
+                                                    setRunSelectAll(false);
+                                                    setRunAssetIds([asset.id]);
+                                                } else {
+                                                    const newIds = e.target.checked
+                                                        ? [...runAssetIds, asset.id]
+                                                        : runAssetIds.filter(id => id !== asset.id);
+                                                    setRunAssetIds(newIds);
                                                 }
                                             }}
                                             className="rounded border-gray-300"
                                         />
-                                        <span>Select All Active Assets</span>
-                                    </label>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm"
-                                        onClick={() => {
-                                            fetchData();
-                                            toast({ title: "Refreshed", description: "Asset list updated." });
-                                        }}
-                                    >
-                                        <RefreshCw className="h-3 w-3 mr-1" />
-                                        Refresh
-                                    </Button>
-                                </div>
-                            </div>
-                            
-                            <div className="border rounded-md p-4 max-h-60 overflow-y-auto">
-                                {activeAssets.length === 0 ? (
-                                    <p className="text-center text-muted-foreground py-4">
-                                        No active assets found. Please add assets first.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {activeAssets.map(asset => {
-                                            const monthlyDep = calculateDepreciation(asset, runPeriodType);
-                                            return (
-                                                <div key={asset.id} className="flex items-center space-x-3 py-2 border-b last:border-0">
-                                                    <input
-                                                        type="checkbox"
-                                                        id={`asset-${asset.id}`}
-                                                        checked={runSelectAll || runAssetIds.includes(asset.id)}
-                                                        onChange={(e) => {
-                                                            if (runSelectAll) {
-                                                                setRunSelectAll(false);
-                                                                setRunAssetIds([asset.id]);
-                                                            } else {
-                                                                const newAssetIds = e.target.checked
-                                                                    ? [...runAssetIds, asset.id]
-                                                                    : runAssetIds.filter(id => id !== asset.id);
-                                                                setRunAssetIds(newAssetIds);
-                                                            }
-                                                        }}
-                                                        className="rounded border-gray-300"
-                                                    />
-                                                    <Label htmlFor={`asset-${asset.id}`} className="text-sm flex-1 cursor-pointer">
-                                                        <div className="flex justify-between items-center">
-                                                            <div>
-                                                                <span className="font-medium">{asset.asset_name}</span>
-                                                                <span className="text-xs text-muted-foreground ml-2">({asset.asset_code})</span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className="text-sm">
-                                                                    Book Value: ₦{asset.current_book_value.toLocaleString('en-NG')}
-                                                                </div>
-                                                                <div className="text-xs text-muted-foreground">
-                                                                    Est. Depreciation: ₦{monthlyDep.toLocaleString('en-NG')}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </Label>
+                                        <Label htmlFor={`asset-${asset.id}`} className="text-sm flex-1 cursor-pointer">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <span className="font-medium">{asset.asset_name}</span>
+                                                    <span className="text-xs text-muted-foreground ml-2">({asset.asset_code})</span>
+                                                    <span className="text-xs text-muted-foreground ml-2">· {getDepreciationMethodLabel(asset.depreciation_method)}</span>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-2">
-                                {runSelectAll 
-                                    ? "All active assets will be processed" 
-                                    : `${runAssetIds.length} asset(s) selected`}
-                            </p>
-                        </div>
-
-                        {/* Units Production Input */}
-                        {!runSelectAll && runAssetIds.some(id => {
-                            const asset = assets.find(a => a.id === id);
-                            return asset?.depreciation_method === 'units_of_production';
-                        }) && (
-                            <div className="border-t pt-4">
-                                <Label>Units Produced This Period</Label>
-                                <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
-                                    {runAssetIds.map(id => {
-                                        const asset = assets.find(a => a.id === id);
-                                        if (asset?.depreciation_method !== 'units_of_production') return null;
-                                        return (
-                                            <div key={id} className="grid grid-cols-2 gap-2 items-center">
-                                                <Label className="text-sm">{asset.asset_name}</Label>
-                                                <Input 
-                                                    type="number"
-                                                    placeholder="Units produced"
-                                                    value={runUnitsProduction[id] || ''}
-                                                    onChange={e => setRunUnitsProduction({
-                                                        ...runUnitsProduction,
-                                                        [id]: parseFloat(e.target.value) || 0
-                                                    })}
-                                                />
+                                                <div className="text-right">
+                                                    <div className="text-sm">
+                                                        Book Value: ₦{asset.current_book_value.toLocaleString('en-NG')}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        Est. Depreciation: ₦{Math.round(monthlyDep).toLocaleString('en-NG')}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Depreciation Preview */}
-                        {(runSelectAll || runAssetIds.length > 0) && activeAssets.length > 0 && (
-                            <div className="border-t pt-4">
-                                <h4 className="font-semibold text-sm mb-3">Depreciation Preview</h4>
-                                <div className="bg-slate-50 rounded-lg p-4">
-                                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                                        {(runSelectAll ? activeAssets : activeAssets.filter(a => runAssetIds.includes(a.id))).map(asset => {
-                                            let previewAmount = 0;
-                                            if (asset.depreciation_method === 'units_of_production') {
-                                                const units = runUnitsProduction[asset.id] || 0;
-                                                previewAmount = calculateDepreciation(asset, runPeriodType, units);
-                                            } else {
-                                                previewAmount = calculateDepreciation(asset, runPeriodType);
-                                            }
-                                            if (previewAmount <= 0) return null;
-                                            return (
-                                                <div key={asset.id} className="flex justify-between text-sm py-1 border-b last:border-0">
-                                                    <span>{asset.asset_name}</span>
-                                                    <span className="font-semibold text-red-600">
-                                                        ₦{previewAmount.toLocaleString('en-NG')}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
+                                        </Label>
                                     </div>
-                                    <div className="border-t pt-2 mt-2 flex justify-between font-bold">
-                                        <span>Total Depreciation</span>
-                                        <span className="text-red-600">
-                                            ₦{(runSelectAll ? activeAssets : activeAssets.filter(a => runAssetIds.includes(a.id)))
-                                                .reduce((total, asset) => {
-                                                    if (asset.depreciation_method === 'units_of_production') {
-                                                        const units = runUnitsProduction[asset.id] || 0;
-                                                        return total + calculateDepreciation(asset, runPeriodType, units);
-                                                    }
-                                                    return total + calculateDepreciation(asset, runPeriodType);
-                                                }, 0).toLocaleString('en-NG')}
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                    {runSelectAll 
+                        ? `All ${activeAssets.length} active asset(s) will be processed` 
+                        : `${runAssetIds.length} asset(s) selected`}
+                </p>
+            </div>
+
+            {/* Units of Production inputs */}
+            {!runSelectAll && runAssetIds.some(id => {
+                const asset = assets.find(a => a.id === id);
+                return asset?.depreciation_method === 'units_of_production';
+            }) && (
+                <div className="border-t pt-4">
+                    <Label>Units Produced This Period</Label>
+                    <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
+                        {runAssetIds.map(id => {
+                            const asset = assets.find(a => a.id === id);
+                            if (asset?.depreciation_method !== 'units_of_production') return null;
+                            return (
+                                <div key={id} className="grid grid-cols-2 gap-2 items-center">
+                                    <Label className="text-sm">{asset.asset_name}</Label>
+                                    <Input 
+                                        type="number"
+                                        placeholder="Units produced"
+                                        value={runUnitsProduction[id] || ''}
+                                        onChange={e => setRunUnitsProduction({
+                                            ...runUnitsProduction,
+                                            [id]: parseFloat(e.target.value) || 0
+                                        })}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Depreciation Preview */}
+            {(runSelectAll || runAssetIds.length > 0) && activeAssets.length > 0 && (
+                <div className="border-t pt-4">
+                    <h4 className="font-semibold text-sm mb-3">Depreciation Preview</h4>
+                    <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4">
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {(runSelectAll 
+                                ? activeAssets 
+                                : activeAssets.filter(a => runAssetIds.includes(a.id))
+                            ).map(asset => {
+                                const units = asset.depreciation_method === 'units_of_production'
+                                    ? (runUnitsProduction[asset.id] || 0)
+                                    : undefined;
+                                const previewAmount = calculateDepreciation(asset, runPeriodType, units);
+                                if (previewAmount <= 0) return null;
+                                return (
+                                    <div key={asset.id} className="flex justify-between text-sm py-1 border-b last:border-0">
+                                        <span>{asset.asset_name}</span>
+                                        <span className="font-semibold text-red-600">
+                                            ₦{Math.round(previewAmount).toLocaleString('en-NG')}
                                         </span>
                                     </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Warning Note */}
-                        <Alert>
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>
-                                This will create journal entries and update asset book values. This action cannot be undone.
-                            </AlertDescription>
-                        </Alert>
+                                );
+                            })}
+                        </div>
+                        <div className="border-t pt-2 mt-2 flex justify-between font-bold">
+                            <span>Total Depreciation</span>
+                            <span className="text-red-600">
+                                ₦{Math.round(
+                                    (runSelectAll 
+                                        ? activeAssets 
+                                        : activeAssets.filter(a => runAssetIds.includes(a.id))
+                                    ).reduce((total, asset) => {
+                                        const units = asset.depreciation_method === 'units_of_production'
+                                            ? (runUnitsProduction[asset.id] || 0)
+                                            : undefined;
+                                        return total + calculateDepreciation(asset, runPeriodType, units);
+                                    }, 0)
+                                ).toLocaleString('en-NG')}
+                            </span>
+                        </div>
                     </div>
+                </div>
+            )}
 
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsRunDepreciationDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button 
-                            onClick={handleRunDepreciation} 
-                            disabled={isSubmitting || activeAssets.length === 0}
-                        >
-                            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                            <Calculator className="mr-2 h-4 w-4" />
-                            Calculate & Post Depreciation
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* Warning */}
+            <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                    This will create journal entries and update asset book values. This action cannot be undone.
+                </AlertDescription>
+            </Alert>
+        </div>
 
-            {/* VIEW ASSET DIALOG */}
+        <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRunDepreciationDialogOpen(false)}>
+                Cancel
+            </Button>
+            <Button 
+                onClick={handleRunDepreciation} 
+                disabled={isSubmitting || activeAssets.length === 0}
+            >
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                <Calculator className="mr-2 h-4 w-4" />
+                Calculate & Post Depreciation
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>            {/* VIEW ASSET DIALOG */}
             <Dialog open={isViewAssetDialogOpen} onOpenChange={setIsViewAssetDialogOpen}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
