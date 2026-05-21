@@ -428,6 +428,11 @@ const DepreciationModule = () => {
         }
     }, [company, newAsset.location_state, newAsset.location_lga, newAsset.department_id, departments, assets.length]);
 
+
+  const activeAssets = assets.filter(a => a.status === 'active');
+
+
+  
   // Auto-populate Chart of Accounts from selected assets
 useEffect(() => {
     if (!isRunDepreciationDialogOpen) return;
@@ -831,7 +836,7 @@ useEffect(() => {
         }
     };
 
-   const activeAssets = assets.filter(a => a.status === 'active');
+  
 
     if (isLoading) {
         return (
