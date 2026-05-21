@@ -428,6 +428,33 @@ const DepreciationModule = () => {
         }
     }, [company, newAsset.location_state, newAsset.location_lga, newAsset.department_id, departments, assets.length]);
 
+  // Auto-populate Chart of Accounts from selected assets
+useEffect(() => {
+    if (!isRunDepreciationDialogOpen) return;
+    
+    const selectedAssets = runSelectAll 
+        ? activeAssets 
+        : activeAssets.filter(a => runAssetIds.includes(a.id));
+    
+    if (selectedAssets.length === 0) return;
+    
+    // Get unique account codes from selected assets
+    const assetAccounts = [...new Set(selectedAssets.map(a => a.asset_account_code).filter(Boolean))];
+    const accumulatedAccounts = [...new Set(selectedAssets.map(a => a.accumulated_depreciation_account_code).filter(Boolean))];
+    const expenseAccounts = [...new Set(selectedAssets.map(a => a.depreciation_expense_account_code).filter(Boolean))];
+    
+    // Auto-populate if all selected assets share the same account
+    if (assetAccounts.length === 1 && !runAssetAccount) {
+        setRunAssetAccount(assetAccounts[0]);
+    }
+    if (accumulatedAccounts.length === 1 && !runAccumulatedDepreciationAccount) {
+        setRunAccumulatedDepreciationAccount(accumulatedAccounts[0]);
+    }
+    if (expenseAccounts.length === 1 && !runDepreciationExpenseAccount) {
+        setRunDepreciationExpenseAccount(expenseAccounts[0]);
+    }
+}, [isRunDepreciationDialogOpen, runSelectAll, runAssetIds, activeAssets, runAssetAccount, runAccumulatedDepreciationAccount, runDepreciationExpenseAccount]);
+  
     const resetAssetForm = () => {
         setNewAsset({
             asset_name: '',
@@ -717,60 +744,74 @@ const DepreciationModule = () => {
         }
     };
 
-    const handleRunDepreciation = async () => {
-        if (!runDepreciationExpenseAccount || !runAccumulatedDepreciationAccount) {
-            toast({ title: "Validation Error", description: "Please select Depreciation Expense and Accumulated Depreciation accounts.", variant: "destructive" });
-            return;
-        }
+   const handleRunDepreciation = async () => {
+    // Get selected assets
+    const selectedAssets = runSelectAll 
+        ? activeAssets 
+        : activeAssets.filter(a => runAssetIds.includes(a.id));
+    
+    // Use asset's accounts as fallback
+    const firstAsset = selectedAssets[0];
+    const expenseAccount = runDepreciationExpenseAccount || firstAsset?.depreciation_expense_account_code || '';
+    const accumulatedAccount = runAccumulatedDepreciationAccount || firstAsset?.accumulated_depreciation_account_code || '';
+    const assetAccount = runAssetAccount || firstAsset?.asset_account_code || '';
 
-        setIsSubmitting(true);
+    if (!expenseAccount || !accumulatedAccount) {
+        toast({ 
+            title: "Validation Error", 
+            description: "Please set Chart of Accounts for the selected assets.", 
+            variant: "destructive" 
+        });
+        return;
+    }
+
+    setIsSubmitting(true);
+    
+    const assetIdsToProcess = runSelectAll ? [] : runAssetIds;
+    
+    try {
+        const response = await fetch(`https://hariindustries.net/api/clearbook/run-depreciation.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_id: user?.company_id,
+                user_id: user?.id,
+                period_type: runPeriodType,
+                period_date: runPeriodDate,
+                asset_ids: assetIdsToProcess,
+                units_production: runUnitsProduction,
+                asset_account: assetAccount,
+                depreciation_expense_account: expenseAccount,
+                accumulated_depreciation_account: accumulatedAccount
+            })
+        });
+        const result = await response.json();
         
-        const assetIdsToProcess = runSelectAll ? [] : runAssetIds;
-        
-        try {
-            const response = await fetch(`https://hariindustries.net/api/clearbook/run-depreciation.php`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    company_id: user?.company_id,
-                    user_id: user?.id,
-                    period_type: runPeriodType,
-                    period_date: runPeriodDate,
-                    asset_ids: assetIdsToProcess,
-                    units_production: runUnitsProduction,
-                    asset_account: runAssetAccount,
-                    depreciation_expense_account: runDepreciationExpenseAccount,
-                    accumulated_depreciation_account: runAccumulatedDepreciationAccount
-                })
+        if (result.success) {
+            toast({ 
+                title: "Depreciation Complete", 
+                description: result.message 
             });
-            const result = await response.json();
-            
-            if (result.success) {
-                toast({ 
-                    title: "Depreciation Complete", 
-                    description: result.message 
-                });
-                fetchData();
-                setIsRunDepreciationDialogOpen(false);
-                // Reset form
-                setRunPeriodType('monthly');
-                setRunPeriodDate(new Date().toISOString().split('T')[0]);
-                setRunAssetIds([]);
-                setRunSelectAll(true);
-                setRunUnitsProduction({});
-                setRunAssetAccount('');
-                setRunDepreciationExpenseAccount('');
-                setRunAccumulatedDepreciationAccount('');
-            } else {
-                throw new Error(result.message);
-            }
-        } catch (error: any) {
-            toast({ title: "Depreciation Failed", description: error.message, variant: "destructive" });
-        } finally {
-            setIsSubmitting(false);
+            fetchData();
+            setIsRunDepreciationDialogOpen(false);
+            // Reset form
+            setRunPeriodType('monthly');
+            setRunPeriodDate(new Date().toISOString().split('T')[0]);
+            setRunAssetIds([]);
+            setRunSelectAll(true);
+            setRunUnitsProduction({});
+            setRunAssetAccount('');
+            setRunDepreciationExpenseAccount('');
+            setRunAccumulatedDepreciationAccount('');
+        } else {
+            throw new Error(result.message);
         }
-    };
-
+    } catch (error: any) {
+        toast({ title: "Depreciation Failed", description: error.message, variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
+};
     const getDepreciationMethodLabel = (method: string) => {
         switch (method) {
             case 'straight_line': return 'Straight Line';
@@ -1515,6 +1556,9 @@ const DepreciationModule = () => {
             {/* Chart of Accounts Mapping — all 3 accounts */}
             <div className="border-t pt-4">
                 <h3 className="font-semibold text-md mb-3">Chart of Accounts Mapping</h3>
+               <p className="text-xs text-muted-foreground mb-3">
+        Auto-populated from selected assets. Override if needed.
+    </p>
                 <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                         <Label>Asset Account *</Label>
