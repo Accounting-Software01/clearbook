@@ -114,19 +114,19 @@ export const allNavItems = [
                   
                                    
 
-                      {
-                        label: 'Transaction Reports',
-                        icon: ClipboardList,
-                        subItems: [
+                     // {
+                       // label: 'Transaction Reports',
+                        //icon: ClipboardList,
+                        //subItems: [
                            // { href: '/reports/transaction-history', label: 'Transaction History', icon: History, permission: 'view_reports_transactions' },
-                            { href: '/reports/expense-analysis', label: 'Expense Analysis', icon: TrendingDown, permission: 'view_reports_transactions' },
-                            { href: '/reports/liability-analysis', label: 'Liability Analysis', icon: ShieldAlert, permission: 'view_reports_transactions' },
-                            { href: '/reports/cash-outflow', label: 'Cash Outflow', icon: ArrowDown, permission: 'view_reports_transactions' },
-                            { href: '/reports/cash-inflow', label: 'Cash Inflow', icon: ArrowUp, permission: 'view_reports_transactions' },
+                          //  { href: '/reports/expense-analysis', label: 'Expense Analysis', icon: TrendingDown, permission: 'view_reports_transactions' },
+                            //{ href: '/reports/liability-analysis', label: 'Liability Analysis', icon: ShieldAlert, permission: 'view_reports_transactions' },
+                            //{ href: '/reports/cash-outflow', label: 'Cash Outflow', icon: ArrowDown, permission: 'view_reports_transactions' },
+                            //{ href: '/reports/cash-inflow', label: 'Cash Inflow', icon: ArrowUp, permission: 'view_reports_transactions' },
                            
                           //  { href: '/reports/bank-reconciliation-report', label: 'Bank Reconciliation Report', icon: RefreshCw, permission: 'view_reports_transactions' },
-                        ]
-                    },
+                        //]
+                    //},
                     // {
                       //  label: 'Budget Reports',
                       //  icon: PiggyBank,
@@ -136,8 +136,8 @@ export const allNavItems = [
                          //   { href: '/reports/budget-performance', label: 'Budget Performance', icon: Target, permission: 'view_reports' },
                       //  ]
                  //   }
-                ]
-            },
+               // ]
+            //},
     {
   label: 'HR Management',
   icon: Landmark,
