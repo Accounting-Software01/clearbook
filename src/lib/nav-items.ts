@@ -176,18 +176,18 @@ export const allNavItems = [
         ],
     },
 
-    {
-        label: 'HR Management',
-        icon: Landmark,
-        subItems: [
-            {
-                href: '/hrmodule',
-                label: 'HR Module',
-                icon: Users,
-                permission: 'view_hr_module',
-            },
-        ],
-    },
+    //{
+      //  label: 'HR Management',
+        //icon: Landmark,
+        //subItems: [
+          //  {
+            //    href: '/hrmodule',
+              //  label: 'HR Module',
+                //icon: Users,
+                //permission: 'view_hr_module',
+            //},
+       // ],
+    //},
 
     {
         label: 'Business Operations',
@@ -241,66 +241,66 @@ export const allNavItems = [
                 icon: Layers,
                 permission: 'view_inventory_raw_materials',
             },
-            {
-                href: '/inventory/packaging-materials',
-                label: 'Packaging Materials',
-                icon: Package,
-                permission: 'view_inventory_packaging',
-            },
-            {
-                href: '/inventory/spare-parts',
-                label: 'Spare Parts',
-                icon: Wrench,
-                permission: 'view_inventory_spare_parts',
-            },
-            {
-                href: '/inventory/fuel-energy',
-                label: 'Fuel & Energy',
-                icon: Fuel,
-                permission: 'view_inventory_fuel',
-            },
-            {
-                href: '/inventory/returned-goods',
-                label: 'Returned Goods',
-                icon: Undo2,
-                permission: 'view_inventory_returned_goods',
-            },
+            //{
+              //  href: '/inventory/packaging-materials',
+               // label: 'Packaging Materials',
+               // icon: Package,
+               // permission: 'view_inventory_packaging',
+            //},
+            //{
+              //  href: '/inventory/spare-parts',
+               // label: 'Spare Parts',
+                //icon: Wrench,
+                //permission: 'view_inventory_spare_parts',
+            //},
+            //{
+              //  href: '/inventory/fuel-energy',
+                //label: 'Fuel & Energy',
+                //icon: Fuel,
+                //permission: 'view_inventory_fuel',
+            //},
+            //{
+              //  href: '/inventory/returned-goods',
+                //label: 'Returned Goods',
+                //icon: Undo2,
+                //permission: 'view_inventory_returned_goods',
+            //},
             {
                 href: '/inventory/obsolete-scrap',
                 label: 'Obsolete & Scrap',
                 icon: Trash2,
                 permission: 'view_inventory_obsolete',
             },
-            {
-                href: '/inventory/goods-in-transit',
-                label: 'Goods-in-Transit',
-                icon: Truck,
-                permission: 'view_inventory_in_transit',
-            },
-            {
-                href: '/inventory/promotional-materials',
-                label: 'Promotional Materials',
-                icon: Sparkles,
-                permission: 'view_inventory_promotional',
-            },
-            {
-                href: '/inventory/safety-stock',
-                label: 'Safety Stock',
-                icon: ShieldCheck,
-                permission: 'view_inventory_safety_stock',
-            },
-            {
-                href: '/inventory/quality-hold',
-                label: 'Quality-Hold',
-                icon: Ban,
-                permission: 'view_inventory_quality_hold',
-            },
-            {
-                href: '/inventory/consignment',
-                label: 'Consignment',
-                icon: Archive,
-                permission: 'view_inventory_consignment',
-            },
+            //{
+              //  href: '/inventory/goods-in-transit',
+                //label: 'Goods-in-Transit',
+                //icon: Truck,
+                //permission: 'view_inventory_in_transit',
+            //},
+            //{
+              //  href: '/inventory/promotional-materials',
+                //label: 'Promotional Materials',
+               // icon: Sparkles,
+               // permission: 'view_inventory_promotional',
+            //},
+            //{
+              //  href: '/inventory/safety-stock',
+                //label: 'Safety Stock',
+                //icon: ShieldCheck,
+               // permission: 'view_inventory_safety_stock',
+            //},
+            //{
+              //  href: '/inventory/quality-hold',
+                //label: 'Quality-Hold',
+                //icon: Ban,
+                //permission: 'view_inventory_quality_hold',
+            //},
+            //{
+              //  href: '/inventory/consignment',
+                //label: 'Consignment',
+                //icon: Archive,
+                //permission: 'view_inventory_consignment',
+            //},
         ],
     },
 
