@@ -723,8 +723,6 @@ const ProductionModule = () => {
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">UOM</th>
                       <th className="text-right p-2">Stock</th>
-                      <th className="text-right p-2">Avg. Cost</th>
-                      <th className="text-right p-2">Total Value</th>
                       <th className="text-left p-2">Status</th>
                     </tr>
                   </thead>
@@ -737,8 +735,6 @@ const ProductionModule = () => {
                         <td className={`p-2 text-right font-mono ${item.quantity_on_hand < 0 ? 'text-red-600 font-bold' : ''}`}>
                           {item.quantity_on_hand.toLocaleString()}
                         </td>
-                        <td className="p-2 text-right">{formatCurrency(item.average_unit_cost)}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.quantity_on_hand * item.average_unit_cost)}</td>
                         <td className="p-2">{getStockStatus(item.quantity_on_hand, item.category)}</td>
                       </tr>
                     ))}
@@ -764,8 +760,6 @@ const ProductionModule = () => {
                       <th className="text-left p-2">SKU</th>
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Stock</th>
-                      <th className="text-right p-2">Avg. Cost</th>
                       <th className="text-right p-2">Total Value</th>
                     </tr>
                   </thead>
@@ -776,9 +770,7 @@ const ProductionModule = () => {
                         <td className="p-2 font-medium">{item.name}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
                         <td className="p-2 text-right">{item.quantity_on_hand.toLocaleString()}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.average_unit_cost)}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.quantity_on_hand * item.average_unit_cost)}</td>
-                      </tr>
+                        </tr>
                     ))}
                   </tbody>
                 </table>
@@ -961,7 +953,6 @@ const ProductionModule = () => {
                       <th className="text-left p-2">SKU</th>
                       <th className="text-left p-2">UOM</th>
                       <th className="text-right p-2">Quantity</th>
-                      <th className="text-right p-2">Total Value</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -971,8 +962,7 @@ const ProductionModule = () => {
                         <td className="p-2 font-mono text-xs">{item.sku}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
                         <td className="p-2 text-right font-mono">{item.quantity_on_hand.toLocaleString()}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.quantity_on_hand * item.average_unit_cost)}</td>
-                      </tr>
+                       </tr>
                     ))}
                     {scrapItems.map((item) => (
                       <tr key={item.id} className="border-b">
@@ -980,12 +970,11 @@ const ProductionModule = () => {
                         <td className="p-2 font-mono text-xs">{item.sku || 'SCRAP'}</td>
                         <td className="p-2">{item.uom || 'pcs'}</td>
                         <td className="p-2 text-right font-mono">{item.quantity?.toLocaleString() || 0}</td>
-                        <td className="p-2 text-right">{formatCurrency(item.total_value || 0)}</td>
-                      </tr>
+                         </tr>
                     ))}
                     {rawMaterials.filter(item => item.category === 'Obsolete, Expired & Scrap Inventory').length === 0 && scrapItems.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="text-center p-4 text-muted-foreground">No scrap items found</td>
+                        <td colSpan={4} className="text-center p-4 text-muted-foreground">No scrap items found</td>
                       </tr>
                     )}
                   </tbody>
