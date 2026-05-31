@@ -499,7 +499,7 @@ const ProductionModule = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: user.company_id,
-          user_id: user.id,
+          user_uid: user.id,
           current_stage: currentStage,
           batch_id: currentBatchId,
           batch: batch,
