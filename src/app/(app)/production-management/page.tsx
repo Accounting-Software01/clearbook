@@ -38,9 +38,7 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Loader2, 
   PlusCircle, 
-  Package, 
   Factory, 
-  TrendingUp,
   TrendingDown,
   AlertTriangle,
   CheckCircle,
@@ -48,8 +46,7 @@ import {
   Send,
   Eye,
   FileEdit,
-  PlayCircle,
-  RefreshCw
+  PlayCircle
 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -114,6 +111,10 @@ interface BlowingData {
   finished_packs: number;
   finished_pieces: number;
   damaged_pieces: number;
+  gum_used_kg: number;
+  shrink_wrap_type: '60' | '70';
+  shrink_wrap_used_kg: number;
+  cartons_used: number;
 }
 
 const ProductionModule = () => {
@@ -122,31 +123,25 @@ const ProductionModule = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Stock error dialog states
   const [stockErrors, setStockErrors] = useState<string[]>([]);
   const [isStockErrorDialogOpen, setIsStockErrorDialogOpen] = useState(false);
   
-  // Data states
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>([]);
-  const [recentBatches, setRecentBatches] = useState<ProductionBatch[]>([]);
   const [draftBatches, setDraftBatches] = useState<ProductionBatch[]>([]);
   const [wipBatches, setWipBatches] = useState<ProductionBatch[]>([]);
   const [completedBatches, setCompletedBatches] = useState<ProductionBatch[]>([]);
   const [scrapItems, setScrapItems] = useState<any[]>([]);
   
-  // View states
   const [selectedViewBatch, setSelectedViewBatch] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [viewStage, setViewStage] = useState<'injection' | 'blowing' | 'packaging'>('injection');
   
-  // Form states
   const [activeTab, setActiveTab] = useState('injection');
   const [isNewBatchDialogOpen, setIsNewBatchDialogOpen] = useState(false);
   const [currentBatchId, setCurrentBatchId] = useState<number | null>(null);
   const [editingBatch, setEditingBatch] = useState<ProductionBatch | null>(null);
   
-  // Batch form
   const [batch, setBatch] = useState<ProductionBatch>({
     batch_number: '',
     production_date: new Date().toISOString().split('T')[0],
@@ -159,7 +154,6 @@ const ProductionModule = () => {
     finished_product: '75cl'
   });
   
-  // Injection form
   const [injection, setInjection] = useState<InjectionData>({
     resin_used_kg: 0,
     masterbatch_used_kg: 0,
@@ -171,7 +165,6 @@ const ProductionModule = () => {
     bags_produced: 0
   });
   
-  // Blowing form
   const [blowing, setBlowing] = useState<BlowingData>({
     preforms_taken: 0,
     preforms_type: '',
@@ -188,10 +181,19 @@ const ProductionModule = () => {
     labels_damaged: 0,
     finished_packs: 0,
     finished_pieces: 0,
-    damaged_pieces: 0
+    damaged_pieces: 0,
+    gum_used_kg: 0,
+    shrink_wrap_type: '60',
+    shrink_wrap_used_kg: 0,
+    cartons_used: 0
   });
   
-  // Auto-calculate good preforms from bags
+  const generateBatchNumber = (productionDate: string) => {
+    const date = productionDate.replace(/-/g, '');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `BATCH-${date}-${random}`;
+  };
+  
   const calculateGoodPreforms = () => {
     if (injection.bags_produced > 0 && injection.preform_weight_grams > 0) {
       const kgPerBag = injection.preform_weight_grams === 18 ? 30 : 25;
@@ -201,14 +203,21 @@ const ProductionModule = () => {
     }
   };
   
-  // Auto-calculate preforms taken from good preforms
   useEffect(() => {
     if (injection.good_preforms_qty > 0 && blowing.preforms_taken === 0) {
       setBlowing(prev => ({ ...prev, preforms_taken: injection.good_preforms_qty }));
     }
   }, [injection.good_preforms_qty]);
   
-  // Calculations
+  useEffect(() => {
+    if (!editingBatch && batch.production_date && batch.status === 'draft') {
+      setBatch(prev => ({
+        ...prev,
+        batch_number: generateBatchNumber(prev.production_date)
+      }));
+    }
+  }, [batch.production_date, editingBatch, batch.status]);
+  
   const totalInputKg = injection.resin_used_kg + injection.masterbatch_used_kg;
   const totalOutputKg = (injection.good_preforms_qty * injection.preform_weight_grams) / 1000;
   const badPreformsKg = (injection.bad_preforms_qty * injection.preform_weight_grams) / 1000;
@@ -220,7 +229,6 @@ const ProductionModule = () => {
   
   const totalScrap = {
     preform_scrap_kg: badPreformsKg,
-    preform_scrap_pcs: injection.bad_preforms_qty,
     blowing_scrap: blowing.bottles_damaged,
     filling_scrap: blowing.bottles_filled_damaged,
     capping_scrap: blowing.caps_damaged,
@@ -229,7 +237,6 @@ const ProductionModule = () => {
            blowing.caps_damaged + blowing.labels_damaged + blowing.damaged_pieces
   };
   
-  // Fetch data
   const fetchData = useCallback(async () => {
     if (!user?.company_id) return;
     setIsLoading(true);
@@ -274,7 +281,6 @@ const ProductionModule = () => {
           preforms_taken: batch.preforms_taken || 0
         }));
         
-        setRecentBatches(mappedBatches);
         setDraftBatches(mappedBatches.filter((b: any) => b.status === 'draft'));
         setWipBatches(mappedBatches.filter((b: any) => b.status === 'wip'));
         setCompletedBatches(mappedBatches.filter((b: any) => b.status === 'completed'));
@@ -299,13 +305,6 @@ const ProductionModule = () => {
     calculateGoodPreforms();
   }, [injection.bags_produced, injection.preform_weight_grams]);
   
-  const generateBatchNumber = () => {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `BATCH-${date}-${random}`;
-  };
-  
-  // View batch details
   const viewBatchDetails = async (batchId: number, stage: 'injection' | 'blowing' | 'packaging') => {
     setIsLoading(true);
     try {
@@ -324,7 +323,6 @@ const ProductionModule = () => {
     }
   };
   
-  // Load batch for editing/continuation
   const loadBatchForEditing = async (batchId: number) => {
     setIsLoading(true);
     try {
@@ -374,12 +372,15 @@ const ProductionModule = () => {
           labels_damaged: parseInt(batchData.labels_damaged) || 0,
           finished_packs: parseInt(batchData.finished_packs) || 0,
           finished_pieces: parseInt(batchData.finished_pieces) || 0,
-          damaged_pieces: parseInt(batchData.damaged_pieces) || 0
+          damaged_pieces: parseInt(batchData.damaged_pieces) || 0,
+          gum_used_kg: parseFloat(batchData.gum_used_kg) || 0,
+          shrink_wrap_type: batchData.shrink_wrap_type || '60',
+          shrink_wrap_used_kg: parseFloat(batchData.shrink_wrap_used_kg) || 0,
+          cartons_used: parseInt(batchData.cartons_used) || 0
         });
         
         setCurrentBatchId(batchData.id);
         
-        // Set the active tab based on the current stage
         if (batchData.stage === 'injection') {
           setActiveTab('injection');
         } else if (batchData.stage === 'blowing') {
@@ -409,13 +410,13 @@ const ProductionModule = () => {
     }
   };
   
-  // Start new batch
   const startNewBatch = () => {
+    const selectedDate = new Date().toISOString().split('T')[0];
     setCurrentBatchId(null);
     setEditingBatch(null);
     setBatch({
-      batch_number: generateBatchNumber(),
-      production_date: new Date().toISOString().split('T')[0],
+      batch_number: generateBatchNumber(selectedDate),
+      production_date: selectedDate,
       shift: 'Morning',
       operator_name: user?.full_name || '',
       status: 'draft',
@@ -450,18 +451,33 @@ const ProductionModule = () => {
       labels_damaged: 0,
       finished_packs: 0,
       finished_pieces: 0,
-      damaged_pieces: 0
+      damaged_pieces: 0,
+      gum_used_kg: 0,
+      shrink_wrap_type: '60',
+      shrink_wrap_used_kg: 0,
+      cartons_used: 0
     });
     setActiveTab('injection');
     setIsNewBatchDialogOpen(true);
   };
   
-  // Process current stage and move to next
   const processStage = async () => {
-    if (!user?.company_id) return;
+    if (!user?.company_id) {
+      toast({ title: "Error", description: "Company not found", variant: "destructive" });
+      return;
+    }
+    
+    if (!user?.uid) {
+      toast({ 
+        title: "Validation Error", 
+        description: "User ID not found. Please log out and log in again.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
     setIsSubmitting(true);
     
-    // Validation based on stage
     if (activeTab === 'injection') {
       if (injection.resin_used_kg === 0 && injection.masterbatch_used_kg === 0) {
         toast({ title: "Validation Error", description: "Please enter resin or masterbatch amount", variant: "destructive" });
@@ -499,7 +515,7 @@ const ProductionModule = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: user.company_id,
-          user_uid: user.id,
+          user_id: user.uid,
           current_stage: currentStage,
           batch_id: currentBatchId,
           batch: batch,
@@ -510,7 +526,6 @@ const ProductionModule = () => {
       
       const result = await response.json();
       
-      // Handle stock validation errors
       if (!result.success && result.stock_issue) {
         setStockErrors(result.errors || [result.message]);
         setIsStockErrorDialogOpen(true);
@@ -548,9 +563,17 @@ const ProductionModule = () => {
     }
   };
   
-  // Approve and complete production from table
   const approveAndComplete = async (batchId: number) => {
     if (!confirm('Complete this production batch? This will add finished goods to inventory and post to journal.')) return;
+    
+    if (!user?.uid) {
+      toast({ 
+        title: "Validation Error", 
+        description: "User ID not found. Please log out and log in again.", 
+        variant: "destructive" 
+      });
+      return;
+    }
     
     setIsSubmitting(true);
     try {
@@ -559,7 +582,7 @@ const ProductionModule = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_id: user?.company_id,
-          user_id: user?.id,
+          user_id: user?.uid,
           current_stage: 'complete',
           batch_id: batchId,
           batch: {},
@@ -570,7 +593,6 @@ const ProductionModule = () => {
       
       const result = await response.json();
       
-      // Handle stock validation errors
       if (!result.success && result.stock_issue) {
         setStockErrors(result.errors || [result.message]);
         setIsStockErrorDialogOpen(true);
@@ -618,10 +640,6 @@ const ProductionModule = () => {
     return <Badge className="bg-green-500">In Stock</Badge>;
   };
   
-  const formatCurrency = (value: number) => {
-    return `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
-  };
-  
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-96">
@@ -632,7 +650,6 @@ const ProductionModule = () => {
   
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Production Management</h1>
@@ -644,7 +661,6 @@ const ProductionModule = () => {
         </Button>
       </div>
       
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
@@ -696,7 +712,6 @@ const ProductionModule = () => {
         </Card>
       </div>
       
-      {/* Inventory Tabs */}
       <Tabs defaultValue="raw-materials">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
           <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
@@ -707,7 +722,6 @@ const ProductionModule = () => {
           <TabsTrigger value="obsolete">Obsolete/Scrap</TabsTrigger>
         </TabsList>
         
-        {/* Raw Materials Tab */}
         <TabsContent value="raw-materials" className="space-y-4">
           <Card>
             <CardHeader>
@@ -745,7 +759,6 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        {/* Finished Goods Tab */}
         <TabsContent value="finished-goods" className="space-y-4">
           <Card>
             <CardHeader>
@@ -760,7 +773,7 @@ const ProductionModule = () => {
                       <th className="text-left p-2">SKU</th>
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Total Value</th>
+                      <th className="text-right p-2">Quantity</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -770,7 +783,7 @@ const ProductionModule = () => {
                         <td className="p-2 font-medium">{item.name}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
                         <td className="p-2 text-right">{item.quantity_on_hand.toLocaleString()}</td>
-                        </tr>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
@@ -779,7 +792,6 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        {/* WIP Batches Tab */}
         <TabsContent value="wip" className="space-y-4">
           <Card>
             <CardHeader>
@@ -834,7 +846,6 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        {/* Draft Batches Tab */}
         <TabsContent value="drafts" className="space-y-4">
           <Card>
             <CardHeader>
@@ -888,7 +899,6 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        {/* Completed Batches Tab */}
         <TabsContent value="completed" className="space-y-4">
           <Card>
             <CardHeader>
@@ -904,7 +914,6 @@ const ProductionModule = () => {
                       <th className="text-left p-2">Date</th>
                       <th className="text-left p-2">Product</th>
                       <th className="text-right p-2">Packs</th>
-                      <th className="text-right p-2">Efficiency</th>
                       <th className="text-left p-2">Status</th>
                       <th className="text-left p-2">Actions</th>
                     </tr>
@@ -916,7 +925,6 @@ const ProductionModule = () => {
                         <td className="p-2">{batchItem.production_date}</td>
                         <td className="p-2">{batchItem.finished_product || '-'}</td>
                         <td className="p-2 text-right">{batchItem.finished_packs?.toLocaleString() || '0'}</td>
-                        <td className="p-2 text-right">-</td>
                         <td className="p-2">{getStatusBadge(batchItem.status)}</td>
                         <td className="p-2">
                           <Button variant="ghost" size="sm" onClick={() => viewBatchDetails(batchItem.id!, 'completed')}>
@@ -927,7 +935,7 @@ const ProductionModule = () => {
                     ))}
                     {completedBatches.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center p-4 text-muted-foreground">No completed batches found</td>
+                        <td colSpan={6} className="text-center p-4 text-muted-foreground">No completed batches found</td>
                       </tr>
                     )}
                   </tbody>
@@ -937,7 +945,6 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        {/* Obsolete/Scrap Tab */}
         <TabsContent value="obsolete" className="space-y-4">
           <Card>
             <CardHeader>
@@ -962,7 +969,7 @@ const ProductionModule = () => {
                         <td className="p-2 font-mono text-xs">{item.sku}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
                         <td className="p-2 text-right font-mono">{item.quantity_on_hand.toLocaleString()}</td>
-                       </tr>
+                      </tr>
                     ))}
                     {scrapItems.map((item) => (
                       <tr key={item.id} className="border-b">
@@ -970,7 +977,7 @@ const ProductionModule = () => {
                         <td className="p-2 font-mono text-xs">{item.sku || 'SCRAP'}</td>
                         <td className="p-2">{item.uom || 'pcs'}</td>
                         <td className="p-2 text-right font-mono">{item.quantity?.toLocaleString() || 0}</td>
-                         </tr>
+                      </tr>
                     ))}
                     {rawMaterials.filter(item => item.category === 'Obsolete, Expired & Scrap Inventory').length === 0 && scrapItems.length === 0 && (
                       <tr>
@@ -985,7 +992,6 @@ const ProductionModule = () => {
         </TabsContent>
       </Tabs>
       
-      {/* Stock Error Dialog */}
       <Dialog open={isStockErrorDialogOpen} onOpenChange={setIsStockErrorDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1010,12 +1016,11 @@ const ProductionModule = () => {
         </DialogContent>
       </Dialog>
       
-      {/* View Batch Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Batch Details - {viewStage === 'injection' ? 'Injection Stage' : viewStage === 'blowing' ? 'Blowing Stage' : viewStage === 'packaging' ? 'Packaging Stage' : 'Production Summary'}
+              Batch Details - {viewStage === 'injection' ? 'Injection Stage' : viewStage === 'blowing' ? 'Blowing Stage' : 'Production Summary'}
             </DialogTitle>
             <DialogDescription>Batch #{selectedViewBatch?.batch_number}</DialogDescription>
           </DialogHeader>
@@ -1029,7 +1034,6 @@ const ProductionModule = () => {
                 <div><Label>Operator</Label><p>{selectedViewBatch.operator_name || '-'}</p></div>
               </div>
               
-              {/* Injection Stage View */}
               {(viewStage === 'injection' || viewStage === 'completed') && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-blue-600">INPUT</CardTitle></CardHeader>
@@ -1060,7 +1064,6 @@ const ProductionModule = () => {
                 </div>
               )}
               
-              {/* Blowing Stage View */}
               {(viewStage === 'blowing' || viewStage === 'completed') && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-blue-600">PREFORMS → BLOWING</CardTitle></CardHeader>
@@ -1091,7 +1094,6 @@ const ProductionModule = () => {
         </DialogContent>
       </Dialog>
       
-      {/* New/Edit Production Batch Dialog */}
       <Dialog open={isNewBatchDialogOpen} onOpenChange={setIsNewBatchDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1102,12 +1104,11 @@ const ProductionModule = () => {
             </DialogTitle>
             <DialogDescription>
               {activeTab === 'injection' && "Record injection molding data. Click 'Save & Move to Blowing' to continue."}
-              {activeTab === 'blowing' && "Record blowing, filling, and capping data. Click 'Save & Move to Packaging' to continue."}
+              {activeTab === 'blowing' && "Record blowing, filling, capping, and packaging materials. Click 'Save & Move to Packaging' to continue."}
               {activeTab === 'packaging' && "Record packaging data. Click 'Complete Production' to finish."}
             </DialogDescription>
           </DialogHeader>
           
-          {/* Workflow Progress Indicator */}
           <div className="flex items-center justify-between mb-4">
             <div className={`flex-1 text-center ${activeTab === 'injection' ? 'text-blue-600 font-bold' : activeTab !== 'injection' ? 'text-green-600' : ''}`}>
               <div className={`w-8 h-8 rounded-full mx-auto flex items-center justify-center ${activeTab === 'injection' ? 'bg-blue-600 text-white' : activeTab !== 'injection' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>
@@ -1131,11 +1132,11 @@ const ProductionModule = () => {
             </div>
           </div>
           
-          {/* Batch Information */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
             <div>
               <Label>Batch Number</Label>
-              <Input value={batch.batch_number} readOnly className="font-mono text-sm" />
+              <Input value={batch.batch_number} readOnly className="font-mono text-sm bg-gray-100" />
+              <p className="text-xs text-muted-foreground mt-1">Auto-generated based on production date</p>
             </div>
             <div>
               <Label>Production Date</Label>
@@ -1143,6 +1144,7 @@ const ProductionModule = () => {
                 type="date" 
                 value={batch.production_date}
                 onChange={e => setBatch({...batch, production_date: e.target.value})}
+                disabled={!!editingBatch && editingBatch.status !== 'draft'}
               />
             </div>
             <div>
@@ -1166,15 +1168,14 @@ const ProductionModule = () => {
             </div>
           </div>
           
-          {/* Injection Stage - Bad Preforms in KG */}
           {activeTab === 'injection' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-blue-600 font-semibold">INPUT</Label>
                   <div className="p-3 bg-blue-50 rounded-lg space-y-2">
-                    <div><Label>Resin (PET Material) - KG</Label><Input type="number" step="0.001" placeholder="KG" value={injection.resin_used_kg} onChange={e => setInjection({...injection, resin_used_kg: parseFloat(e.target.value) || 0})} /></div>
-                    <div><Label>Masterbatch - KG</Label><Input type="number" step="0.001" placeholder="KG" value={injection.masterbatch_used_kg} onChange={e => setInjection({...injection, masterbatch_used_kg: parseFloat(e.target.value) || 0})} /></div>
+                    <div><Label>Resin (PET Material) - KG (SKU: 001)</Label><Input type="number" step="0.001" placeholder="KG" value={injection.resin_used_kg} onChange={e => setInjection({...injection, resin_used_kg: parseFloat(e.target.value) || 0})} /></div>
+                    <div><Label>Masterbatch - KG (SKU: 3)</Label><Input type="number" step="0.001" placeholder="KG" value={injection.masterbatch_used_kg} onChange={e => setInjection({...injection, masterbatch_used_kg: parseFloat(e.target.value) || 0})} /></div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1207,7 +1208,6 @@ const ProductionModule = () => {
                           value={badPreformsKg}
                           onChange={e => {
                             const kgValue = parseFloat(e.target.value) || 0;
-                            // Convert KG back to pieces for storage
                             const pieces = Math.round((kgValue * 1000) / injection.preform_weight_grams);
                             setInjection({...injection, bad_preforms_qty: pieces});
                           }}
@@ -1235,7 +1235,6 @@ const ProductionModule = () => {
             </div>
           )}
           
-          {/* Blowing Stage */}
           {activeTab === 'blowing' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1243,7 +1242,7 @@ const ProductionModule = () => {
                   <Label className="text-blue-600 font-semibold">PREFORMS → BLOWING</Label>
                   <div className="p-3 bg-blue-50 rounded-lg">
                     <div className="grid grid-cols-3 gap-2">
-                      <div><Label>Preforms Available</Label><Input type="number" value={blowing.preforms_taken} readOnly className="bg-gray-100" /><p className="text-xs text-muted-foreground">From injection stage</p></div>
+                      <div><Label>Preforms Available</Label><Input type="number" value={blowing.preforms_taken} readOnly className="bg-gray-100" /><p className="text-xs text-muted-foreground">From injection stage (SKU: {batch.preform_type === '18g' ? '1' : '2'})</p></div>
                       <div><Label>Bottles Produced</Label><Input type="number" value={blowing.bottles_produced} onChange={e => setBlowing({...blowing, bottles_produced: parseInt(e.target.value) || 0})} /></div>
                       <div><Label>Damaged</Label><Input type="number" value={blowing.bottles_damaged} onChange={e => setBlowing({...blowing, bottles_damaged: parseInt(e.target.value) || 0})} /></div>
                     </div>
@@ -1260,9 +1259,10 @@ const ProductionModule = () => {
                   </div>
                 </div>
               </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-yellow-600 font-semibold">CAPS</Label>
+                  <Label className="text-yellow-600 font-semibold">CAPS (SKU: 4)</Label>
                   <div className="p-3 bg-yellow-50 rounded-lg">
                     <div className="grid grid-cols-3 gap-2">
                       <div><Label>Cartons Taken</Label><Input type="number" value={blowing.caps_taken_cartons} onChange={e => setBlowing({...blowing, caps_taken_cartons: parseInt(e.target.value) || 0})} /></div>
@@ -1273,7 +1273,7 @@ const ProductionModule = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-purple-600 font-semibold">LABELS</Label>
+                  <Label className="text-purple-600 font-semibold">LABELS (SKU: {batch.finished_product === '75cl' ? '5' : batch.finished_product === '50cl' ? '6' : '7'})</Label>
                   <div className="p-3 bg-purple-50 rounded-lg">
                     <div className="grid grid-cols-3 gap-2">
                       <div><Label>Pieces Taken</Label><Input type="number" value={blowing.labels_taken} onChange={e => setBlowing({...blowing, labels_taken: parseInt(e.target.value) || 0})} /></div>
@@ -1283,10 +1283,62 @@ const ProductionModule = () => {
                   </div>
                 </div>
               </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-indigo-600 font-semibold">GUM/GLUE (SKU: 10)</Label>
+                  <div className="p-3 bg-indigo-50 rounded-lg">
+                    <div><Label>Gum Used (KG)</Label><Input type="number" step="0.1" value={blowing.gum_used_kg} onChange={e => setBlowing({...blowing, gum_used_kg: parseFloat(e.target.value) || 0})} /></div>
+                    <p className="text-xs text-muted-foreground mt-1">Adhesive used for labeling (KG)</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-pink-600 font-semibold">SHRINK WRAP</Label>
+                  <div className="p-3 bg-pink-50 rounded-lg">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Type</Label>
+                        <Select value={blowing.shrink_wrap_type} onValueChange={(val: any) => setBlowing({...blowing, shrink_wrap_type: val})}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="60">60kg Roll (SKU: 9)</SelectItem>
+                            <SelectItem value="70">70kg Roll (SKU: 8)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Quantity (KG)</Label>
+                        <Input type="number" step="0.1" value={blowing.shrink_wrap_used_kg} onChange={e => setBlowing({...blowing, shrink_wrap_used_kg: parseFloat(e.target.value) || 0})} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Shrink wrap used for packaging (KG)</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-cyan-600 font-semibold">PACKAGING MATERIALS (SKU: 14)</Label>
+                  <div className="p-3 bg-cyan-50 rounded-lg">
+                    <div><Label>Cartons/Packaging Used (PCS)</Label><Input type="number" value={blowing.cartons_used} onChange={e => setBlowing({...blowing, cartons_used: parseInt(e.target.value) || 0})} /></div>
+                    <p className="text-xs text-muted-foreground mt-1">Cartons, boxes, and packaging materials used</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-teal-600 font-semibold">FINISHED PRODUCT</Label>
+                  <div className="p-3 bg-teal-50 rounded-lg">
+                    <div><Label>Current Setting</Label>
+                      <div className="mt-2 p-2 bg-white rounded">
+                        <p className="text-sm font-medium">{batch.finished_product} x{batch.finished_product === '33cl' ? '20' : '12'} Pack</p>
+                        <p className="text-xs text-muted-foreground">SKU: {batch.finished_product === '75cl' ? '17' : batch.finished_product === '50cl' ? '16' : '18'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           
-          {/* Packaging Stage */}
           {activeTab === 'packaging' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1294,7 +1346,7 @@ const ProductionModule = () => {
                   <Label className="text-orange-600 font-semibold">FINISHED GOODS</Label>
                   <div className="p-3 bg-orange-50 rounded-lg">
                     <div className="grid grid-cols-3 gap-2">
-                      <div><Label>Packs (12 bottles)</Label><Input type="number" value={blowing.finished_packs} onChange={e => setBlowing({...blowing, finished_packs: parseInt(e.target.value) || 0})} /></div>
+                      <div><Label>Packs</Label><Input type="number" value={blowing.finished_packs} onChange={e => setBlowing({...blowing, finished_packs: parseInt(e.target.value) || 0})} /><p className="text-xs text-muted-foreground">{batch.finished_product === '33cl' ? '20 pieces per pack' : '12 pieces per pack'}</p></div>
                       <div><Label>Pieces</Label><Input type="number" value={blowing.finished_pieces} onChange={e => setBlowing({...blowing, finished_pieces: parseInt(e.target.value) || 0})} /></div>
                       <div><Label>Damaged(pcs)</Label><Input type="number" value={blowing.damaged_pieces} onChange={e => setBlowing({...blowing, damaged_pieces: parseInt(e.target.value) || 0})} /></div>
                     </div>
@@ -1305,9 +1357,9 @@ const ProductionModule = () => {
                   <Select value={batch.finished_product} onValueChange={val => setBatch({...batch, finished_product: val as any})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="75cl">75cl x12 Pack (from 18g preform)</SelectItem>
-                      <SelectItem value="50cl">50cl x12 Pack (from 18g preform)</SelectItem>
-                      <SelectItem value="33cl">33cl x20 Pack (from 14g preform)</SelectItem>
+                      <SelectItem value="75cl">75cl x12 Pack (SKU: 17)</SelectItem>
+                      <SelectItem value="50cl">50cl x12 Pack (SKU: 16)</SelectItem>
+                      <SelectItem value="33cl">33cl x20 Pack (SKU: 18)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1317,7 +1369,6 @@ const ProductionModule = () => {
                 <Textarea placeholder="Any issues or notes about this production run..." value={batch.notes} onChange={e => setBatch({...batch, notes: e.target.value})} />
               </div>
               
-              {/* Scrap Summary */}
               <Alert className="bg-red-50 border-red-200">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
                 <AlertDescription>
