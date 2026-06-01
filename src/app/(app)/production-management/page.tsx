@@ -75,7 +75,7 @@ const MOCK_LABELS_INVENTORY = [
 ];
 
 const MOCK_GUM_INVENTORY = [
-  { id: 1, sku: "GUM", name: "Gum/Glue", unit_of_measure: "BOX", quantity_on_hand: 500, average_unit_cost: 25.00 }, // 1 box = 1 piece
+  { id: 1, sku: "GUM", name: "Gum/Glue", unit_of_measure: "BOX", quantity_on_hand: 500, average_unit_cost: 25.00 },
 ];
 
 const MOCK_FINISHED_GOODS = [
@@ -887,7 +887,7 @@ const ProductionModule = () => {
                       </tr>
                     ))}
                   </tbody>
-                 licensierad
+                </table>
               </div>
             </CardContent>
           </Card>
