@@ -70,8 +70,12 @@ const MOCK_CAPS_INVENTORY = [
   { id: 1, sku: "CAPS", name: "Bottle Caps", unit_of_measure: "CARTON", quantity_on_hand: 150, average_unit_cost: 45.00, pieces_per_carton: 9000 },
 ];
 
+const MOCK_LABELS_INVENTORY = [
+  { id: 1, sku: "LABELS", name: "Bottle Labels", unit_of_measure: "PCS", quantity_on_hand: 100000, average_unit_cost: 0.02 },
+];
+
 const MOCK_GUM_INVENTORY = [
-  { id: 1, sku: "GUM", name: "Gum/Glue", unit_of_measure: "BOX", quantity_on_hand: 50, average_unit_cost: 25.00, pieces_per_box: 500 },
+  { id: 1, sku: "GUM", name: "Gum/Glue", unit_of_measure: "BOX", quantity_on_hand: 500, average_unit_cost: 25.00 }, // 1 box = 1 piece
 ];
 
 const MOCK_FINISHED_GOODS = [
@@ -124,15 +128,17 @@ const MOCK_BLOWING_BATCHES = [
     caps_damaged: 200,
     caps_left: 600,
     caps_remaining_cartons: 147,
-    gum_boxes_taken: 2,
-    gum_pieces_taken: 1000,
-    gum_used: 850,
-    gum_left: 150,
     labels_taken: 26400,
+    labels_used: 26400,
     labels_good: 26200,
     labels_damaged: 200,
-    finished_packs: 2200,
-    finished_pieces: 26400,
+    labels_left: 0,
+    gum_boxes_taken: 50,
+    gum_used: 48,
+    gum_left: 2,
+    finished_pallets: 22,
+    finished_packs: 0,
+    finished_pieces: 0,
     damaged_pieces: 200,
     shrink_wrap_type: "60",
     shrink_wrap_used_kg: 25
@@ -168,6 +174,15 @@ interface CapsInventory {
   pieces_per_carton: number;
 }
 
+interface LabelsInventory {
+  id: number;
+  sku: string;
+  name: string;
+  unit_of_measure: string;
+  quantity_on_hand: number;
+  average_unit_cost: number;
+}
+
 interface GumInventory {
   id: number;
   sku: string;
@@ -175,7 +190,6 @@ interface GumInventory {
   unit_of_measure: string;
   quantity_on_hand: number;
   average_unit_cost: number;
-  pieces_per_box: number;
 }
 
 interface FinishedGood {
@@ -229,13 +243,15 @@ interface BlowingBatch {
   caps_damaged: number;
   caps_left: number;
   caps_remaining_cartons: number;
-  gum_boxes_taken: number;
-  gum_pieces_taken: number;
-  gum_used: number;
-  gum_left: number;
   labels_taken: number;
+  labels_used: number;
   labels_good: number;
   labels_damaged: number;
+  labels_left: number;
+  gum_boxes_taken: number;
+  gum_used: number;
+  gum_left: number;
+  finished_pallets: number;
   finished_packs: number;
   finished_pieces: number;
   damaged_pieces: number;
@@ -256,6 +272,7 @@ const ProductionModule = () => {
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(MOCK_RAW_MATERIALS);
   const [preformInventory, setPreformInventory] = useState<PreformInventory[]>(MOCK_PREFORM_INVENTORY);
   const [capsInventory, setCapsInventory] = useState<CapsInventory[]>(MOCK_CAPS_INVENTORY);
+  const [labelsInventory, setLabelsInventory] = useState<LabelsInventory[]>(MOCK_LABELS_INVENTORY);
   const [gumInventory, setGumInventory] = useState<GumInventory[]>(MOCK_GUM_INVENTORY);
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(MOCK_FINISHED_GOODS);
   const [injectionBatches, setInjectionBatches] = useState<InjectionBatch[]>(MOCK_INJECTION_BATCHES);
@@ -276,7 +293,8 @@ const ProductionModule = () => {
   
   // Constants
   const CAPS_PER_CARTON = 9000;
-  const GUM_PIECES_PER_BOX = 500;
+  const PALLET_PACKS = 100;
+  const getPacksPerProduct = (product: string) => product === '33cl' ? 20 : 12;
   
   // Injection form state
   const [injectionBatch, setInjectionBatch] = useState<InjectionBatch>({
@@ -320,13 +338,15 @@ const ProductionModule = () => {
     caps_damaged: 0,
     caps_left: 0,
     caps_remaining_cartons: 0,
-    gum_boxes_taken: 0,
-    gum_pieces_taken: 0,
-    gum_used: 0,
-    gum_left: 0,
     labels_taken: 0,
+    labels_used: 0,
     labels_good: 0,
     labels_damaged: 0,
+    labels_left: 0,
+    gum_boxes_taken: 0,
+    gum_used: 0,
+    gum_left: 0,
+    finished_pallets: 0,
     finished_packs: 0,
     finished_pieces: 0,
     damaged_pieces: 0,
@@ -367,6 +387,15 @@ const ProductionModule = () => {
     ? ((blowingBatch.bottles_produced / blowingBatch.preforms_taken) * 100).toFixed(1) 
     : 0;
   
+  // Calculate total finished pieces from pallets, packs, and pieces
+  const calculateTotalFinishedPieces = () => {
+    const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
+    const totalPieces = (blowingBatch.finished_pallets * PALLET_PACKS * packsPerProduct) + 
+                        (blowingBatch.finished_packs * packsPerProduct) + 
+                        blowingBatch.finished_pieces;
+    return totalPieces;
+  };
+  
   // Auto-generate batch numbers
   useEffect(() => {
     if (!editingBatch && injectionBatch.production_date && injectionBatch.status === 'draft') {
@@ -398,6 +427,7 @@ const ProductionModule = () => {
       setRawMaterials(MOCK_RAW_MATERIALS);
       setPreformInventory(MOCK_PREFORM_INVENTORY);
       setCapsInventory(MOCK_CAPS_INVENTORY);
+      setLabelsInventory(MOCK_LABELS_INVENTORY);
       setGumInventory(MOCK_GUM_INVENTORY);
       setFinishedGoods(MOCK_FINISHED_GOODS);
       setInjectionBatches(MOCK_INJECTION_BATCHES);
@@ -528,13 +558,15 @@ const ProductionModule = () => {
       caps_damaged: 0,
       caps_left: 0,
       caps_remaining_cartons: 0,
-      gum_boxes_taken: 0,
-      gum_pieces_taken: 0,
-      gum_used: 0,
-      gum_left: 0,
       labels_taken: 0,
+      labels_used: 0,
       labels_good: 0,
       labels_damaged: 0,
+      labels_left: 0,
+      gum_boxes_taken: 0,
+      gum_used: 0,
+      gum_left: 0,
+      finished_pallets: 0,
       finished_packs: 0,
       finished_pieces: 0,
       damaged_pieces: 0,
@@ -603,8 +635,10 @@ const ProductionModule = () => {
       toast({ title: "Validation Error", description: "Please enter bottles produced", variant: "destructive" });
       return;
     }
-    if (blowingBatch.finished_packs === 0) {
-      toast({ title: "Validation Error", description: "Please enter finished packs", variant: "destructive" });
+    
+    const totalFinishedPieces = calculateTotalFinishedPieces();
+    if (totalFinishedPieces === 0) {
+      toast({ title: "Validation Error", description: "Please enter finished goods (pallets, packs, or pieces)", variant: "destructive" });
       return;
     }
     
@@ -628,10 +662,19 @@ const ProductionModule = () => {
       return;
     }
     
+    // Check labels stock
+    const labelsItem = labelsInventory[0];
+    if (labelsItem && labelsItem.quantity_on_hand < blowingBatch.labels_taken) {
+      setStockErrors([`Insufficient Labels stock. Available: ${labelsItem.quantity_on_hand.toLocaleString()} pieces, Required: ${blowingBatch.labels_taken.toLocaleString()} pieces`]);
+      setIsStockErrorDialogOpen(true);
+      setIsSubmitting(false);
+      return;
+    }
+    
     // Check gum stock
     const gumItem = gumInventory[0];
     if (gumItem && gumItem.quantity_on_hand < blowingBatch.gum_boxes_taken) {
-      setStockErrors([`Insufficient Gum/Glue stock. Available: ${gumItem.quantity_on_hand} boxes (${gumItem.quantity_on_hand * GUM_PIECES_PER_BOX} pieces), Required: ${blowingBatch.gum_boxes_taken} boxes (${blowingBatch.gum_boxes_taken * GUM_PIECES_PER_BOX} pieces)`]);
+      setStockErrors([`Insufficient Gum/Glue stock. Available: ${gumItem.quantity_on_hand} boxes, Required: ${blowingBatch.gum_boxes_taken} boxes`]);
       setIsStockErrorDialogOpen(true);
       setIsSubmitting(false);
       return;
@@ -652,11 +695,21 @@ const ProductionModule = () => {
         setCapsInventory([...capsItem]);
       }
       
+      // Deduct labels from inventory
+      if (labelsItem) {
+        labelsItem.quantity_on_hand -= blowingBatch.labels_taken;
+        setLabelsInventory([...labelsItem]);
+      }
+      
       // Deduct gum from inventory
       if (gumItem) {
         gumItem.quantity_on_hand -= blowingBatch.gum_boxes_taken;
         setGumInventory([...gumItem]);
       }
+      
+      // Calculate total packs for finished goods
+      const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
+      const totalPacks = (blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs;
       
       // Add finished goods to inventory
       const finishedGoodSKU = 
@@ -664,13 +717,13 @@ const ProductionModule = () => {
         blowingBatch.finished_product === '50cl' ? 'FG002' : 'FG003';
       const finishedGoodItem = finishedGoods.find(f => f.sku === finishedGoodSKU);
       if (finishedGoodItem) {
-        finishedGoodItem.quantity_on_hand += blowingBatch.finished_packs;
+        finishedGoodItem.quantity_on_hand += totalPacks;
         setFinishedGoods([...finishedGoods]);
       }
       
       toast({ 
         title: "Success", 
-        description: `Production completed! ${blowingBatch.finished_packs.toLocaleString()} packs of ${blowingBatch.finished_product} added to inventory.` 
+        description: `Production completed! ${totalPacks.toLocaleString()} packs (${totalFinishedPieces.toLocaleString()} pieces) of ${blowingBatch.finished_product} added to inventory.` 
       });
       
       setIsBlowingModalOpen(false);
@@ -721,12 +774,12 @@ const ProductionModule = () => {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Total Preforms</p>
+                <p className="text-sm text-muted-foreground">Preforms</p>
                 <p className="text-2xl font-bold">{preformInventory.reduce((sum, p) => sum + p.quantity_on_hand, 0).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">In Stock</p>
               </div>
@@ -738,9 +791,9 @@ const ProductionModule = () => {
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Caps Available</p>
-                <p className="text-2xl font-bold">{capsInventory[0]?.quantity_on_hand || 0} cartons</p>
-                <p className="text-xs text-muted-foreground">{(capsInventory[0]?.quantity_on_hand || 0) * CAPS_PER_CARTON} pieces</p>
+                <p className="text-sm text-muted-foreground">Caps</p>
+                <p className="text-2xl font-bold">{capsInventory[0]?.quantity_on_hand || 0} ctns</p>
+                <p className="text-xs text-muted-foreground">{((capsInventory[0]?.quantity_on_hand || 0) * CAPS_PER_CARTON).toLocaleString()} pcs</p>
               </div>
               <Layers className="h-8 w-8 text-yellow-500 opacity-50" />
             </div>
@@ -750,11 +803,23 @@ const ProductionModule = () => {
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Gum Available</p>
-                <p className="text-2xl font-bold">{gumInventory[0]?.quantity_on_hand || 0} boxes</p>
-                <p className="text-xs text-muted-foreground">{(gumInventory[0]?.quantity_on_hand || 0) * GUM_PIECES_PER_BOX} pieces</p>
+                <p className="text-sm text-muted-foreground">Labels</p>
+                <p className="text-2xl font-bold">{labelsInventory[0]?.quantity_on_hand.toLocaleString() || 0}</p>
+                <p className="text-xs text-muted-foreground">Pieces</p>
               </div>
-              <Box className="h-8 w-8 text-purple-500 opacity-50" />
+              <Package className="h-8 w-8 text-purple-500 opacity-50" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm text-muted-foreground">Gum</p>
+                <p className="text-2xl font-bold">{gumInventory[0]?.quantity_on_hand || 0} boxes</p>
+                <p className="text-xs text-muted-foreground">1 box = 1 piece</p>
+              </div>
+              <Box className="h-8 w-8 text-indigo-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -774,9 +839,9 @@ const ProductionModule = () => {
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
-                <p className="text-sm text-muted-foreground">Total Production</p>
+                <p className="text-sm text-muted-foreground">Total Batches</p>
                 <p className="text-2xl font-bold">{injectionBatches.length + blowingBatches.length}</p>
-                <p className="text-xs text-muted-foreground">Completed Batches</p>
+                <p className="text-xs text-muted-foreground">Completed</p>
               </div>
               <TrendingDown className="h-8 w-8 text-orange-500 opacity-50" />
             </div>
@@ -785,13 +850,14 @@ const ProductionModule = () => {
       </div>
       
       <Tabs defaultValue="preform-inventory">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-6">
-          <TabsTrigger value="preform-inventory">Preform Inventory</TabsTrigger>
-          <TabsTrigger value="caps-inventory">Caps Inventory</TabsTrigger>
-          <TabsTrigger value="gum-inventory">Gum Inventory</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-7">
+          <TabsTrigger value="preform-inventory">Preforms</TabsTrigger>
+          <TabsTrigger value="caps-inventory">Caps</TabsTrigger>
+          <TabsTrigger value="labels-inventory">Labels</TabsTrigger>
+          <TabsTrigger value="gum-inventory">Gum</TabsTrigger>
           <TabsTrigger value="finished-goods">Finished Goods</TabsTrigger>
-          <TabsTrigger value="injection-batches">Injection Batches</TabsTrigger>
-          <TabsTrigger value="blowing-batches">Blowing Batches</TabsTrigger>
+          <TabsTrigger value="injection-batches">Injection</TabsTrigger>
+          <TabsTrigger value="blowing-batches">Blowing</TabsTrigger>
         </TabsList>
         
         <TabsContent value="preform-inventory" className="space-y-4">
@@ -821,7 +887,7 @@ const ProductionModule = () => {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                 licensierad
               </div>
             </CardContent>
           </Card>
@@ -862,11 +928,44 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
+        <TabsContent value="labels-inventory" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Labels Inventory</CardTitle>
+              <CardDescription>Bottle labels in pieces.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2">SKU</th>
+                      <th className="text-left p-2">Name</th>
+                      <th className="text-left p-2">UOM</th>
+                      <th className="text-right p-2">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {labelsInventory.map((item) => (
+                      <tr key={item.id} className="border-b">
+                        <td className="p-2 font-mono text-xs">{item.sku}</td>
+                        <td className="p-2 font-medium">{item.name}</td>
+                        <td className="p-2">{item.unit_of_measure}</td>
+                        <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
         <TabsContent value="gum-inventory" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Gum/Glue Inventory</CardTitle>
-              <CardDescription>Adhesive for labeling ({GUM_PIECES_PER_BOX} pieces per box).</CardDescription>
+              <CardDescription>Adhesive for labeling (1 box = 1 piece).</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -877,7 +976,6 @@ const ProductionModule = () => {
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">UOM</th>
                       <th className="text-right p-2">Boxes</th>
-                      <th className="text-right p-2">Pieces</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -887,7 +985,6 @@ const ProductionModule = () => {
                         <td className="p-2 font-medium">{item.name}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
                         <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
-                        <td className="p-2 text-right">{(item.quantity_on_hand * GUM_PIECES_PER_BOX).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -911,7 +1008,7 @@ const ProductionModule = () => {
                       <th className="text-left p-2">SKU</th>
                       <th className="text-left p-2">Name</th>
                       <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Quantity</th>
+                      <th className="text-right p-2">Quantity (Packs)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1000,6 +1097,7 @@ const ProductionModule = () => {
                       <th className="text-left p-2">Date</th>
                       <th className="text-left p-2">Product</th>
                       <th className="text-right p-2">Preforms</th>
+                      <th className="text-right p-2">Pallets</th>
                       <th className="text-right p-2">Packs</th>
                       <th className="text-left p-2">Status</th>
                       <th className="text-left p-2">Actions</th>
@@ -1012,7 +1110,8 @@ const ProductionModule = () => {
                         <td className="p-2">{batchItem.production_date}</td>
                         <td className="p-2">{batchItem.finished_product}</td>
                         <td className="p-2 text-right">{batchItem.preforms_taken.toLocaleString()}</td>
-                        <td className="p-2 text-right font-semibold text-green-600">{batchItem.finished_packs.toLocaleString()}</td>
+                        <td className="p-2 text-right">{batchItem.finished_pallets.toLocaleString()}</td>
+                        <td className="p-2 text-right font-semibold text-green-600">{((batchItem.finished_pallets * PALLET_PACKS) + batchItem.finished_packs).toLocaleString()}</td>
                         <td className="p-2">{getStatusBadge(batchItem.status)}</td>
                         <td className="p-2">
                           <div className="flex gap-1">
@@ -1028,7 +1127,7 @@ const ProductionModule = () => {
                     ))}
                     {blowingBatches.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center p-4 text-muted-foreground">No blowing batches found. Click "New Blowing Batch" to create one.</td>
+                        <td colSpan={8} className="text-center p-4 text-muted-foreground">No blowing batches found. Click "New Blowing Batch" to create one.</td>
                       </tr>
                     )}
                   </tbody>
@@ -1136,20 +1235,28 @@ const ProductionModule = () => {
                     <div className="flex justify-between"><span>Caps Left:</span><span className="font-semibold">{selectedViewBatch.caps_left?.toLocaleString()} pcs</span></div>
                   </div></CardContent>
                 </Card>
-                <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-purple-600">GUM & LABELS</CardTitle></CardHeader>
+                <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-purple-600">LABELS</CardTitle></CardHeader>
                   <CardContent><div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Gum Boxes Taken:</span><span className="font-semibold">{selectedViewBatch.gum_boxes_taken} boxes</span></div>
-                    <div className="flex justify-between"><span>Gum Pieces Used:</span><span className="font-semibold">{selectedViewBatch.gum_used?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Gum Left:</span><span className="font-semibold">{selectedViewBatch.gum_left?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Labels Used:</span><span className="font-semibold">{selectedViewBatch.labels_taken?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Good Labels:</span><span className="font-semibold">{selectedViewBatch.labels_good?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Pieces Taken:</span><span className="font-semibold">{selectedViewBatch.labels_taken?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Labels Used:</span><span className="font-semibold">{selectedViewBatch.labels_used?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Good Labels:</span><span className="font-semibold text-green-600">{selectedViewBatch.labels_good?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Damaged Labels:</span><span className="font-semibold text-red-600">{selectedViewBatch.labels_damaged?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Labels Left:</span><span className="font-semibold">{selectedViewBatch.labels_left?.toLocaleString()} pcs</span></div>
+                  </div></CardContent>
+                </Card>
+                <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-indigo-600">GUM</CardTitle></CardHeader>
+                  <CardContent><div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span>Boxes Taken:</span><span className="font-semibold">{selectedViewBatch.gum_boxes_taken} boxes</span></div>
+                    <div className="flex justify-between"><span>Gum Used:</span><span className="font-semibold">{selectedViewBatch.gum_used} boxes</span></div>
+                    <div className="flex justify-between"><span>Gum Left:</span><span className="font-semibold">{selectedViewBatch.gum_left} boxes</span></div>
                   </div></CardContent>
                 </Card>
                 <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-orange-600">FINISHED GOODS</CardTitle></CardHeader>
                   <CardContent><div className="space-y-1 text-sm">
-                    <div className="flex justify-between"><span>Finished Packs:</span><span className="font-semibold">{selectedViewBatch.finished_packs?.toLocaleString()}</span></div>
-                    <div className="flex justify-between"><span>Finished Pieces:</span><span className="font-semibold">{selectedViewBatch.finished_pieces?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Damaged Pieces:</span><span className="font-semibold text-red-600">{selectedViewBatch.damaged_pieces?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Pallets (100 packs):</span><span className="font-semibold">{selectedViewBatch.finished_pallets}</span></div>
+                    <div className="flex justify-between"><span>Packs (12/20 pcs):</span><span className="font-semibold">{selectedViewBatch.finished_packs}</span></div>
+                    <div className="flex justify-between"><span>Pieces:</span><span className="font-semibold">{selectedViewBatch.finished_pieces}</span></div>
+                    <div className="flex justify-between border-t pt-2 mt-2"><span>Total Packs:</span><span className="font-bold">{(selectedViewBatch.finished_pallets * PALLET_PACKS + selectedViewBatch.finished_packs).toLocaleString()}</span></div>
                   </div></CardContent>
                 </Card>
               </div>
@@ -1207,8 +1314,8 @@ const ProductionModule = () => {
               <div className="space-y-2">
                 <Label className="text-blue-600 font-semibold">INPUT</Label>
                 <div className="p-3 bg-blue-50 rounded-lg space-y-2">
-                  <div><Label>Resin (PET Material) - KG (SKU: 001)</Label><Input type="number" step="0.001" placeholder="KG" value={injectionBatch.resin_used_kg} onChange={e => setInjectionBatch({...injectionBatch, resin_used_kg: parseFloat(e.target.value) || 0})} /></div>
-                  <div><Label>Masterbatch - KG (SKU: 002)</Label><Input type="number" step="0.001" placeholder="KG" value={injectionBatch.masterbatch_used_kg} onChange={e => setInjectionBatch({...injectionBatch, masterbatch_used_kg: parseFloat(e.target.value) || 0})} /></div>
+                  <div><Label>Resin (PET Material) - KG</Label><Input type="number" step="0.001" placeholder="KG" value={injectionBatch.resin_used_kg} onChange={e => setInjectionBatch({...injectionBatch, resin_used_kg: parseFloat(e.target.value) || 0})} /></div>
+                  <div><Label>Masterbatch - KG</Label><Input type="number" step="0.001" placeholder="KG" value={injectionBatch.masterbatch_used_kg} onChange={e => setInjectionBatch({...injectionBatch, masterbatch_used_kg: parseFloat(e.target.value) || 0})} /></div>
                 </div>
               </div>
               <div className="space-y-2">
@@ -1496,12 +1603,91 @@ const ProductionModule = () => {
               </div>
               
               <div className="space-y-2">
-                <Label className="text-purple-600 font-semibold">LABELS</Label>
+                <Label className="text-purple-600 font-semibold">LABELS MANAGEMENT</Label>
                 <div className="p-3 bg-purple-50 rounded-lg">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div><Label>Pieces Taken</Label><Input type="number" value={blowingBatch.labels_taken} onChange={e => setBlowingBatch({...blowingBatch, labels_taken: parseInt(e.target.value) || 0})} /></div>
-                    <div><Label>Good</Label><Input type="number" value={blowingBatch.labels_good} onChange={e => setBlowingBatch({...blowingBatch, labels_good: parseInt(e.target.value) || 0})} /></div>
-                    <div><Label>Damaged</Label><Input type="number" value={blowingBatch.labels_damaged} onChange={e => setBlowingBatch({...blowingBatch, labels_damaged: parseInt(e.target.value) || 0})} /></div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Total Pieces Taken</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_taken || 0}
+                          onChange={e => {
+                            const taken = parseInt(e.target.value) || 0;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_taken: taken
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Labels Used</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_used || 0}
+                          onChange={e => {
+                            const used = parseInt(e.target.value) || 0;
+                            const good = used - (blowingBatch.labels_damaged || 0);
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_used: used,
+                              labels_good: Math.max(0, good),
+                              labels_left: (blowingBatch.labels_taken || 0) - used
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Labels Damaged</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_damaged || 0}
+                          onChange={e => {
+                            const damaged = parseInt(e.target.value) || 0;
+                            const good = (blowingBatch.labels_used || 0) - damaged;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_damaged: damaged,
+                              labels_good: Math.max(0, good)
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Good Labels</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_good || 0}
+                          readOnly 
+                          className="bg-gray-100 font-semibold text-green-600"
+                        />
+                        <p className="text-xs text-muted-foreground">Labels Used - Damaged</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Labels Left</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_left || 0}
+                          readOnly 
+                          className="bg-gray-100"
+                        />
+                        <p className="text-xs text-muted-foreground">From pieces taken</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2 p-2 bg-purple-100 rounded">
+                      <div className="flex justify-between text-sm">
+                        <span>Available in Inventory:</span>
+                        <span className="font-bold">{labelsInventory[0]?.quantity_on_hand.toLocaleString() || 0} pieces</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1509,7 +1695,7 @@ const ProductionModule = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-indigo-600 font-semibold">GUM/GLUE (Boxes)</Label>
+                <Label className="text-indigo-600 font-semibold">GUM/GLUE (1 box = 1 piece)</Label>
                 <div className="p-3 bg-indigo-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1521,26 +1707,13 @@ const ProductionModule = () => {
                           const boxes = parseInt(e.target.value) || 0;
                           setBlowingBatch({
                             ...blowingBatch,
-                            gum_boxes_taken: boxes,
-                            gum_pieces_taken: boxes * GUM_PIECES_PER_BOX
+                            gum_boxes_taken: boxes
                           });
                         }}
                       />
-                      <p className="text-xs text-muted-foreground mt-1">{GUM_PIECES_PER_BOX} pieces per box</p>
                     </div>
                     <div>
-                      <Label>Total Pieces</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.gum_pieces_taken || 0}
-                        readOnly 
-                        className="bg-gray-100"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <Label>Pieces Used</Label>
+                      <Label>Gum Used</Label>
                       <Input 
                         type="number" 
                         value={blowingBatch.gum_used || 0}
@@ -1549,13 +1722,15 @@ const ProductionModule = () => {
                           setBlowingBatch({
                             ...blowingBatch,
                             gum_used: used,
-                            gum_left: (blowingBatch.gum_pieces_taken || 0) - used
+                            gum_left: (blowingBatch.gum_boxes_taken || 0) - used
                           });
                         }}
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
                     <div>
-                      <Label>Pieces Left</Label>
+                      <Label>Gum Left</Label>
                       <Input 
                         type="number" 
                         value={blowingBatch.gum_left || 0}
@@ -1615,23 +1790,52 @@ const ProductionModule = () => {
                       </Select>
                     </div>
                     <div>
-                      <Label>Packs</Label>
+                      <Label>Pallets (100 packs)</Label>
+                      <Input 
+                        type="number" 
+                        value={blowingBatch.finished_pallets} 
+                        onChange={e => {
+                          const pallets = parseInt(e.target.value) || 0;
+                          setBlowingBatch({
+                            ...blowingBatch, 
+                            finished_pallets: pallets
+                          });
+                        }} 
+                      />
+                      <p className="text-xs text-muted-foreground">1 pallet = 100 packs</p>
+                    </div>
+                    <div>
+                      <Label>Packs (12/20 pcs)</Label>
                       <Input 
                         type="number" 
                         value={blowingBatch.finished_packs} 
                         onChange={e => {
                           const packs = parseInt(e.target.value) || 0;
-                          const piecesPerPack = blowingBatch.finished_product === '33cl' ? 20 : 12;
                           setBlowingBatch({
                             ...blowingBatch, 
-                            finished_packs: packs,
-                            finished_pieces: packs * piecesPerPack
+                            finished_packs: packs
+                          });
+                        }} 
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                      <Label>Pieces</Label>
+                      <Input 
+                        type="number" 
+                        value={blowingBatch.finished_pieces} 
+                        onChange={e => {
+                          const pieces = parseInt(e.target.value) || 0;
+                          setBlowingBatch({
+                            ...blowingBatch, 
+                            finished_pieces: pieces
                           });
                         }} 
                       />
                     </div>
                     <div>
-                      <Label>Damaged(pcs)</Label>
+                      <Label>Damaged Pieces</Label>
                       <Input type="number" value={blowingBatch.damaged_pieces} onChange={e => setBlowingBatch({...blowingBatch, damaged_pieces: parseInt(e.target.value) || 0})} />
                     </div>
                   </div>
@@ -1647,8 +1851,16 @@ const ProductionModule = () => {
                     <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold">{blowingBatch.bottles_filled.toLocaleString()} pcs</span></div>
                     <div className="flex justify-between"><span>Caps Used:</span><span className="font-semibold">{blowingBatch.caps_used?.toLocaleString()} pcs</span></div>
                     <div className="flex justify-between"><span>Good Capping:</span><span className="font-semibold text-green-600">{blowingBatch.caps_good?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between border-t pt-2 mt-2"><span>Total Packs:</span><span className="font-bold text-green-600">{blowingBatch.finished_packs.toLocaleString()} packs</span></div>
-                    <div className="flex justify-between"><span>Total Pieces:</span><span className="font-bold text-green-600">{blowingBatch.finished_pieces.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between border-t pt-2 mt-2">
+                      <span>Total Finished:</span>
+                      <span className="font-bold text-green-600">
+                        {((blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs).toLocaleString()} packs
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Pieces:</span>
+                      <span className="font-bold text-green-600">{calculateTotalFinishedPieces().toLocaleString()} pcs</span>
+                    </div>
                   </div>
                 </div>
               </div>
