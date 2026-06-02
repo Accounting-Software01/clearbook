@@ -1028,12 +1028,13 @@ const ProductionModule = () => {
                       const waste = blowingBatch.bottles_damaged || 0;
                       setBlowingBatch({...blowingBatch, bottles_good: good, bottles_produced: good + waste});
                     }} /></div>
+                    
+                    <div><Label>Bottles Filled</Label><Input type="number" min="0" value={blowingBatch.bottles_filled} onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)} /></div>
                     <div><Label>Waste Bottles</Label><Input type="number" min="0" value={blowingBatch.bottles_damaged || 0} onChange={e => {
                       const waste = Math.max(0, parseInt(e.target.value) || 0);
                       const good = blowingBatch.bottles_good || 0;
                       setBlowingBatch({...blowingBatch, bottles_damaged: waste, bottles_produced: good + waste});
                     }} /></div>
-                    <div><Label>Bottles Filled</Label><Input type="number" min="0" value={blowingBatch.bottles_filled} onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)} /></div>
                   </div>
                   <div className="mt-2 text-sm">
                     <span>Total Produced: </span><span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} bottles</span>
