@@ -1077,9 +1077,9 @@ const ProductionModule = () => {
               <Select value={injectionBatch.shift} onValueChange={val => setInjectionBatch({...injectionBatch, shift: val})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Morning">Morning (6AM - 2PM)</SelectItem>
-                  <SelectItem value="Afternoon">Afternoon (2PM - 10PM)</SelectItem>
-                  <SelectItem value="Night">Night (10PM - 6AM)</SelectItem>
+                  <SelectItem value="Morning">Morning</SelectItem>
+                 
+                  <SelectItem value="Night">Night</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1195,9 +1195,9 @@ const ProductionModule = () => {
               <Select value={blowingBatch.shift} onValueChange={val => setBlowingBatch({...blowingBatch, shift: val})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Morning">Morning (6AM - 2PM)</SelectItem>
-                  <SelectItem value="Afternoon">Afternoon (2PM - 10PM)</SelectItem>
-                  <SelectItem value="Night">Night (10PM - 6AM)</SelectItem>
+                  <SelectItem value="Morning">Morning</SelectItem>
+                 
+                  <SelectItem value="Night">Night</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1270,8 +1270,9 @@ const ProductionModule = () => {
                 <div className="p-3 bg-green-50 rounded-lg">
                   <div className="grid grid-cols-3 gap-2">
                     <div><Label>Bottles Produced</Label><Input type="number" value={blowingBatch.bottles_produced} onChange={e => setBlowingBatch({...blowingBatch, bottles_produced: parseInt(e.target.value) || 0})} /></div>
-                    <div><Label>Damaged</Label><Input type="number" value={blowingBatch.bottles_damaged} onChange={e => setBlowingBatch({...blowingBatch, bottles_damaged: parseInt(e.target.value) || 0})} /></div>
+                    
                     <div><Label>Bottles Filled</Label><Input type="number" value={blowingBatch.bottles_filled} onChange={e => setBlowingBatch({...blowingBatch, bottles_filled: parseInt(e.target.value) || 0})} /></div>
+                 <div><Label>Damaged</Label><Input type="number" value={blowingBatch.bottles_damaged} onChange={e => setBlowingBatch({...blowingBatch, bottles_damaged: parseInt(e.target.value) || 0})} /></div>
                   </div>
                   <div className="mt-2 text-sm"><span className="text-muted-foreground">Yield: </span><span className="font-semibold">{blowingYield}%</span></div>
                 </div>
