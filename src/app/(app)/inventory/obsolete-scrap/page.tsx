@@ -18,7 +18,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-    Loader2, AlertCircle, RefreshCw, Plus, Pencil, Trash2, ArrowDownCircle, PackageX,
+    Loader2, AlertCircle, RefreshCw, Plus, Pencil, Trash2, ArrowDownCircle, PackageX, Download, Filter, X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -73,6 +73,14 @@ interface IssueForm {
     notes: string;
 }
 
+interface FilterState {
+    name: string;
+    sku: string;
+    startDate: string;
+    endDate: string;
+    reason: string;
+}
+
 const emptyRegister = (): RegisterForm => ({
     name: '', sku: '', unit_of_measure: '', quantity_on_hand: '',
     average_unit_cost: '', reorder_level: '0', inventory_account_id: '', reason: '',
@@ -80,6 +88,10 @@ const emptyRegister = (): RegisterForm => ({
 
 const emptyIssue = (): IssueForm => ({
     quantity_issued: '', expense_account_id: '', issue_type: 'wastage', notes: 'Scrap/Obsolete write-off',
+});
+
+const emptyFilter = (): FilterState => ({
+    name: '', sku: '', startDate: '', endDate: '', reason: '',
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -102,12 +114,60 @@ const reasonBadge = (r: string | null) => {
     return 'bg-gray-100 text-gray-600';
 };
 
-// Strip the prefix added by the PHP ("Initial classification: " / "Updated classification reason: ")
+// Strip the prefix added by the PHP
 const cleanReason = (raw: string | null): string => {
     if (!raw) return '—';
     return raw
         .replace(/^Initial classification:\s*/i, '')
         .replace(/^Updated classification reason:\s*/i, '');
+};
+
+// Export to Excel
+const exportToExcel = (items: ObsoleteScrap[], filteredItems: ObsoleteScrap[], filter: FilterState) => {
+    const data = filteredItems.map(item => ({
+        'Item Name': item.name,
+        'SKU': item.sku,
+        'UOM': item.unit_of_measure,
+        'Quantity on Hand': item.quantity_on_hand,
+        'Unit Cost (₦)': item.average_unit_cost,
+        'Total Value (₦)': item.total_value,
+        'Classification Reason': cleanReason(item.reason),
+        'Date Classified': fmtDate(item.date_classified),
+    }));
+
+    // Add summary row
+    const totalValue = filteredItems.reduce((sum, item) => sum + item.total_value, 0);
+    data.push({} as any);
+    data.push({
+        'Item Name': 'SUMMARY',
+        'SKU': '',
+        'UOM': '',
+        'Quantity on Hand': '',
+        'Unit Cost (₦)': '',
+        'Total Value (₦)': totalValue,
+        'Classification Reason': '',
+        'Date Classified': '',
+    });
+
+    // Convert to CSV
+    const headers = Object.keys(data[0]);
+    const csvRows = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            const value = row[header as keyof typeof row];
+            return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
+        }).join(','))
+    ];
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `obsolete_scrap_export_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -122,6 +182,8 @@ const ObsoleteScrapPage = () => {
     const [isLoading, setIsLoading]   = useState(true);
     const [error, setError]           = useState<string | null>(null);
     const [isSaving, setIsSaving]     = useState(false);
+    const [filter, setFilter]         = useState<FilterState>(emptyFilter());
+    const [showFilters, setShowFilters] = useState(false);
 
     // Dialog visibility
     const [showRegister, setShowRegister] = useState(false);
@@ -129,12 +191,28 @@ const ObsoleteScrapPage = () => {
     const [showIssue, setShowIssue]       = useState(false);
     const [showDelete, setShowDelete]     = useState(false);
 
-    // Selected item (for edit / issue / delete)
+    // Selected item
     const [selected, setSelected] = useState<ObsoleteScrap | null>(null);
 
     // Form state
     const [regForm, setRegForm]     = useState<RegisterForm>(emptyRegister());
     const [issueForm, setIssueForm] = useState<IssueForm>(emptyIssue());
+
+    // Filtered items
+    const filteredItems = items.filter(item => {
+        // Filter by name
+        if (filter.name && !item.name.toLowerCase().includes(filter.name.toLowerCase())) return false;
+        // Filter by SKU
+        if (filter.sku && !item.sku.toLowerCase().includes(filter.sku.toLowerCase())) return false;
+        // Filter by reason
+        if (filter.reason && cleanReason(item.reason) !== filter.reason) return false;
+        // Filter by date range
+        if (filter.startDate && new Date(item.date_classified) < new Date(filter.startDate)) return false;
+        if (filter.endDate && new Date(item.date_classified) > new Date(filter.endDate)) return false;
+        return true;
+    });
+
+    const filteredTotalValue = filteredItems.reduce((sum, item) => sum + item.total_value, 0);
 
     // ── Fetch ─────────────────────────────────────────────────────────────────
     const fetchItems = useCallback(async () => {
@@ -159,6 +237,11 @@ const ObsoleteScrapPage = () => {
     useEffect(() => {
         if (user) fetchItems();
     }, [user, fetchItems]);
+
+    // Clear filters
+    const clearFilters = () => {
+        setFilter(emptyFilter());
+    };
 
     // ── Generic POST helper ───────────────────────────────────────────────────
     const postAction = async (body: Record<string, unknown>) => {
@@ -309,6 +392,7 @@ const ObsoleteScrapPage = () => {
     // ── Form field helpers ────────────────────────────────────────────────────
     const setReg   = (k: keyof RegisterForm, v: string) => setRegForm(p => ({ ...p, [k]: v }));
     const setIssue = (k: keyof IssueForm,   v: string) => setIssueForm(p => ({ ...p, [k]: v }));
+    const setFilterField = (k: keyof FilterState, v: string) => setFilter(p => ({ ...p, [k]: v }));
 
     // ─── Shared form body (register + edit) ──────────────────────────────────
     const RegistrationFields = () => (
@@ -364,6 +448,81 @@ const ObsoleteScrapPage = () => {
         </div>
     );
 
+    // ─── Filter Bar ──────────────────────────────────────────────────────────
+    const FilterBar = () => (
+        <Card className="mb-4">
+            <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Filter className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">Filters</span>
+                        {(filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason) && (
+                            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-6 px-2 text-xs">
+                                <X className="h-3 w-3 mr-1" /> Clear all
+                            </Button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => exportToExcel(items, filteredItems, filter)}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Export to Excel
+                        </Button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="space-y-1">
+                        <Label className="text-xs">Item Name</Label>
+                        <Input 
+                            placeholder="Search by name..." 
+                            value={filter.name}
+                            onChange={e => setFilterField('name', e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">SKU</Label>
+                        <Input 
+                            placeholder="Search by SKU..." 
+                            value={filter.sku}
+                            onChange={e => setFilterField('sku', e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Classification Reason</Label>
+                        <Select value={filter.reason} onValueChange={v => setFilterField('reason', v)}>
+                            <SelectTrigger className="h-9">
+                                <SelectValue placeholder="All Reasons" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">All Reasons</SelectItem>
+                                {REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">From Date</Label>
+                        <Input 
+                            type="date" 
+                            value={filter.startDate}
+                            onChange={e => setFilterField('startDate', e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">To Date</Label>
+                        <Input 
+                            type="date" 
+                            value={filter.endDate}
+                            onChange={e => setFilterField('endDate', e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+
     // ─── Render ───────────────────────────────────────────────────────────────
     return (
         <>
@@ -379,6 +538,10 @@ const ObsoleteScrapPage = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
+                        <Filter className="mr-2 h-4 w-4" />
+                        {showFilters ? 'Hide Filters' : 'Show Filters'}
+                    </Button>
                     <Button variant="outline" size="sm" onClick={fetchItems} disabled={isLoading}>
                         <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                         Refresh
@@ -389,12 +552,19 @@ const ObsoleteScrapPage = () => {
                 </div>
             </div>
 
+            {/* ── Filter Bar ── */}
+            {showFilters && <FilterBar />}
+
             {/* ── Total value card ── */}
             <Card className="mb-5 border-l-4 border-l-red-400">
                 <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-sm text-muted-foreground">Total Obsolete & Scrap Value</p>
+                            <p className="text-sm text-muted-foreground">
+                                {filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason 
+                                    ? 'Filtered Obsolete & Scrap Value' 
+                                    : 'Total Obsolete & Scrap Value'}
+                            </p>
                             {isLoading ? (
                                 <Loader2 className="h-6 w-6 animate-spin text-primary mt-1" />
                             ) : error ? (
@@ -402,10 +572,11 @@ const ObsoleteScrapPage = () => {
                                     <AlertCircle className="h-4 w-4" /> Could not load value
                                 </p>
                             ) : (
-                                <p className="text-3xl font-bold text-red-600 mt-1">{fmt(totalValue)}</p>
+                                <p className="text-3xl font-bold text-red-600 mt-1">{fmt(filteredTotalValue)}</p>
                             )}
                             <p className="text-xs text-muted-foreground mt-0.5">
-                                {items.length} item{items.length !== 1 ? 's' : ''} classified
+                                {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''} showing
+                                {items.length !== filteredItems.length && ` (${items.length} total)`}
                             </p>
                         </div>
                         <PackageX className="h-10 w-10 text-red-200" />
@@ -429,11 +600,13 @@ const ObsoleteScrapPage = () => {
                             <p className="font-medium">Failed to load items</p>
                             <p className="text-sm text-muted-foreground mt-1">{error}</p>
                         </div>
-                    ) : items.length === 0 ? (
+                    ) : filteredItems.length === 0 ? (
                         <div className="text-center py-16 text-muted-foreground">
                             <PackageX className="mx-auto h-10 w-10 mb-3 opacity-30" />
                             <p className="font-medium">No obsolete or scrap items found</p>
-                            <p className="text-sm mt-1">Register an item to begin tracking.</p>
+                            <p className="text-sm mt-1">
+                                {items.length > 0 ? 'Try adjusting your filters.' : 'Register an item to begin tracking.'}
+                            </p>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -452,7 +625,7 @@ const ObsoleteScrapPage = () => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {items.map((item) => (
+                                    {filteredItems.map((item) => (
                                         <TableRow key={item.id}>
                                             <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell className="text-muted-foreground">{item.sku}</TableCell>
