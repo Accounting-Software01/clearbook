@@ -161,7 +161,7 @@ const SalesTrailPage = () => {
         invoice_number: '',
         customer_name: '',
         item_name: '',
-        status: 'all',  // Changed from '' to 'all'
+        status: 'all',
         startDate: '',
         endDate: '',
     });
@@ -174,7 +174,7 @@ const SalesTrailPage = () => {
     });
 
     // ── Filtered Items ────────────────────────────────────────────────────────
-    const filteredItems = items.filter(item => {
+    const filteredItems = Array.isArray(items) ? items.filter(item => {
         // Filter by invoice number
         if (filter.invoice_number && !item.invoice_number.toLowerCase().includes(filter.invoice_number.toLowerCase())) {
             return false;
@@ -202,7 +202,7 @@ const SalesTrailPage = () => {
             return false;
         }
         return true;
-    });
+    }) : [];
 
     // Calculate summary from filtered items
     const filteredSummary = {
@@ -220,7 +220,9 @@ const SalesTrailPage = () => {
         setError(null);
         
         try {
-            const url = `${API}?company_id=${user.company_id}&limit=500`;
+            const url = `${API}?company_id=${user.company_id}&limit=1000`;
+            console.log('Fetching:', url);
+            
             const response = await fetch(url);
             
             if (!response.ok) {
@@ -228,25 +230,50 @@ const SalesTrailPage = () => {
             }
             
             const data = await response.json();
+            console.log('API Response:', data);
             
-            if (data.error) {
+            // Handle different response formats
+            let salesData = [];
+            if (Array.isArray(data)) {
+                // Response is directly an array
+                salesData = data;
+            } else if (data.success === true && Array.isArray(data.data)) {
+                // Response has success flag and data array
+                salesData = data.data;
+            } else if (data.data && Array.isArray(data.data)) {
+                // Response has data array
+                salesData = data.data;
+            } else if (data.error) {
                 throw new Error(data.error);
+            } else {
+                // Unexpected response format
+                console.warn('Unexpected response format:', data);
+                salesData = [];
             }
             
-            setItems(data);
+            setItems(salesData);
             
             // Calculate summary from all data
-            const uniqueInvoices = new Set(data.map((item: SalesTrailItem) => item.invoice_number));
-            const uniqueCustomers = new Set(data.map((item: SalesTrailItem) => item.customer_name));
-            const totalAmount = data.reduce((sum: number, item: SalesTrailItem) => sum + item.total_amount, 0);
-            const totalItems = data.reduce((sum: number, item: SalesTrailItem) => sum + item.quantity, 0);
-            
-            setSummary({
-                totalInvoices: uniqueInvoices.size,
-                totalAmount: totalAmount,
-                totalItems: totalItems,
-                uniqueCustomers: uniqueCustomers.size,
-            });
+            if (salesData.length > 0) {
+                const uniqueInvoices = new Set(salesData.map((item: SalesTrailItem) => item.invoice_number));
+                const uniqueCustomers = new Set(salesData.map((item: SalesTrailItem) => item.customer_name));
+                const totalAmount = salesData.reduce((sum: number, item: SalesTrailItem) => sum + item.total_amount, 0);
+                const totalItems = salesData.reduce((sum: number, item: SalesTrailItem) => sum + item.quantity, 0);
+                
+                setSummary({
+                    totalInvoices: uniqueInvoices.size,
+                    totalAmount: totalAmount,
+                    totalItems: totalItems,
+                    uniqueCustomers: uniqueCustomers.size,
+                });
+            } else {
+                setSummary({
+                    totalInvoices: 0,
+                    totalAmount: 0,
+                    totalItems: 0,
+                    uniqueCustomers: 0,
+                });
+            }
             
         } catch (err: any) {
             console.error('Fetch error:', err);
@@ -307,7 +334,12 @@ const SalesTrailPage = () => {
                         )}
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => exportToExcel(filteredItems, filter)}>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => exportToExcel(filteredItems, filter)}
+                            disabled={filteredItems.length === 0}
+                        >
                             <Download className="h-4 w-4 mr-2" />
                             Export to Excel
                         </Button>
@@ -510,7 +542,7 @@ const SalesTrailPage = () => {
                 <CardHeader>
                     <CardTitle className="text-base">
                         Sales Transaction Details
-                        {hasActiveFilters() && filteredItems.length !== items.length && (
+                        {hasActiveFilters() && filteredItems.length !== items.length && items.length > 0 && (
                             <span className="ml-2 text-sm font-normal text-muted-foreground">
                                 ({filteredItems.length} of {items.length} items shown)
                             </span>
@@ -603,7 +635,7 @@ const SalesTrailPage = () => {
                         <div className="flex flex-col sm:flex-row justify-between items-center gap-3 text-sm">
                             <div className="text-muted-foreground">
                                 Showing {filteredItems.length} line items
-                                {hasActiveFilters() && items.length !== filteredItems.length && 
+                                {hasActiveFilters() && items.length !== filteredItems.length && items.length > 0 && 
                                     ` (filtered from ${items.length} total)`
                                 }
                             </div>
