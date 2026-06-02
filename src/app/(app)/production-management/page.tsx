@@ -92,7 +92,6 @@ interface InjectionBatch {
   bags_produced: number;
   preform_weight_grams: number;
 }
-
 interface BlowingBatch {
   id?: number;
   batch_number: string;
@@ -102,35 +101,55 @@ interface BlowingBatch {
   status: 'draft' | 'wip' | 'completed' | 'cancelled';
   stage: 'blowing' | 'packaging' | 'completed';
   notes: string;
+  
+  // Preforms
   preform_type: '18g' | '14g';
   preform_bags: number;
-  finished_product: '75cl' | '50cl' | '33cl';
-  preforms_taken: number;
-  bottles_produced: number;
-  bottles_damaged: number;
-  bottles_filled: number;
-  bottles_filled_damaged: number;
+  preforms_taken: number;  // Total preforms taken from inventory (calculated from bags)
+  
+  // Bottles - Good + Waste = Produced
+  bottles_good: number;        // Good bottles (user enters)
+  bottles_damaged: number;     // Waste bottles (user enters)
+  bottles_produced: number;    // Auto = good + waste
+  bottles_filled: number;      // Bottles that went to filling
+  
+  // Caps - Good + Waste = Used
   caps_cartons_taken: number;
   caps_pieces_taken: number;
-  caps_used: number;
-  caps_good: number;
-  caps_damaged: number;
+  caps_good: number;           // Good caps (user enters)
+  caps_damaged: number;        // Waste caps (user enters)
+  caps_used: number;           // Auto = good + waste
   caps_left: number;
   caps_remaining_cartons: number;
+  
+  // Labels - Good + Waste = Used
   labels_taken: number;
-  labels_used: number;
-  labels_good: number;
-  labels_damaged: number;
+  labels_good: number;         // Good labels (user enters)
+  labels_damaged: number;      // Waste labels (user enters)
+  labels_used: number;         // Auto = good + waste
   labels_left: number;
+  
+  // Gum - Good + Waste = Used
   gum_boxes_taken: number;
-  gum_used: number;
+  gum_good: number;            // Good gum (user enters)
+  gum_damaged: number;         // Waste gum (user enters)
+  gum_used: number;            // Auto = good + waste
   gum_left: number;
+  
+  // Shrink Wrap - Good + Waste = Used
+  shrink_wrap_type: '60' | '70';
+  shrink_wrap_taken: number;   // Total taken from inventory (KG)
+  shrink_wrap_good: number;    // Good shrink wrap (user enters)
+  shrink_wrap_damaged: number; // Waste shrink wrap (user enters)
+  shrink_wrap_used_kg: number; // Auto = good + waste
+  shrink_wrap_left: number;
+  
+  // Finished Goods
+  finished_product: '75cl' | '50cl' | '33cl';
   finished_pallets: number;
   finished_packs: number;
   finished_pieces: number;
   damaged_pieces: number;
-  shrink_wrap_type: '60' | '70';
-  shrink_wrap_used_kg: number;
 }
 
 const ProductionModule = () => {
@@ -180,46 +199,65 @@ const ProductionModule = () => {
     bags_produced: 0,
     preform_weight_grams: 18
   });
+ // Blowing form state
+const [blowingBatch, setBlowingBatch] = useState<BlowingBatch>({
+  batch_number: '',
+  production_date: new Date().toISOString().split('T')[0],
+  shift: 'Morning',
+  operator_name: '',
+  status: 'draft',
+  stage: 'blowing',
+  notes: '',
   
-  // Blowing form state
-  const [blowingBatch, setBlowingBatch] = useState<BlowingBatch>({
-    batch_number: '',
-    production_date: new Date().toISOString().split('T')[0],
-    shift: 'Morning',
-    operator_name: '',
-    status: 'draft',
-    stage: 'blowing',
-    notes: '',
-    preform_type: '18g',
-    preform_bags: 0,
-    finished_product: '75cl',
-    preforms_taken: 0,
-    bottles_produced: 0,
-    bottles_damaged: 0,
-    bottles_filled: 0,
-    bottles_filled_damaged: 0,
-    caps_cartons_taken: 0,
-    caps_pieces_taken: 0,
-    caps_used: 0,
-    caps_good: 0,
-    caps_damaged: 0,
-    caps_left: 0,
-    caps_remaining_cartons: 0,
-    labels_taken: 0,
-    labels_used: 0,
-    labels_good: 0,
-    labels_damaged: 0,
-    labels_left: 0,
-    gum_boxes_taken: 0,
-    gum_used: 0,
-    gum_left: 0,
-    finished_pallets: 0,
-    finished_packs: 0,
-    finished_pieces: 0,
-    damaged_pieces: 0,
-    shrink_wrap_type: '60',
-    shrink_wrap_used_kg: 0
-  });
+  // Preforms
+  preform_type: '18g',
+  preform_bags: 0,
+  preforms_taken: 0,
+  
+  // Bottles - Good + Waste = Produced
+  bottles_good: 0,           // NEW: Good bottles
+  bottles_damaged: 0,        // Waste bottles
+  bottles_produced: 0,       // Auto = good + waste
+  bottles_filled: 0,         // Bottles that went to filling
+  
+  // Caps - Good + Waste = Used
+  caps_cartons_taken: 0,
+  caps_pieces_taken: 0,
+  caps_good: 0,              // Good caps
+  caps_damaged: 0,           // Waste caps
+  caps_used: 0,              // Auto = good + waste
+  caps_left: 0,
+  caps_remaining_cartons: 0,
+  
+  // Labels - Good + Waste = Used
+  labels_taken: 0,
+  labels_good: 0,            // Good labels
+  labels_damaged: 0,         // Waste labels
+  labels_used: 0,            // Auto = good + waste
+  labels_left: 0,
+  
+  // Gum - Good + Waste = Used
+  gum_boxes_taken: 0,
+  gum_good: 0,               // NEW: Good gum
+  gum_damaged: 0,            // NEW: Waste gum
+  gum_used: 0,               // Auto = good + waste
+  gum_left: 0,
+  
+  // Shrink Wrap - Good + Waste = Used
+  shrink_wrap_type: '60',
+  shrink_wrap_taken: 0,      // NEW: Total taken (KG)
+  shrink_wrap_good: 0,       // NEW: Good shrink wrap
+  shrink_wrap_damaged: 0,    // NEW: Waste shrink wrap
+  shrink_wrap_used_kg: 0,    // Auto = good + waste
+  shrink_wrap_left: 0,       // NEW: Remaining
+  
+  // Finished Goods
+  finished_product: '75cl',
+  finished_pallets: 0,
+  finished_packs: 0,
+  finished_pieces: 0,
+  damaged_pieces: 0
+});
   
   // Helper functions
   const generateInjectionBatchNumber = (productionDate: string) => {
@@ -1169,503 +1207,685 @@ const ProductionModule = () => {
         </DialogContent>
       </Dialog>
       
-      {/* Blowing Modal */}
-      <Dialog open={isBlowingModalOpen} onOpenChange={setIsBlowingModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Blowing & Packaging Production</DialogTitle>
-            <DialogDescription>Blowing → Filling → Capping → Packaging</DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
-            <div>
-              <Label>Batch Number</Label>
-              <Input value={blowingBatch.batch_number} readOnly className="font-mono text-sm bg-gray-100" />
+  {/* Blowing Modal */}
+<Dialog open={isBlowingModalOpen} onOpenChange={setIsBlowingModalOpen}>
+  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <DialogHeader>
+      <DialogTitle>Blowing & Packaging Production</DialogTitle>
+      <DialogDescription>Blowing → Filling → Capping → Packaging</DialogDescription>
+    </DialogHeader>
+    
+    {/* Basic Info */}
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg">
+      <div>
+        <Label>Batch Number</Label>
+        <Input value={blowingBatch.batch_number} readOnly className="font-mono text-sm bg-gray-100" />
+      </div>
+      <div>
+        <Label>Production Date</Label>
+        <Input 
+          type="date" 
+          value={blowingBatch.production_date}
+          onChange={e => setBlowingBatch({...blowingBatch, production_date: e.target.value})}
+        />
+      </div>
+      <div>
+        <Label>Shift</Label>
+        <Select value={blowingBatch.shift} onValueChange={val => setBlowingBatch({...blowingBatch, shift: val})}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Morning">Morning</SelectItem>
+            <SelectItem value="Night">Night</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label>Operator Name</Label>
+        <Input 
+          placeholder="Enter operator name"
+          value={blowingBatch.operator_name}
+          onChange={e => setBlowingBatch({...blowingBatch, operator_name: e.target.value})}
+        />
+      </div>
+    </div>
+    
+    <div className="space-y-4">
+      {/* Preforms Selection */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-blue-600 font-semibold">PREFORMS SELECTION</Label>
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Preform Type</Label>
+                <Select value={blowingBatch.preform_type} onValueChange={(val: any) => {
+                  setBlowingBatch({...blowingBatch, preform_type: val, preform_bags: 0, preforms_taken: 0});
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="18g">18g Preforms (30kg/bag)</SelectItem>
+                    <SelectItem value="14g">14g Preforms (25kg/bag)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Bags taken</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.preform_bags || 0} 
+                  onChange={e => {
+                    const bags = parseInt(e.target.value) || 0;
+                    const kgPerBag = blowingBatch.preform_type === '18g' ? 30 : 25;
+                    const totalKg = bags * kgPerBag;
+                    const pieces = Math.round((totalKg * 1000) / (blowingBatch.preform_type === '18g' ? 18 : 14));
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      preform_bags: bags,
+                      preforms_taken: pieces
+                    });
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {blowingBatch.preform_type === '18g' ? '1 bag = 30kg ≈ 1,667 pieces' : '1 bag = 25kg ≈ 1,786 pieces'}
+                </p>
+              </div>
             </div>
-            <div>
-              <Label>Production Date</Label>
-              <Input 
-                type="date" 
-                value={blowingBatch.production_date}
-                onChange={e => setBlowingBatch({...blowingBatch, production_date: e.target.value})}
-              />
+            {blowingBatch.preforms_taken > 0 && (
+              <div className="mt-3 p-2 bg-green-100 rounded">
+                <div className="flex justify-between text-sm">
+                  <span>Total Preforms Taken:</span>
+                  <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Available: {getPreformAvailable(blowingBatch.preform_type).toLocaleString()} pcs
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Blowing & Filling - Good + Waste = Produced */}
+        <div className="space-y-2">
+          <Label className="text-green-600 font-semibold">BLOWING & FILLING</Label>
+          <div className="p-3 bg-green-50 rounded-lg">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label>Good Bottles</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.bottles_good || 0} 
+                  onChange={e => {
+                    const good = parseInt(e.target.value) || 0;
+                    const waste = blowingBatch.bottles_damaged || 0;
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      bottles_good: good,
+                      bottles_produced: good + waste
+                    });
+                  }} 
+                />
+              </div>
+              <div>
+                <Label>Waste Bottles</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.bottles_damaged || 0} 
+                  onChange={e => {
+                    const waste = parseInt(e.target.value) || 0;
+                    const good = blowingBatch.bottles_good || 0;
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      bottles_damaged: waste,
+                      bottles_produced: good + waste
+                    });
+                  }} 
+                />
+              </div>
+              <div>
+                <Label>Bottles Filled</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.bottles_filled} 
+                  onChange={e => setBlowingBatch({...blowingBatch, bottles_filled: parseInt(e.target.value) || 0})} 
+                />
+              </div>
             </div>
-            <div>
-              <Label>Shift</Label>
-              <Select value={blowingBatch.shift} onValueChange={val => setBlowingBatch({...blowingBatch, shift: val})}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Morning">Morning</SelectItem>
-                 
-                  <SelectItem value="Night">Night</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Operator Name</Label>
-              <Input 
-                placeholder="Enter operator name"
-                value={blowingBatch.operator_name}
-                onChange={e => setBlowingBatch({...blowingBatch, operator_name: e.target.value})}
-              />
+            <div className="mt-2 text-sm">
+              <span className="text-muted-foreground">Total Produced: </span>
+              <span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} bottles</span>
+              <span className="text-muted-foreground ml-4">Yield: </span>
+              <span className="font-semibold">
+                {blowingBatch.preforms_taken > 0 
+                  ? ((((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)) / blowingBatch.preforms_taken) * 100).toFixed(1)
+                  : 0}%
+              </span>
             </div>
           </div>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-blue-600 font-semibold">PREFORMS SELECTION</Label>
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Preform Type</Label>
-                      <Select value={blowingBatch.preform_type} onValueChange={(val: any) => {
-                        setBlowingBatch({...blowingBatch, preform_type: val, preform_bags: 0, preforms_taken: 0});
-                      }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="18g">18g Preforms (30kg/bag)</SelectItem>
-                          <SelectItem value="14g">14g Preforms (25kg/bag)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Bags to Use</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.preform_bags || 0} 
-                        onChange={e => {
-                          const bags = parseInt(e.target.value) || 0;
-                          const kgPerBag = blowingBatch.preform_type === '18g' ? 30 : 25;
-                          const totalKg = bags * kgPerBag;
-                          const pieces = Math.round((totalKg * 1000) / (blowingBatch.preform_type === '18g' ? 18 : 14));
-                          setBlowingBatch({
-                            ...blowingBatch, 
-                            preform_bags: bags,
-                            preforms_taken: pieces
-                          });
-                        }}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {blowingBatch.preform_type === '18g' ? '1 bag = 30kg ≈ 1,667 pieces' : '1 bag = 25kg ≈ 1,786 pieces'}
-                      </p>
-                    </div>
-                  </div>
-                  {blowingBatch.preforms_taken > 0 && (
-                    <div className="mt-3 p-2 bg-green-100 rounded">
-                      <div className="flex justify-between text-sm">
-                        <span>Total Preforms:</span>
-                        <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Available: {getPreformAvailable(blowingBatch.preform_type).toLocaleString()} pcs
-                      </p>
-                    </div>
-                  )}
+        </div>
+      </div>
+      
+      {/* Caps Management - Good + Waste = Used */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-yellow-600 font-semibold">CAPS MANAGEMENT</Label>
+          <div className="p-3 bg-yellow-50 rounded-lg">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Caps Taken (Cartons)</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_cartons_taken || 0}
+                    onChange={e => {
+                      const cartons = parseInt(e.target.value) || 0;
+                      const pieces = cartons * CAPS_PER_CARTON;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        caps_cartons_taken: cartons,
+                        caps_pieces_taken: pieces,
+                        caps_remaining_cartons: getCapsAvailable() - cartons
+                      });
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">9,000 pieces per carton</p>
+                </div>
+                <div>
+                  <Label>Total Pieces Taken</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_pieces_taken || 0}
+                    readOnly 
+                    className="bg-gray-100"
+                  />
                 </div>
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-green-600 font-semibold">BLOWING & FILLING</Label>
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div><Label>Bottles Produced</Label><Input type="number" value={blowingBatch.bottles_produced} onChange={e => setBlowingBatch({...blowingBatch, bottles_produced: parseInt(e.target.value) || 0})} /></div>
-                    
-                    <div><Label>Bottles Filled</Label><Input type="number" value={blowingBatch.bottles_filled} onChange={e => setBlowingBatch({...blowingBatch, bottles_filled: parseInt(e.target.value) || 0})} /></div>
-                 <div><Label>Damaged</Label><Input type="number" value={blowingBatch.bottles_damaged} onChange={e => setBlowingBatch({...blowingBatch, bottles_damaged: parseInt(e.target.value) || 0})} /></div>
-                  </div>
-                  <div className="mt-2 text-sm"><span className="text-muted-foreground">Yield: </span><span className="font-semibold">{blowingYield}%</span></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Good Caps</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_good || 0}
+                    onChange={e => {
+                      const good = parseInt(e.target.value) || 0;
+                      const waste = blowingBatch.caps_damaged || 0;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        caps_good: good,
+                        caps_used: good + waste,
+                        caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)
+                      });
+                    }}
+                  />
                 </div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-yellow-600 font-semibold">CAPS MANAGEMENT</Label>
-                <div className="p-3 bg-yellow-50 rounded-lg">
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Caps Taken (Cartons)</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_cartons_taken || 0}
-                          onChange={e => {
-                            const cartons = parseInt(e.target.value) || 0;
-                            const pieces = cartons * CAPS_PER_CARTON;
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              caps_cartons_taken: cartons,
-                              caps_pieces_taken: pieces,
-                              caps_remaining_cartons: getCapsAvailable() - cartons
-                            });
-                          }}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">9,000 pieces per carton</p>
-                      </div>
-                      <div>
-                        <Label>Total Pieces Taken</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_pieces_taken || 0}
-                          readOnly 
-                          className="bg-gray-100"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Caps Used</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_used || 0}
-                          onChange={e => {
-                            const used = parseInt(e.target.value) || 0;
-                            const good = used - (blowingBatch.caps_damaged || 0);
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              caps_used: used,
-                              caps_good: Math.max(0, good),
-                              caps_left: (blowingBatch.caps_pieces_taken || 0) - used
-                            });
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Caps Damaged</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_damaged || 0}
-                          onChange={e => {
-                            const damaged = parseInt(e.target.value) || 0;
-                            const good = (blowingBatch.caps_used || 0) - damaged;
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              caps_damaged: damaged,
-                              caps_good: Math.max(0, good)
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Good Capping</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_good || 0}
-                          readOnly 
-                          className="bg-gray-100 font-semibold text-green-600"
-                        />
-                        <p className="text-xs text-muted-foreground">Caps Used - Damaged</p>
-                      </div>
-                      <div>
-                        <Label>Caps Left</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.caps_left || 0}
-                          readOnly 
-                          className="bg-gray-100"
-                        />
-                        <p className="text-xs text-muted-foreground">From this carton</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2 p-2 bg-yellow-100 rounded">
-                      <div className="flex justify-between text-sm">
-                        <span>Available in Inventory:</span>
-                        <span className="font-bold">{getCapsAvailable()} cartons</span>
-                      </div>
-                      <div className="flex justify-between text-sm mt-1">
-                        <span>Remaining after taking:</span>
-                        <span className="font-semibold">{blowingBatch.caps_remaining_cartons || getCapsAvailable()} cartons</span>
-                      </div>
-                    </div>
-                  </div>
+                <div>
+                  <Label>Waste Caps</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_damaged || 0}
+                    onChange={e => {
+                      const waste = parseInt(e.target.value) || 0;
+                      const good = blowingBatch.caps_good || 0;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        caps_damaged: waste,
+                        caps_used: good + waste,
+                        caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)
+                      });
+                    }}
+                  />
                 </div>
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-purple-600 font-semibold">LABELS MANAGEMENT</Label>
-                <div className="p-3 bg-purple-50 rounded-lg">
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Total Pieces Taken</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.labels_taken || 0}
-                          onChange={e => {
-                            const taken = parseInt(e.target.value) || 0;
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              labels_taken: taken
-                            });
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Labels Used</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.labels_used || 0}
-                          onChange={e => {
-                            const used = parseInt(e.target.value) || 0;
-                            const good = used - (blowingBatch.labels_damaged || 0);
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              labels_used: used,
-                              labels_good: Math.max(0, good),
-                              labels_left: (blowingBatch.labels_taken || 0) - used
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Labels Damaged</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.labels_damaged || 0}
-                          onChange={e => {
-                            const damaged = parseInt(e.target.value) || 0;
-                            const good = (blowingBatch.labels_used || 0) - damaged;
-                            setBlowingBatch({
-                              ...blowingBatch,
-                              labels_damaged: damaged,
-                              labels_good: Math.max(0, good)
-                            });
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Good Labels</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.labels_good || 0}
-                          readOnly 
-                          className="bg-gray-100 font-semibold text-green-600"
-                        />
-                        <p className="text-xs text-muted-foreground">Labels Used - Damaged</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label>Labels Left</Label>
-                        <Input 
-                          type="number" 
-                          value={blowingBatch.labels_left || 0}
-                          readOnly 
-                          className="bg-gray-100"
-                        />
-                        <p className="text-xs text-muted-foreground">From pieces taken</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2 p-2 bg-purple-100 rounded">
-                      <div className="flex justify-between text-sm">
-                        <span>Available in Inventory:</span>
-                        <span className="font-bold">{getLabelsAvailable().toLocaleString()} pieces</span>
-                      </div>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Caps Used (Auto)</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_used || 0}
+                    readOnly 
+                    className="bg-gray-100 font-semibold"
+                  />
+                  <p className="text-xs text-muted-foreground">Good + Waste</p>
                 </div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-indigo-600 font-semibold">GUM/GLUE (1 box = 1 piece)</Label>
-                <div className="p-3 bg-indigo-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Boxes Taken</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.gum_boxes_taken || 0}
-                        onChange={e => {
-                          const boxes = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            gum_boxes_taken: boxes
-                          });
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <Label>Gum Used</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.gum_used || 0}
-                        onChange={e => {
-                          const used = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            gum_used: used,
-                            gum_left: (blowingBatch.gum_boxes_taken || 0) - used
-                          });
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <Label>Gum Left</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.gum_left || 0}
-                        readOnly 
-                        className="bg-gray-100"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-2 p-2 bg-indigo-100 rounded">
-                    <div className="flex justify-between text-sm">
-                      <span>Available in Inventory:</span>
-                      <span className="font-bold">{getGumAvailable()} boxes</span>
-                    </div>
-                  </div>
+                <div>
+                  <Label>Caps Left</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.caps_left || 0}
+                    readOnly 
+                    className="bg-gray-100"
+                  />
                 </div>
               </div>
               
-              <div className="space-y-2">
-                <Label className="text-pink-600 font-semibold">SHRINK WRAP</Label>
-                <div className="p-3 bg-pink-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Type</Label>
-                      <Select value={blowingBatch.shrink_wrap_type} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, shrink_wrap_type: val})}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="60">60kg Roll</SelectItem>
-                          <SelectItem value="70">70kg Roll</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Quantity (KG)</Label>
-                      <Input type="number" step="0.1" value={blowingBatch.shrink_wrap_used_kg} onChange={e => setBlowingBatch({...blowingBatch, shrink_wrap_used_kg: parseFloat(e.target.value) || 0})} />
-                    </div>
-                  </div>
+              <div className="mt-2 p-2 bg-yellow-100 rounded">
+                <div className="flex justify-between text-sm">
+                  <span>Available in Inventory:</span>
+                  <span className="font-bold">{getCapsAvailable()} cartons</span>
+                </div>
+                <div className="flex justify-between text-sm mt-1">
+                  <span>Remaining after taking:</span>
+                  <span className="font-semibold">{blowingBatch.caps_remaining_cartons || getCapsAvailable()} cartons</span>
                 </div>
               </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-orange-600 font-semibold">FINISHED GOODS</Label>
-                <div className="p-3 bg-orange-50 rounded-lg">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label>Product Type</Label>
-                      <Select value={blowingBatch.finished_product} onValueChange={(val: any) => {
-                        setBlowingBatch({...blowingBatch, finished_product: val});
-                      }}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="75cl">75cl (12-pack)</SelectItem>
-                          <SelectItem value="50cl">50cl (12-pack)</SelectItem>
-                          <SelectItem value="33cl">33cl (20-pack)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Pallets (100 packs)</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.finished_pallets} 
-                        onChange={e => {
-                          const pallets = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch, 
-                            finished_pallets: pallets
-                          });
-                        }} 
-                      />
-                      <p className="text-xs text-muted-foreground">1 pallet = 100 packs</p>
-                    </div>
-                    <div>
-                      <Label>Packs (12/20 pcs)</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.finished_packs} 
-                        onChange={e => {
-                          const packs = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch, 
-                            finished_packs: packs
-                          });
-                        }} 
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <Label>Pieces</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.finished_pieces} 
-                        onChange={e => {
-                          const pieces = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch, 
-                            finished_pieces: pieces
-                          });
-                        }} 
-                      />
-                    </div>
-                    <div>
-                      <Label>Damaged Pieces</Label>
-                      <Input type="number" value={blowingBatch.damaged_pieces} onChange={e => setBlowingBatch({...blowingBatch, damaged_pieces: parseInt(e.target.value) || 0})} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label className="text-teal-600 font-semibold">PRODUCTION SUMMARY</Label>
-                <div className="p-3 bg-teal-50 rounded-lg">
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between"><span>Preforms Used:</span><span className="font-semibold">{blowingBatch.preforms_taken.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Bottles Produced:</span><span className="font-semibold">{blowingBatch.bottles_produced.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold">{blowingBatch.bottles_filled.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Caps Used:</span><span className="font-semibold">{blowingBatch.caps_used?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between"><span>Good Capping:</span><span className="font-semibold text-green-600">{blowingBatch.caps_good?.toLocaleString()} pcs</span></div>
-                    <div className="flex justify-between border-t pt-2 mt-2">
-                      <span>Total Finished:</span>
-                      <span className="font-bold text-green-600">
-                        {((blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs).toLocaleString()} packs
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total Pieces:</span>
-                      <span className="font-bold text-green-600">{calculateTotalFinishedPieces().toLocaleString()} pcs</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>REMARKS</Label>
-              <Textarea placeholder="Any issues or notes about this production run..." value={blowingBatch.notes} onChange={e => setBlowingBatch({...blowingBatch, notes: e.target.value})} />
             </div>
           </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsBlowingModalOpen(false); }}>Cancel</Button>
-            <Button onClick={processBlowingStage} disabled={isSubmitting} className="bg-green-600">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
-              Complete Production
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+        
+        {/* Labels Management - Good + Waste = Used */}
+        <div className="space-y-2">
+          <Label className="text-purple-600 font-semibold">LABELS MANAGEMENT</Label>
+          <div className="p-3 bg-purple-50 rounded-lg">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Labels Taken (Pieces)</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.labels_taken || 0}
+                    onChange={e => {
+                      const taken = parseInt(e.target.value) || 0;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        labels_taken: taken
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Good Labels</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.labels_good || 0}
+                    onChange={e => {
+                      const good = parseInt(e.target.value) || 0;
+                      const waste = blowingBatch.labels_damaged || 0;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        labels_good: good,
+                        labels_used: good + waste,
+                        labels_left: (blowingBatch.labels_taken || 0) - (good + waste)
+                      });
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label>Waste Labels</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.labels_damaged || 0}
+                    onChange={e => {
+                      const waste = parseInt(e.target.value) || 0;
+                      const good = blowingBatch.labels_good || 0;
+                      setBlowingBatch({
+                        ...blowingBatch,
+                        labels_damaged: waste,
+                        labels_used: good + waste,
+                        labels_left: (blowingBatch.labels_taken || 0) - (good + waste)
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Labels Used (Auto)</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.labels_used || 0}
+                    readOnly 
+                    className="bg-gray-100 font-semibold"
+                  />
+                  <p className="text-xs text-muted-foreground">Good + Waste</p>
+                </div>
+                <div>
+                  <Label>Labels Left</Label>
+                  <Input 
+                    type="number" 
+                    value={blowingBatch.labels_left || 0}
+                    readOnly 
+                    className="bg-gray-100"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-2 p-2 bg-purple-100 rounded">
+                <div className="flex justify-between text-sm">
+                  <span>Available in Inventory:</span>
+                  <span className="font-bold">{getLabelsAvailable().toLocaleString()} pieces</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Gum and Shrink Wrap - Good + Waste = Used */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-indigo-600 font-semibold">GUM/GLUE (1 box = 1 piece)</Label>
+          <div className="p-3 bg-indigo-50 rounded-lg">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Boxes Taken</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.gum_boxes_taken || 0}
+                  onChange={e => {
+                    const boxes = parseInt(e.target.value) || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      gum_boxes_taken: boxes
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <Label>Good Gum</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.gum_good || 0}
+                  onChange={e => {
+                    const good = parseInt(e.target.value) || 0;
+                    const waste = blowingBatch.gum_damaged || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      gum_good: good,
+                      gum_used: good + waste,
+                      gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)
+                    });
+                  }}
+                />
+              </div>
+              <div>
+                <Label>Waste Gum</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.gum_damaged || 0}
+                  onChange={e => {
+                    const waste = parseInt(e.target.value) || 0;
+                    const good = blowingBatch.gum_good || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      gum_damaged: waste,
+                      gum_used: good + waste,
+                      gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <Label>Gum Used (Auto)</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.gum_used || 0}
+                  readOnly 
+                  className="bg-gray-100 font-semibold"
+                />
+                <p className="text-xs text-muted-foreground">Good + Waste</p>
+              </div>
+              <div>
+                <Label>Gum Left</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.gum_left || 0}
+                  readOnly 
+                  className="bg-gray-100"
+                />
+              </div>
+            </div>
+            <div className="mt-2 p-2 bg-indigo-100 rounded">
+              <div className="flex justify-between text-sm">
+                <span>Available in Inventory:</span>
+                <span className="font-bold">{getGumAvailable()} boxes</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Shrink Wrap - Good + Waste = Used */}
+        <div className="space-y-2">
+          <Label className="text-pink-600 font-semibold">SHRINK WRAP</Label>
+          <div className="p-3 bg-pink-50 rounded-lg">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Type</Label>
+                <Select value={blowingBatch.shrink_wrap_type} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, shrink_wrap_type: val})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="60">60kg Roll</SelectItem>
+                    <SelectItem value="70">70kg Roll</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Shrink Wrap Taken (KG)</Label>
+                <Input 
+                  type="number" 
+                  step="0.1" 
+                  value={blowingBatch.shrink_wrap_taken || 0}
+                  onChange={e => {
+                    const taken = parseFloat(e.target.value) || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      shrink_wrap_taken: taken
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <Label>Good Shrink Wrap (KG)</Label>
+                <Input 
+                  type="number" 
+                  step="0.1" 
+                  value={blowingBatch.shrink_wrap_good || 0}
+                  onChange={e => {
+                    const good = parseFloat(e.target.value) || 0;
+                    const waste = blowingBatch.shrink_wrap_damaged || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      shrink_wrap_good: good,
+                      shrink_wrap_used_kg: good + waste,
+                      shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)
+                    });
+                  }}
+                />
+              </div>
+              <div>
+                <Label>Waste Shrink Wrap (KG)</Label>
+                <Input 
+                  type="number" 
+                  step="0.1" 
+                  value={blowingBatch.shrink_wrap_damaged || 0}
+                  onChange={e => {
+                    const waste = parseFloat(e.target.value) || 0;
+                    const good = blowingBatch.shrink_wrap_good || 0;
+                    setBlowingBatch({
+                      ...blowingBatch,
+                      shrink_wrap_damaged: waste,
+                      shrink_wrap_used_kg: good + waste,
+                      shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <Label>Shrink Wrap Used (Auto)</Label>
+                <Input 
+                  type="number" 
+                  step="0.1" 
+                  value={blowingBatch.shrink_wrap_used_kg || 0}
+                  readOnly 
+                  className="bg-gray-100 font-semibold"
+                />
+                <p className="text-xs text-muted-foreground">Good + Waste</p>
+              </div>
+              <div>
+                <Label>Shrink Wrap Left</Label>
+                <Input 
+                  type="number" 
+                  step="0.1" 
+                  value={blowingBatch.shrink_wrap_left || 0}
+                  readOnly 
+                  className="bg-gray-100"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Finished Goods */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-orange-600 font-semibold">FINISHED GOODS</Label>
+          <div className="p-3 bg-orange-50 rounded-lg">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label>Product Type</Label>
+                <Select value={blowingBatch.finished_product} onValueChange={(val: any) => {
+                  setBlowingBatch({...blowingBatch, finished_product: val});
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="75cl">75cl (12-pack)</SelectItem>
+                    <SelectItem value="50cl">50cl (12-pack)</SelectItem>
+                    <SelectItem value="33cl">33cl (20-pack)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Pallets (100 packs)</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.finished_pallets} 
+                  onChange={e => {
+                    const pallets = parseInt(e.target.value) || 0;
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      finished_pallets: pallets
+                    });
+                  }} 
+                />
+                <p className="text-xs text-muted-foreground">1 pallet = 100 packs</p>
+              </div>
+              <div>
+                <Label>Packs (12/20 pcs)</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.finished_packs} 
+                  onChange={e => {
+                    const packs = parseInt(e.target.value) || 0;
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      finished_packs: packs
+                    });
+                  }} 
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <Label>Pieces</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.finished_pieces} 
+                  onChange={e => {
+                    const pieces = parseInt(e.target.value) || 0;
+                    setBlowingBatch({
+                      ...blowingBatch, 
+                      finished_pieces: pieces
+                    });
+                  }} 
+                />
+              </div>
+              <div>
+                <Label>Damaged Pieces</Label>
+                <Input 
+                  type="number" 
+                  value={blowingBatch.damaged_pieces} 
+                  onChange={e => setBlowingBatch({...blowingBatch, damaged_pieces: parseInt(e.target.value) || 0})} 
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Production Summary */}
+        <div className="space-y-2">
+          <Label className="text-teal-600 font-semibold">PRODUCTION SUMMARY</Label>
+          <div className="p-3 bg-teal-50 rounded-lg">
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between"><span>Preforms Taken:</span><span className="font-semibold">{blowingBatch.preforms_taken.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Bottles Produced:</span><span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Good Bottles:</span><span className="font-semibold text-green-600">{blowingBatch.bottles_good?.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold">{blowingBatch.bottles_filled.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Caps Used:</span><span className="font-semibold">{blowingBatch.caps_used?.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Good Caps:</span><span className="font-semibold text-green-600">{blowingBatch.caps_good?.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Labels Used:</span><span className="font-semibold">{blowingBatch.labels_used?.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between"><span>Good Labels:</span><span className="font-semibold text-green-600">{blowingBatch.labels_good?.toLocaleString()} pcs</span></div>
+              <div className="flex justify-between border-t pt-2 mt-2">
+                <span>Total Finished:</span>
+                <span className="font-bold text-green-600">
+                  {((blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs).toLocaleString()} packs
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Pieces:</span>
+                <span className="font-bold text-green-600">
+                  {((blowingBatch.finished_pallets * PALLET_PACKS * getPacksPerProduct(blowingBatch.finished_product)) + 
+                    (blowingBatch.finished_packs * getPacksPerProduct(blowingBatch.finished_product)) + 
+                    blowingBatch.finished_pieces).toLocaleString()} pcs
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Waste:</span>
+                <span className="font-bold text-red-600">
+                  {(blowingBatch.bottles_damaged || 0) + 
+                    (blowingBatch.caps_damaged || 0) + 
+                    (blowingBatch.labels_damaged || 0) + 
+                    (blowingBatch.gum_damaged || 0) + 
+                    (blowingBatch.shrink_wrap_damaged || 0) + 
+                    (blowingBatch.damaged_pieces || 0)} units
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="space-y-2">
+        <Label>REMARKS</Label>
+        <Textarea 
+          placeholder="Any issues or notes about this production run..." 
+          value={blowingBatch.notes} 
+          onChange={e => setBlowingBatch({...blowingBatch, notes: e.target.value})} 
+        />
+      </div>
+    </div>
+    
+    <DialogFooter>
+      <Button variant="outline" onClick={() => { setIsBlowingModalOpen(false); }}>Cancel</Button>
+      <Button onClick={processBlowingStage} disabled={isSubmitting} className="bg-green-600">
+        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+        Complete Production
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </div>
   );
 };
