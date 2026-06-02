@@ -33,6 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";  // ADD THIS IMPORT
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -51,6 +59,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
+
+
 
 // API Base URL
 const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
