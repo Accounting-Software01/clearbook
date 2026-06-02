@@ -53,7 +53,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 // API Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hariindustries.net/api/clearbook/';
+const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
 
 interface RawMaterial {
   id: number;
@@ -134,7 +134,7 @@ interface BlowingBatch {
 }
 
 const ProductionModule = () => {
-  const { user, getToken } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -157,9 +157,6 @@ const ProductionModule = () => {
   const [selectedViewBatch, setSelectedViewBatch] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [viewType, setViewType] = useState<'injection' | 'blowing'>('injection');
-  
-  // Edit states
-  const [editingBatch, setEditingBatch] = useState<any>(null);
   
   // Constants
   const CAPS_PER_CARTON = 9000;
@@ -237,28 +234,41 @@ const ProductionModule = () => {
     return `BP-${date}-${random}`;
   };
   
-  // API calls with proper error handling
+  // API calls - NO AUTHENTICATION
   const apiCall = async (endpoint: string, method: string = 'GET', data?: any) => {
     try {
-      // Safely get token - check if getToken exists and is a function
-      let token = '';
-      if (getToken && typeof getToken === 'function') {
-        token = await getToken();
-      } else {
-        console.warn('getToken is not available or not a function');
+      let url = `${API_BASE_URL}/production.php?action=${endpoint}`;
+      
+      // Add company_id to URL for GET requests
+      if (method === 'GET') {
+        url = `${url}&company_id=${user?.company_id}`;
+        if (data?.batch_id) {
+          url = `${url}&batch_id=${data.batch_id}`;
+        }
+        if (data?.type) {
+          url = `${url}&type=${data.type}`;
+        }
       }
       
-      const url = `${API_BASE_URL}/production.php?action=${endpoint}`;
       console.log(`API Call: ${method} ${url}`);
       
-      const response = await fetch(url, {
+      const requestOptions: RequestInit = {
         method,
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` }),
         },
-        body: data ? JSON.stringify(data) : undefined,
-      });
+      };
+      
+      // Add body for POST requests with company_id and user_id
+      if (method === 'POST' && data) {
+        requestOptions.body = JSON.stringify({
+          ...data,
+          company_id: user?.company_id,
+          user_id: user?.uid
+        });
+      }
+      
+      const response = await fetch(url, requestOptions);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -269,21 +279,25 @@ const ProductionModule = () => {
       return result;
     } catch (error: any) {
       console.error(`API Error for ${endpoint}:`, error);
-      // Return a failure response instead of throwing
       return { success: false, message: error.message, data: [] };
     }
   };
   
   // Fetch all data
   const fetchData = useCallback(async () => {
+    if (!user?.company_id) {
+      console.log('No company_id available, skipping fetch');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const [rawRes, productsRes, obsoleteRes, injectionRes, blowingRes] = await Promise.all([
-        apiCall('inventory&type=raw'),
-        apiCall('inventory&type=products'),
-        apiCall('inventory&type=obsolete'),
-        apiCall('batches&type=injection'),
-        apiCall('batches&type=blowing'),
+        apiCall('inventory&type=raw', 'GET', { type: 'raw' }),
+        apiCall('inventory&type=products', 'GET', { type: 'products' }),
+        apiCall('inventory&type=obsolete', 'GET', { type: 'obsolete' }),
+        apiCall('batches&type=injection', 'GET', { type: 'injection' }),
+        apiCall('batches&type=blowing', 'GET', { type: 'blowing' }),
       ]);
       
       if (rawRes.success && rawRes.data) setRawMaterials(rawRes.data);
@@ -292,20 +306,19 @@ const ProductionModule = () => {
       if (injectionRes.success && injectionRes.data) setInjectionBatches(injectionRes.data);
       if (blowingRes.success && blowingRes.data) setBlowingBatches(blowingRes.data);
       
-      if (!rawRes.success) {
-        toast({ title: "Warning", description: rawRes.message || "Failed to fetch raw materials", variant: "default" });
-      }
     } catch (error: any) {
       console.error('Fetch data error:', error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [user?.company_id, user?.uid]);
   
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (user?.company_id) {
+      fetchData();
+    }
+  }, [fetchData, user?.company_id]);
   
   // Injection calculations
   const injectionTotalInputKg = injectionBatch.resin_used_kg + injectionBatch.masterbatch_used_kg;
@@ -337,22 +350,22 @@ const ProductionModule = () => {
   
   // Auto-generate batch numbers
   useEffect(() => {
-    if (!editingBatch && injectionBatch.production_date && injectionBatch.status === 'draft') {
+    if (injectionBatch.production_date && injectionBatch.status === 'draft' && !injectionBatch.batch_number) {
       setInjectionBatch(prev => ({
         ...prev,
         batch_number: generateInjectionBatchNumber(prev.production_date)
       }));
     }
-  }, [injectionBatch.production_date, editingBatch]);
+  }, [injectionBatch.production_date, injectionBatch.status]);
   
   useEffect(() => {
-    if (!editingBatch && blowingBatch.production_date && blowingBatch.status === 'draft') {
+    if (blowingBatch.production_date && blowingBatch.status === 'draft' && !blowingBatch.batch_number) {
       setBlowingBatch(prev => ({
         ...prev,
         batch_number: generateBlowingBatchNumber(prev.production_date)
       }));
     }
-  }, [blowingBatch.production_date, editingBatch]);
+  }, [blowingBatch.production_date, blowingBatch.status]);
   
   useEffect(() => {
     calculateGoodPreforms();
@@ -404,7 +417,7 @@ const ProductionModule = () => {
   const viewBatchDetails = async (batchId: number, type: 'injection' | 'blowing') => {
     setIsLoading(true);
     try {
-      const response = await apiCall(`batches&type=${type}&batch_id=${batchId}`);
+      const response = await apiCall(`batches&type=${type}&batch_id=${batchId}`, 'GET', { batch_id: batchId, type });
       if (response.success && response.data && response.data.length > 0) {
         setSelectedViewBatch(response.data[0]);
         setViewType(type);
@@ -422,7 +435,6 @@ const ProductionModule = () => {
   // Start new batches
   const startNewInjectionBatch = () => {
     const selectedDate = new Date().toISOString().split('T')[0];
-    setEditingBatch(null);
     setInjectionBatch({
       batch_number: generateInjectionBatchNumber(selectedDate),
       production_date: selectedDate,
@@ -444,7 +456,6 @@ const ProductionModule = () => {
   
   const startNewBlowingBatch = () => {
     const selectedDate = new Date().toISOString().split('T')[0];
-    setEditingBatch(null);
     setBlowingBatch({
       batch_number: generateBlowingBatchNumber(selectedDate),
       production_date: selectedDate,
@@ -1149,7 +1160,7 @@ const ProductionModule = () => {
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsInjectionModalOpen(false); setEditingBatch(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setIsInjectionModalOpen(false); }}>Cancel</Button>
             <Button onClick={completeInjectionProduction} disabled={isSubmitting} className="bg-green-600">
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
               Complete Production & Add to Inventory
@@ -1158,9 +1169,8 @@ const ProductionModule = () => {
         </DialogContent>
       </Dialog>
       
-      {/* Blowing Modal - Keep the same structure */}
+      {/* Blowing Modal */}
       <Dialog open={isBlowingModalOpen} onOpenChange={setIsBlowingModalOpen}>
-        {/* Same blowing modal content - kept for brevity */}
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Blowing & Packaging Production</DialogTitle>
@@ -1201,9 +1211,7 @@ const ProductionModule = () => {
             </div>
           </div>
           
-          {/* The rest of the blowing modal remains the same */}
           <div className="space-y-4">
-            {/* Preforms selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-blue-600 font-semibold">PREFORMS SELECTION</Label>
@@ -1238,8 +1246,22 @@ const ProductionModule = () => {
                           });
                         }}
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {blowingBatch.preform_type === '18g' ? '1 bag = 30kg ≈ 1,667 pieces' : '1 bag = 25kg ≈ 1,786 pieces'}
+                      </p>
                     </div>
                   </div>
+                  {blowingBatch.preforms_taken > 0 && (
+                    <div className="mt-3 p-2 bg-green-100 rounded">
+                      <div className="flex justify-between text-sm">
+                        <span>Total Preforms:</span>
+                        <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Available: {getPreformAvailable(blowingBatch.preform_type).toLocaleString()} pcs
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -1251,149 +1273,210 @@ const ProductionModule = () => {
                     <div><Label>Damaged</Label><Input type="number" value={blowingBatch.bottles_damaged} onChange={e => setBlowingBatch({...blowingBatch, bottles_damaged: parseInt(e.target.value) || 0})} /></div>
                     <div><Label>Bottles Filled</Label><Input type="number" value={blowingBatch.bottles_filled} onChange={e => setBlowingBatch({...blowingBatch, bottles_filled: parseInt(e.target.value) || 0})} /></div>
                   </div>
+                  <div className="mt-2 text-sm"><span className="text-muted-foreground">Yield: </span><span className="font-semibold">{blowingYield}%</span></div>
                 </div>
               </div>
             </div>
             
-            {/* Caps Management */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-yellow-600 font-semibold">CAPS MANAGEMENT</Label>
                 <div className="p-3 bg-yellow-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Caps Taken (Cartons)</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.caps_cartons_taken || 0}
-                        onChange={e => {
-                          const cartons = parseInt(e.target.value) || 0;
-                          const pieces = cartons * CAPS_PER_CARTON;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            caps_cartons_taken: cartons,
-                            caps_pieces_taken: pieces,
-                            caps_remaining_cartons: getCapsAvailable() - cartons
-                          });
-                        }}
-                      />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Caps Taken (Cartons)</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_cartons_taken || 0}
+                          onChange={e => {
+                            const cartons = parseInt(e.target.value) || 0;
+                            const pieces = cartons * CAPS_PER_CARTON;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              caps_cartons_taken: cartons,
+                              caps_pieces_taken: pieces,
+                              caps_remaining_cartons: getCapsAvailable() - cartons
+                            });
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">9,000 pieces per carton</p>
+                      </div>
+                      <div>
+                        <Label>Total Pieces Taken</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_pieces_taken || 0}
+                          readOnly 
+                          className="bg-gray-100"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label>Caps Used</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.caps_used || 0}
-                        onChange={e => {
-                          const used = parseInt(e.target.value) || 0;
-                          const good = used - (blowingBatch.caps_damaged || 0);
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            caps_used: used,
-                            caps_good: Math.max(0, good),
-                            caps_left: (blowingBatch.caps_pieces_taken || 0) - used
-                          });
-                        }}
-                      />
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Caps Used</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_used || 0}
+                          onChange={e => {
+                            const used = parseInt(e.target.value) || 0;
+                            const good = used - (blowingBatch.caps_damaged || 0);
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              caps_used: used,
+                              caps_good: Math.max(0, good),
+                              caps_left: (blowingBatch.caps_pieces_taken || 0) - used
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Caps Damaged</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_damaged || 0}
+                          onChange={e => {
+                            const damaged = parseInt(e.target.value) || 0;
+                            const good = (blowingBatch.caps_used || 0) - damaged;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              caps_damaged: damaged,
+                              caps_good: Math.max(0, good)
+                            });
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <Label>Caps Damaged</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.caps_damaged || 0}
-                        onChange={e => {
-                          const damaged = parseInt(e.target.value) || 0;
-                          const good = (blowingBatch.caps_used || 0) - damaged;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            caps_damaged: damaged,
-                            caps_good: Math.max(0, good)
-                          });
-                        }}
-                      />
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Good Capping</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_good || 0}
+                          readOnly 
+                          className="bg-gray-100 font-semibold text-green-600"
+                        />
+                        <p className="text-xs text-muted-foreground">Caps Used - Damaged</p>
+                      </div>
+                      <div>
+                        <Label>Caps Left</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.caps_left || 0}
+                          readOnly 
+                          className="bg-gray-100"
+                        />
+                        <p className="text-xs text-muted-foreground">From this carton</p>
+                      </div>
                     </div>
-                    <div>
-                      <Label>Good Capping</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.caps_good || 0}
-                        readOnly 
-                        className="bg-gray-100 font-semibold text-green-600"
-                      />
+                    
+                    <div className="mt-2 p-2 bg-yellow-100 rounded">
+                      <div className="flex justify-between text-sm">
+                        <span>Available in Inventory:</span>
+                        <span className="font-bold">{getCapsAvailable()} cartons</span>
+                      </div>
+                      <div className="flex justify-between text-sm mt-1">
+                        <span>Remaining after taking:</span>
+                        <span className="font-semibold">{blowingBatch.caps_remaining_cartons || getCapsAvailable()} cartons</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
               
               <div className="space-y-2">
-                <Label className="text-purple-600 font-semibold">LABELS</Label>
+                <Label className="text-purple-600 font-semibold">LABELS MANAGEMENT</Label>
                 <div className="p-3 bg-purple-50 rounded-lg">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Total Pieces Taken</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.labels_taken || 0}
-                        onChange={e => {
-                          const taken = parseInt(e.target.value) || 0;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            labels_taken: taken
-                          });
-                        }}
-                      />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Total Pieces Taken</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_taken || 0}
+                          onChange={e => {
+                            const taken = parseInt(e.target.value) || 0;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_taken: taken
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Labels Used</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_used || 0}
+                          onChange={e => {
+                            const used = parseInt(e.target.value) || 0;
+                            const good = used - (blowingBatch.labels_damaged || 0);
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_used: used,
+                              labels_good: Math.max(0, good),
+                              labels_left: (blowingBatch.labels_taken || 0) - used
+                            });
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label>Labels Used</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.labels_used || 0}
-                        onChange={e => {
-                          const used = parseInt(e.target.value) || 0;
-                          const good = used - (blowingBatch.labels_damaged || 0);
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            labels_used: used,
-                            labels_good: Math.max(0, good),
-                            labels_left: (blowingBatch.labels_taken || 0) - used
-                          });
-                        }}
-                      />
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Labels Damaged</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_damaged || 0}
+                          onChange={e => {
+                            const damaged = parseInt(e.target.value) || 0;
+                            const good = (blowingBatch.labels_used || 0) - damaged;
+                            setBlowingBatch({
+                              ...blowingBatch,
+                              labels_damaged: damaged,
+                              labels_good: Math.max(0, good)
+                            });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Good Labels</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_good || 0}
+                          readOnly 
+                          className="bg-gray-100 font-semibold text-green-600"
+                        />
+                        <p className="text-xs text-muted-foreground">Labels Used - Damaged</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <Label>Labels Damaged</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.labels_damaged || 0}
-                        onChange={e => {
-                          const damaged = parseInt(e.target.value) || 0;
-                          const good = (blowingBatch.labels_used || 0) - damaged;
-                          setBlowingBatch({
-                            ...blowingBatch,
-                            labels_damaged: damaged,
-                            labels_good: Math.max(0, good)
-                          });
-                        }}
-                      />
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label>Labels Left</Label>
+                        <Input 
+                          type="number" 
+                          value={blowingBatch.labels_left || 0}
+                          readOnly 
+                          className="bg-gray-100"
+                        />
+                        <p className="text-xs text-muted-foreground">From pieces taken</p>
+                      </div>
                     </div>
-                    <div>
-                      <Label>Good Labels</Label>
-                      <Input 
-                        type="number" 
-                        value={blowingBatch.labels_good || 0}
-                        readOnly 
-                        className="bg-gray-100 font-semibold text-green-600"
-                      />
+                    
+                    <div className="mt-2 p-2 bg-purple-100 rounded">
+                      <div className="flex justify-between text-sm">
+                        <span>Available in Inventory:</span>
+                        <span className="font-bold">{getLabelsAvailable().toLocaleString()} pieces</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* Gum and Shrink Wrap */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-indigo-600 font-semibold">GUM/GLUE (1 box = 1 piece)</Label>
@@ -1429,6 +1512,23 @@ const ProductionModule = () => {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                      <Label>Gum Left</Label>
+                      <Input 
+                        type="number" 
+                        value={blowingBatch.gum_left || 0}
+                        readOnly 
+                        className="bg-gray-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 p-2 bg-indigo-100 rounded">
+                    <div className="flex justify-between text-sm">
+                      <span>Available in Inventory:</span>
+                      <span className="font-bold">{getGumAvailable()} boxes</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               
@@ -1455,7 +1555,6 @@ const ProductionModule = () => {
               </div>
             </div>
             
-            {/* Finished Goods */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-orange-600 font-semibold">FINISHED GOODS</Label>
@@ -1487,9 +1586,10 @@ const ProductionModule = () => {
                           });
                         }} 
                       />
+                      <p className="text-xs text-muted-foreground">1 pallet = 100 packs</p>
                     </div>
                     <div>
-                      <Label>Packs</Label>
+                      <Label>Packs (12/20 pcs)</Label>
                       <Input 
                         type="number" 
                         value={blowingBatch.finished_packs} 
@@ -1533,11 +1633,17 @@ const ProductionModule = () => {
                     <div className="flex justify-between"><span>Preforms Used:</span><span className="font-semibold">{blowingBatch.preforms_taken.toLocaleString()} pcs</span></div>
                     <div className="flex justify-between"><span>Bottles Produced:</span><span className="font-semibold">{blowingBatch.bottles_produced.toLocaleString()} pcs</span></div>
                     <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold">{blowingBatch.bottles_filled.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Caps Used:</span><span className="font-semibold">{blowingBatch.caps_used?.toLocaleString()} pcs</span></div>
+                    <div className="flex justify-between"><span>Good Capping:</span><span className="font-semibold text-green-600">{blowingBatch.caps_good?.toLocaleString()} pcs</span></div>
                     <div className="flex justify-between border-t pt-2 mt-2">
                       <span>Total Finished:</span>
                       <span className="font-bold text-green-600">
                         {((blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs).toLocaleString()} packs
                       </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Pieces:</span>
+                      <span className="font-bold text-green-600">{calculateTotalFinishedPieces().toLocaleString()} pcs</span>
                     </div>
                   </div>
                 </div>
@@ -1551,7 +1657,7 @@ const ProductionModule = () => {
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsBlowingModalOpen(false); setEditingBatch(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setIsBlowingModalOpen(false); }}>Cancel</Button>
             <Button onClick={processBlowingStage} disabled={isSubmitting} className="bg-green-600">
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
               Complete Production
