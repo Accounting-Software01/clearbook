@@ -198,6 +198,7 @@ const ProductionModule = () => {
   
   // Injection form state
   const [injectionBatch, setInjectionBatch] = useState<InjectionBatch>({
+    
     batch_number: '',
     production_date: new Date().toISOString().split('T')[0],
     shift: 'Morning',
@@ -213,6 +214,7 @@ const ProductionModule = () => {
     bags_produced: 0,
     preform_weight_grams: 18
   });
+  const [badPreformsKgInput, setBadPreformsKgInput] = useState<string>('0');
   
   // Blowing form state
   const [blowingBatch, setBlowingBatch] = useState<BlowingBatch>({
@@ -350,7 +352,17 @@ const ProductionModule = () => {
       setInjectionBatch(prev => ({ ...prev, good_preforms_qty: Math.round(pieces) }));
     }
   };
-  
+  useEffect(() => {
+  const kgValue = (injectionBatch.bad_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
+  setBadPreformsKgInput(kgValue.toString());
+}, [injectionBatch.bad_preforms_qty, injectionBatch.preform_weight_grams]);
+
+// Also add this effect to reset the input when starting a new batch
+useEffect(() => {
+  if (injectionBatch.bad_preforms_qty === 0) {
+    setBadPreformsKgInput('0');
+  }
+}, [injectionBatch.bad_preforms_qty]);
   // Blowing calculations
   const calculateTotalFinishedPieces = () => {
     const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
@@ -944,31 +956,61 @@ const ProductionModule = () => {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-red-600 font-semibold">WASTE</Label>
-                <div className="p-3 bg-red-50 rounded-lg space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Bad Preforms (KG)</Label><Input type="number" min="0" step="0.001" placeholder="KG" value={injectionBadPreformsKg} onChange={e => {
-                      const kgValue = Math.max(0, parseFloat(e.target.value) || 0);
-                      const pieces = Math.round((kgValue * 1000) / injectionBatch.preform_weight_grams);
-                      setInjectionBatch({...injectionBatch, bad_preforms_qty: pieces});
-                    }} /></div>
-                    <div><Label>Purge Weight (KG)</Label><Input type="number" min="0" step="0.001" placeholder="KG" value={injectionBatch.purge_weight_kg} onChange={e => handleNumberChange(setInjectionBatch, 'purge_weight_kg', e.target.value)} /></div>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-purple-600 font-semibold">PRODUCTION SUMMARY</Label>
-                <div className="p-3 bg-purple-50 rounded-lg space-y-2">
-                  <div className="flex justify-between"><span>Total Input:</span><span className="font-semibold">{injectionTotalInputKg} KG</span></div>
-                  <div className="flex justify-between"><span>Total Output:</span><span className="font-semibold text-green-600">{injectionTotalOutputKg.toFixed(2)} KG</span></div>
-                  <div className="flex justify-between"><span>Efficiency:</span><span className="font-semibold">{injectionEfficiency}%</span></div>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2"><Label>REMARKS</Label><Textarea placeholder="Any issues or notes..." value={injectionBatch.notes} onChange={e => setInjectionBatch({...injectionBatch, notes: e.target.value})} /></div>
-          </div>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div className="space-y-2">
+    <Label className="text-red-600 font-semibold">WASTE</Label>
+    <div className="p-3 bg-red-50 rounded-lg space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>Bad Preforms (KG)</Label>
+          <Input 
+            type="number" 
+            min="0" 
+            step="0.001" 
+            placeholder="0.000" 
+            value={badPreformsKgInput}
+            onChange={e => {
+              const kgValue = parseFloat(e.target.value) || 0;
+              setBadPreformsKgInput(e.target.value);
+              const pieces = Math.round((kgValue * 1000) / injectionBatch.preform_weight_grams);
+              setInjectionBatch({...injectionBatch, bad_preforms_qty: pieces});
+            }} 
+          />
+        </div>
+        <div>
+          <Label>Purge Weight (KG)</Label>
+          <Input 
+            type="number" 
+            min="0" 
+            step="0.001" 
+            placeholder="0.000" 
+            value={injectionBatch.purge_weight_kg} 
+            onChange={e => {
+              const value = parseFloat(e.target.value) || 0;
+              setInjectionBatch({...injectionBatch, purge_weight_kg: value});
+            }} 
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+  <div className="space-y-2">
+    <Label className="text-purple-600 font-semibold">PRODUCTION SUMMARY</Label>
+    <div className="p-3 bg-purple-50 rounded-lg space-y-2">
+      <div className="flex justify-between"><span>Total Input:</span><span className="font-semibold">{injectionTotalInputKg} KG</span></div>
+      <div className="flex justify-between"><span>Total Output:</span><span className="font-semibold text-green-600">{injectionTotalOutputKg.toFixed(2)} KG</span></div>
+      <div className="flex justify-between"><span>Efficiency:</span><span className="font-semibold">{injectionEfficiency}%</span></div>
+    </div>
+  </div>
+</div>
+<div className="space-y-2">
+  <Label>REMARKS</Label>
+  <Textarea 
+    placeholder="Any issues or notes..." 
+    value={injectionBatch.notes} 
+    onChange={e => setInjectionBatch({...injectionBatch, notes: e.target.value})} 
+  />
+</div>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsInjectionModalOpen(false)}>Cancel</Button>
