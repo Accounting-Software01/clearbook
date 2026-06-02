@@ -40,7 +40,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";  // ADD THIS IMPORT
+} from "@/components/ui/table";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -59,8 +59,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
-
-
 
 // API Base URL
 const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
@@ -198,7 +196,6 @@ const ProductionModule = () => {
   
   // Injection form state
   const [injectionBatch, setInjectionBatch] = useState<InjectionBatch>({
-    
     batch_number: '',
     production_date: new Date().toISOString().split('T')[0],
     shift: 'Morning',
@@ -341,7 +338,6 @@ const ProductionModule = () => {
   // Injection calculations
   const injectionTotalInputKg = injectionBatch.resin_used_kg + injectionBatch.masterbatch_used_kg;
   const injectionTotalOutputKg = (injectionBatch.good_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
-  const injectionBadPreformsKg = (injectionBatch.bad_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
   const injectionEfficiency = injectionTotalInputKg > 0 ? ((injectionTotalOutputKg / injectionTotalInputKg) * 100).toFixed(1) : 0;
   
   const calculateGoodPreforms = () => {
@@ -352,17 +348,13 @@ const ProductionModule = () => {
       setInjectionBatch(prev => ({ ...prev, good_preforms_qty: Math.round(pieces) }));
     }
   };
+  
+  // Sync badPreformsKgInput with injectionBatch
   useEffect(() => {
-  const kgValue = (injectionBatch.bad_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
-  setBadPreformsKgInput(kgValue.toString());
-}, [injectionBatch.bad_preforms_qty, injectionBatch.preform_weight_grams]);
-
-// Also add this effect to reset the input when starting a new batch
-useEffect(() => {
-  if (injectionBatch.bad_preforms_qty === 0) {
-    setBadPreformsKgInput('0');
-  }
-}, [injectionBatch.bad_preforms_qty]);
+    const kgValue = (injectionBatch.bad_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
+    setBadPreformsKgInput(kgValue.toString());
+  }, [injectionBatch.bad_preforms_qty, injectionBatch.preform_weight_grams]);
+  
   // Blowing calculations
   const calculateTotalFinishedPieces = () => {
     const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
@@ -448,6 +440,7 @@ useEffect(() => {
       bags_produced: 0,
       preform_weight_grams: 18
     });
+    setBadPreformsKgInput('0');
     setIsInjectionModalOpen(true);
   };
   
@@ -956,61 +949,62 @@ useEffect(() => {
                 </div>
               </div>
             </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div className="space-y-2">
-    <Label className="text-red-600 font-semibold">WASTE</Label>
-    <div className="p-3 bg-red-50 rounded-lg space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>Bad Preforms (KG)</Label>
-          <Input 
-            type="number" 
-            min="0" 
-            step="0.001" 
-            placeholder="0.000" 
-            value={badPreformsKgInput}
-            onChange={e => {
-              const kgValue = parseFloat(e.target.value) || 0;
-              setBadPreformsKgInput(e.target.value);
-              const pieces = Math.round((kgValue * 1000) / injectionBatch.preform_weight_grams);
-              setInjectionBatch({...injectionBatch, bad_preforms_qty: pieces});
-            }} 
-          />
-        </div>
-        <div>
-          <Label>Purge Weight (KG)</Label>
-          <Input 
-            type="number" 
-            min="0" 
-            step="0.001" 
-            placeholder="0.000" 
-            value={injectionBatch.purge_weight_kg} 
-            onChange={e => {
-              const value = parseFloat(e.target.value) || 0;
-              setInjectionBatch({...injectionBatch, purge_weight_kg: value});
-            }} 
-          />
-        </div>
-      </div>
-    </div>
-  </div>
-  <div className="space-y-2">
-    <Label className="text-purple-600 font-semibold">PRODUCTION SUMMARY</Label>
-    <div className="p-3 bg-purple-50 rounded-lg space-y-2">
-      <div className="flex justify-between"><span>Total Input:</span><span className="font-semibold">{injectionTotalInputKg} KG</span></div>
-      <div className="flex justify-between"><span>Total Output:</span><span className="font-semibold text-green-600">{injectionTotalOutputKg.toFixed(2)} KG</span></div>
-      <div className="flex justify-between"><span>Efficiency:</span><span className="font-semibold">{injectionEfficiency}%</span></div>
-    </div>
-  </div>
-</div>
-<div className="space-y-2">
-  <Label>REMARKS</Label>
-  <Textarea 
-    placeholder="Any issues or notes..." 
-    value={injectionBatch.notes} 
-    onChange={e => setInjectionBatch({...injectionBatch, notes: e.target.value})} 
-  />
-</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-red-600 font-semibold">WASTE</Label>
+                <div className="p-3 bg-red-50 rounded-lg space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Bad Preforms (KG)</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.001" 
+                        placeholder="0.000" 
+                        value={badPreformsKgInput}
+                        onChange={e => {
+                          const kgValue = parseFloat(e.target.value) || 0;
+                          setBadPreformsKgInput(e.target.value);
+                          const pieces = Math.round((kgValue * 1000) / injectionBatch.preform_weight_grams);
+                          setInjectionBatch({...injectionBatch, bad_preforms_qty: pieces});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Purge Weight (KG)</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.001" 
+                        placeholder="0.000" 
+                        value={injectionBatch.purge_weight_kg} 
+                        onChange={e => {
+                          const value = parseFloat(e.target.value) || 0;
+                          setInjectionBatch({...injectionBatch, purge_weight_kg: value});
+                        }} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-purple-600 font-semibold">PRODUCTION SUMMARY</Label>
+                <div className="p-3 bg-purple-50 rounded-lg space-y-2">
+                  <div className="flex justify-between"><span>Total Input:</span><span className="font-semibold">{injectionTotalInputKg} KG</span></div>
+                  <div className="flex justify-between"><span>Total Output:</span><span className="font-semibold text-green-600">{injectionTotalOutputKg.toFixed(2)} KG</span></div>
+                  <div className="flex justify-between"><span>Efficiency:</span><span className="font-semibold">{injectionEfficiency}%</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>REMARKS</Label>
+              <Textarea 
+                placeholder="Any issues or notes..." 
+                value={injectionBatch.notes} 
+                onChange={e => setInjectionBatch({...injectionBatch, notes: e.target.value})} 
+              />
+            </div>
+          </div>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsInjectionModalOpen(false)}>Cancel</Button>
@@ -1047,23 +1041,35 @@ useEffect(() => {
                 <Label className="text-blue-600 font-semibold">PREFORMS SELECTION</Label>
                 <div className="p-3 bg-blue-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Preform Type</Label>
+                    <div>
+                      <Label>Preform Type</Label>
                       <Select value={blowingBatch.preform_type} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, preform_type: val, preform_bags: 0, preforms_taken: 0})}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="18g">18g Preforms (30kg/bag)</SelectItem><SelectItem value="14g">14g Preforms (25kg/bag)</SelectItem></SelectContent>
                       </Select>
                     </div>
-                    <div><Label>Bags taken</Label><Input type="number" min="0" value={blowingBatch.preform_bags || 0} onChange={e => {
-                      const bags = Math.max(0, parseInt(e.target.value) || 0);
-                      const kgPerBag = blowingBatch.preform_type === '18g' ? 30 : 25;
-                      const totalKg = bags * kgPerBag;
-                      const pieces = Math.round((totalKg * 1000) / (blowingBatch.preform_type === '18g' ? 18 : 14));
-                      setBlowingBatch({...blowingBatch, preform_bags: bags, preforms_taken: pieces});
-                    }} /></div>
+                    <div>
+                      <Label>Bags taken</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.preform_bags || 0} 
+                        onChange={e => {
+                          const bags = Math.max(0, parseInt(e.target.value) || 0);
+                          const kgPerBag = blowingBatch.preform_type === '18g' ? 30 : 25;
+                          const totalKg = bags * kgPerBag;
+                          const pieces = Math.round((totalKg * 1000) / (blowingBatch.preform_type === '18g' ? 18 : 14));
+                          setBlowingBatch({...blowingBatch, preform_bags: bags, preforms_taken: pieces});
+                        }} 
+                      />
+                    </div>
                   </div>
                   {blowingBatch.preforms_taken > 0 && (
                     <div className="mt-3 p-2 bg-green-100 rounded">
-                      <div className="flex justify-between text-sm"><span>Total Preforms Taken:</span><span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span></div>
+                      <div className="flex justify-between text-sm">
+                        <span>Total Preforms Taken:</span>
+                        <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span>
+                      </div>
                       <p className="text-xs text-muted-foreground">Available: {getPreformAvailable(blowingBatch.preform_type).toLocaleString()} pcs</p>
                     </div>
                   )}
@@ -1075,23 +1081,51 @@ useEffect(() => {
                 <Label className="text-green-600 font-semibold">BLOWING & FILLING</Label>
                 <div className="p-3 bg-green-50 rounded-lg">
                   <div className="grid grid-cols-3 gap-2">
-                    <div><Label>Good Bottles</Label><Input type="number" min="0" value={blowingBatch.bottles_good || 0} onChange={e => {
-                      const good = Math.max(0, parseInt(e.target.value) || 0);
-                      const waste = blowingBatch.bottles_damaged || 0;
-                      setBlowingBatch({...blowingBatch, bottles_good: good, bottles_produced: good + waste});
-                    }} /></div>
-                    
-                    <div><Label>Bottles Filled</Label><Input type="number" min="0" value={blowingBatch.bottles_filled} onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)} /></div>
-                    <div><Label>Waste Bottles</Label><Input type="number" min="0" value={blowingBatch.bottles_damaged || 0} onChange={e => {
-                      const waste = Math.max(0, parseInt(e.target.value) || 0);
-                      const good = blowingBatch.bottles_good || 0;
-                      setBlowingBatch({...blowingBatch, bottles_damaged: waste, bottles_produced: good + waste});
-                    }} /></div>
+                    <div>
+                      <Label>Good Bottles</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.bottles_good || 0} 
+                        onChange={e => {
+                          const good = Math.max(0, parseInt(e.target.value) || 0);
+                          const waste = blowingBatch.bottles_damaged || 0;
+                          setBlowingBatch({...blowingBatch, bottles_good: good, bottles_produced: good + waste});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Bottles Filled</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.bottles_filled} 
+                        onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Waste Bottles</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.bottles_damaged || 0} 
+                        onChange={e => {
+                          const waste = Math.max(0, parseInt(e.target.value) || 0);
+                          const good = blowingBatch.bottles_good || 0;
+                          setBlowingBatch({...blowingBatch, bottles_damaged: waste, bottles_produced: good + waste});
+                        }} 
+                      />
+                    </div>
                   </div>
                   <div className="mt-2 text-sm">
-                    <span>Total Produced: </span><span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} bottles</span>
+                    <span>Total Produced: </span>
+                    <span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} bottles</span>
                     <span className="ml-4">Yield: </span>
-                    <span className="font-semibold">{blowingBatch.preforms_taken > 0 ? ((((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)) / blowingBatch.preforms_taken) * 100).toFixed(1) : 0}%</span>
+                    <span className="font-semibold">
+                      {blowingBatch.preforms_taken > 0 
+                        ? ((((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)) / blowingBatch.preforms_taken) * 100).toFixed(1) 
+                        : 0}%
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1103,28 +1137,61 @@ useEffect(() => {
                 <Label className="text-yellow-600 font-semibold">CAPS MANAGEMENT</Label>
                 <div className="p-3 bg-yellow-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Caps Taken (Cartons)</Label><Input type="number" min="0" value={blowingBatch.caps_cartons_taken || 0} onChange={e => {
-                      const cartons = Math.max(0, parseInt(e.target.value) || 0);
-                      const pieces = cartons * CAPS_PER_CARTON;
-                      setBlowingBatch({...blowingBatch, caps_cartons_taken: cartons, caps_pieces_taken: pieces, caps_remaining_cartons: getCapsAvailable() - cartons});
-                    }} /></div>
-                    <div><Label>Total Pieces Taken</Label><Input value={blowingBatch.caps_pieces_taken || 0} readOnly className="bg-gray-100" /></div>
+                    <div>
+                      <Label>Caps Taken (Cartons)</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.caps_cartons_taken || 0} 
+                        onChange={e => {
+                          const cartons = Math.max(0, parseInt(e.target.value) || 0);
+                          const pieces = cartons * CAPS_PER_CARTON;
+                          setBlowingBatch({...blowingBatch, caps_cartons_taken: cartons, caps_pieces_taken: pieces, caps_remaining_cartons: getCapsAvailable() - cartons});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Total Pieces Taken</Label>
+                      <Input value={blowingBatch.caps_pieces_taken || 0} readOnly className="bg-gray-100" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Good Caps</Label><Input type="number" min="0" value={blowingBatch.caps_good || 0} onChange={e => {
-                      const good = Math.max(0, parseInt(e.target.value) || 0);
-                      const waste = blowingBatch.caps_damaged || 0;
-                      setBlowingBatch({...blowingBatch, caps_good: good, caps_used: good + waste, caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)});
-                    }} /></div>
-                    <div><Label>Waste Caps</Label><Input type="number" min="0" value={blowingBatch.caps_damaged || 0} onChange={e => {
-                      const waste = Math.max(0, parseInt(e.target.value) || 0);
-                      const good = blowingBatch.caps_good || 0;
-                      setBlowingBatch({...blowingBatch, caps_damaged: waste, caps_used: good + waste, caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)});
-                    }} /></div>
+                    <div>
+                      <Label>Good Caps</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.caps_good || 0} 
+                        onChange={e => {
+                          const good = Math.max(0, parseInt(e.target.value) || 0);
+                          const waste = blowingBatch.caps_damaged || 0;
+                          setBlowingBatch({...blowingBatch, caps_good: good, caps_used: good + waste, caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Waste Caps</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.caps_damaged || 0} 
+                        onChange={e => {
+                          const waste = Math.max(0, parseInt(e.target.value) || 0);
+                          const good = blowingBatch.caps_good || 0;
+                          setBlowingBatch({...blowingBatch, caps_damaged: waste, caps_used: good + waste, caps_left: (blowingBatch.caps_pieces_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Caps Used (Auto)</Label><Input value={blowingBatch.caps_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
-                    <div><Label>Caps Left</Label><Input value={blowingBatch.caps_left || 0} readOnly className="bg-gray-100" /></div>
+                    <div>
+                      <Label>Caps Used (Auto)</Label>
+                      <Input value={blowingBatch.caps_used || 0} readOnly className="bg-gray-100 font-semibold" />
+                    </div>
+                    <div>
+                      <Label>Caps Left</Label>
+                      <Input value={blowingBatch.caps_left || 0} readOnly className="bg-gray-100" />
+                    </div>
                   </div>
                   <div className="mt-2 p-2 bg-yellow-100 rounded">
                     <div>Available: {getCapsAvailable()} cartons</div>
@@ -1137,22 +1204,47 @@ useEffect(() => {
               <div className="space-y-2">
                 <Label className="text-purple-600 font-semibold">LABELS MANAGEMENT</Label>
                 <div className="p-3 bg-purple-50 rounded-lg">
-                  <div><Label>Labels Taken (Pieces)</Label><Input type="number" min="0" value={blowingBatch.labels_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'labels_taken', e.target.value)} /></div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Good Labels</Label><Input type="number" min="0" value={blowingBatch.labels_good || 0} onChange={e => {
-                      const good = Math.max(0, parseInt(e.target.value) || 0);
-                      const waste = blowingBatch.labels_damaged || 0;
-                      setBlowingBatch({...blowingBatch, labels_good: good, labels_used: good + waste, labels_left: (blowingBatch.labels_taken || 0) - (good + waste)});
-                    }} /></div>
-                    <div><Label>Waste Labels</Label><Input type="number" min="0" value={blowingBatch.labels_damaged || 0} onChange={e => {
-                      const waste = Math.max(0, parseInt(e.target.value) || 0);
-                      const good = blowingBatch.labels_good || 0;
-                      setBlowingBatch({...blowingBatch, labels_damaged: waste, labels_used: good + waste, labels_left: (blowingBatch.labels_taken || 0) - (good + waste)});
-                    }} /></div>
+                  <div>
+                    <Label>Labels Taken (Pieces)</Label>
+                    <Input type="number" min="0" value={blowingBatch.labels_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'labels_taken', e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Labels Used (Auto)</Label><Input value={blowingBatch.labels_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
-                    <div><Label>Labels Left</Label><Input value={blowingBatch.labels_left || 0} readOnly className="bg-gray-100" /></div>
+                    <div>
+                      <Label>Good Labels</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.labels_good || 0} 
+                        onChange={e => {
+                          const good = Math.max(0, parseInt(e.target.value) || 0);
+                          const waste = blowingBatch.labels_damaged || 0;
+                          setBlowingBatch({...blowingBatch, labels_good: good, labels_used: good + waste, labels_left: (blowingBatch.labels_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Waste Labels</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.labels_damaged || 0} 
+                        onChange={e => {
+                          const waste = Math.max(0, parseInt(e.target.value) || 0);
+                          const good = blowingBatch.labels_good || 0;
+                          setBlowingBatch({...blowingBatch, labels_damaged: waste, labels_used: good + waste, labels_left: (blowingBatch.labels_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                      <Label>Labels Used (Auto)</Label>
+                      <Input value={blowingBatch.labels_used || 0} readOnly className="bg-gray-100 font-semibold" />
+                    </div>
+                    <div>
+                      <Label>Labels Left</Label>
+                      <Input value={blowingBatch.labels_left || 0} readOnly className="bg-gray-100" />
+                    </div>
                   </div>
                   <div className="mt-2 p-2 bg-purple-100 rounded">Available: {getLabelsAvailable().toLocaleString()} pieces</div>
                 </div>
@@ -1164,22 +1256,47 @@ useEffect(() => {
               <div className="space-y-2">
                 <Label className="text-indigo-600 font-semibold">GUM/GLUE</Label>
                 <div className="p-3 bg-indigo-50 rounded-lg">
-                  <div><Label>Boxes Taken</Label><Input type="number" min="0" value={blowingBatch.gum_boxes_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'gum_boxes_taken', e.target.value)} /></div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Good Gum</Label><Input type="number" min="0" value={blowingBatch.gum_good || 0} onChange={e => {
-                      const good = Math.max(0, parseInt(e.target.value) || 0);
-                      const waste = blowingBatch.gum_damaged || 0;
-                      setBlowingBatch({...blowingBatch, gum_good: good, gum_used: good + waste, gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)});
-                    }} /></div>
-                    <div><Label>Waste Gum</Label><Input type="number" min="0" value={blowingBatch.gum_damaged || 0} onChange={e => {
-                      const waste = Math.max(0, parseInt(e.target.value) || 0);
-                      const good = blowingBatch.gum_good || 0;
-                      setBlowingBatch({...blowingBatch, gum_damaged: waste, gum_used: good + waste, gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)});
-                    }} /></div>
+                  <div>
+                    <Label>Boxes Taken</Label>
+                    <Input type="number" min="0" value={blowingBatch.gum_boxes_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'gum_boxes_taken', e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Gum Used (Auto)</Label><Input value={blowingBatch.gum_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
-                    <div><Label>Gum Left</Label><Input value={blowingBatch.gum_left || 0} readOnly className="bg-gray-100" /></div>
+                    <div>
+                      <Label>Good Gum</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.gum_good || 0} 
+                        onChange={e => {
+                          const good = Math.max(0, parseInt(e.target.value) || 0);
+                          const waste = blowingBatch.gum_damaged || 0;
+                          setBlowingBatch({...blowingBatch, gum_good: good, gum_used: good + waste, gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Waste Gum</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={blowingBatch.gum_damaged || 0} 
+                        onChange={e => {
+                          const waste = Math.max(0, parseInt(e.target.value) || 0);
+                          const good = blowingBatch.gum_good || 0;
+                          setBlowingBatch({...blowingBatch, gum_damaged: waste, gum_used: good + waste, gum_left: (blowingBatch.gum_boxes_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                      <Label>Gum Used (Auto)</Label>
+                      <Input value={blowingBatch.gum_used || 0} readOnly className="bg-gray-100 font-semibold" />
+                    </div>
+                    <div>
+                      <Label>Gum Left</Label>
+                      <Input value={blowingBatch.gum_left || 0} readOnly className="bg-gray-100" />
+                    </div>
                   </div>
                   <div className="mt-2 p-2 bg-indigo-100 rounded">Available: {getGumAvailable()} boxes</div>
                 </div>
@@ -1190,27 +1307,57 @@ useEffect(() => {
                 <Label className="text-pink-600 font-semibold">SHRINK WRAP</Label>
                 <div className="p-3 bg-pink-50 rounded-lg">
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Type</Label><Select value={blowingBatch.shrink_wrap_type} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, shrink_wrap_type: val})}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="60">60kg Roll</SelectItem><SelectItem value="70">70kg Roll</SelectItem></SelectContent>
-                    </Select></div>
-                    <div><Label>Shrink Wrap Taken (KG)</Label><Input type="number" min="0" step="0.1" value={blowingBatch.shrink_wrap_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'shrink_wrap_taken', e.target.value)} /></div>
+                    <div>
+                      <Label>Type</Label>
+                      <Select value={blowingBatch.shrink_wrap_type} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, shrink_wrap_type: val})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="60">60kg Roll</SelectItem><SelectItem value="70">70kg Roll</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Shrink Wrap Taken (KG)</Label>
+                      <Input type="number" min="0" step="0.1" value={blowingBatch.shrink_wrap_taken || 0} onChange={e => handleNumberChange(setBlowingBatch, 'shrink_wrap_taken', e.target.value)} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Good Shrink Wrap</Label><Input type="number" min="0" step="0.1" value={blowingBatch.shrink_wrap_good || 0} onChange={e => {
-                      const good = Math.max(0, parseFloat(e.target.value) || 0);
-                      const waste = blowingBatch.shrink_wrap_damaged || 0;
-                      setBlowingBatch({...blowingBatch, shrink_wrap_good: good, shrink_wrap_used_kg: good + waste, shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)});
-                    }} /></div>
-                    <div><Label>Waste Shrink Wrap</Label><Input type="number" min="0" step="0.1" value={blowingBatch.shrink_wrap_damaged || 0} onChange={e => {
-                      const waste = Math.max(0, parseFloat(e.target.value) || 0);
-                      const good = blowingBatch.shrink_wrap_good || 0;
-                      setBlowingBatch({...blowingBatch, shrink_wrap_damaged: waste, shrink_wrap_used_kg: good + waste, shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)});
-                    }} /></div>
+                    <div>
+                      <Label>Good Shrink Wrap</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.1" 
+                        value={blowingBatch.shrink_wrap_good || 0} 
+                        onChange={e => {
+                          const good = Math.max(0, parseFloat(e.target.value) || 0);
+                          const waste = blowingBatch.shrink_wrap_damaged || 0;
+                          setBlowingBatch({...blowingBatch, shrink_wrap_good: good, shrink_wrap_used_kg: good + waste, shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
+                    <div>
+                      <Label>Waste Shrink Wrap</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.1" 
+                        value={blowingBatch.shrink_wrap_damaged || 0} 
+                        onChange={e => {
+                          const waste = Math.max(0, parseFloat(e.target.value) || 0);
+                          const good = blowingBatch.shrink_wrap_good || 0;
+                          setBlowingBatch({...blowingBatch, shrink_wrap_damaged: waste, shrink_wrap_used_kg: good + waste, shrink_wrap_left: (blowingBatch.shrink_wrap_taken || 0) - (good + waste)});
+                        }} 
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Shrink Wrap Used (Auto)</Label><Input value={blowingBatch.shrink_wrap_used_kg || 0} readOnly className="bg-gray-100 font-semibold" /></div>
-                    <div><Label>Shrink Wrap Left</Label><Input value={blowingBatch.shrink_wrap_left || 0} readOnly className="bg-gray-100" /></div>
+                    <div>
+                      <Label>Shrink Wrap Used (Auto)</Label>
+                      <Input value={blowingBatch.shrink_wrap_used_kg || 0} readOnly className="bg-gray-100 font-semibold" />
+                    </div>
+                    <div>
+                      <Label>Shrink Wrap Left</Label>
+                      <Input value={blowingBatch.shrink_wrap_left || 0} readOnly className="bg-gray-100" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1222,16 +1369,31 @@ useEffect(() => {
                 <Label className="text-orange-600 font-semibold">FINISHED GOODS</Label>
                 <div className="p-3 bg-orange-50 rounded-lg">
                   <div className="grid grid-cols-3 gap-2">
-                    <div><Label>Product Type</Label><Select value={blowingBatch.finished_product} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, finished_product: val})}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="75cl">75cl (12-pack)</SelectItem><SelectItem value="50cl">50cl (12-pack)</SelectItem><SelectItem value="33cl">33cl (20-pack)</SelectItem></SelectContent>
-                    </Select></div>
-                    <div><Label>Pallets (100 packs)</Label><Input type="number" min="0" value={blowingBatch.finished_pallets} onChange={e => handleNumberChange(setBlowingBatch, 'finished_pallets', e.target.value)} /></div>
-                    <div><Label>Packs</Label><Input type="number" min="0" value={blowingBatch.finished_packs} onChange={e => handleNumberChange(setBlowingBatch, 'finished_packs', e.target.value)} /></div>
+                    <div>
+                      <Label>Product Type</Label>
+                      <Select value={blowingBatch.finished_product} onValueChange={(val: any) => setBlowingBatch({...blowingBatch, finished_product: val})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="75cl">75cl (12-pack)</SelectItem><SelectItem value="50cl">50cl (12-pack)</SelectItem><SelectItem value="33cl">33cl (20-pack)</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Pallets (100 packs)</Label>
+                      <Input type="number" min="0" value={blowingBatch.finished_pallets} onChange={e => handleNumberChange(setBlowingBatch, 'finished_pallets', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Packs</Label>
+                      <Input type="number" min="0" value={blowingBatch.finished_packs} onChange={e => handleNumberChange(setBlowingBatch, 'finished_packs', e.target.value)} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div><Label>Pieces</Label><Input type="number" min="0" value={blowingBatch.finished_pieces} onChange={e => handleNumberChange(setBlowingBatch, 'finished_pieces', e.target.value)} /></div>
-                    <div><Label>Damaged Pieces</Label><Input type="number" min="0" value={blowingBatch.damaged_pieces} onChange={e => handleNumberChange(setBlowingBatch, 'damaged_pieces', e.target.value)} /></div>
+                    <div>
+                      <Label>Pieces</Label>
+                      <Input type="number" min="0" value={blowingBatch.finished_pieces} onChange={e => handleNumberChange(setBlowingBatch, 'finished_pieces', e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Damaged Pieces</Label>
+                      <Input type="number" min="0" value={blowingBatch.damaged_pieces} onChange={e => handleNumberChange(setBlowingBatch, 'damaged_pieces', e.target.value)} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1254,7 +1416,14 @@ useEffect(() => {
               </div>
             </div>
             
-            <div className="space-y-2"><Label>REMARKS</Label><Textarea placeholder="Any issues or notes..." value={blowingBatch.notes} onChange={e => setBlowingBatch({...blowingBatch, notes: e.target.value})} /></div>
+            <div className="space-y-2">
+              <Label>REMARKS</Label>
+              <Textarea 
+                placeholder="Any issues or notes..." 
+                value={blowingBatch.notes} 
+                onChange={e => setBlowingBatch({...blowingBatch, notes: e.target.value})} 
+              />
+            </div>
           </div>
           
           <DialogFooter>
