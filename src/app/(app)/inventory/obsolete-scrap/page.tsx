@@ -35,6 +35,12 @@ const ISSUE_TYPES = [
     { value: 'other',      label: 'Other' },
 ] as const;
 
+// Filter reason options with a proper 'all' value
+const FILTER_REASONS = [
+    { value: 'all', label: 'All Reasons' },
+    ...REASONS.map(r => ({ value: r, label: r }))
+];
+
 type Reason    = typeof REASONS[number];
 type UOM       = typeof UOM_LIST[number];
 type IssueType = 'wastage' | 'adjustment' | 'other';
@@ -91,7 +97,7 @@ const emptyIssue = (): IssueForm => ({
 });
 
 const emptyFilter = (): FilterState => ({
-    name: '', sku: '', startDate: '', endDate: '', reason: '',
+    name: '', sku: '', startDate: '', endDate: '', reason: 'all',
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -204,8 +210,8 @@ const ObsoleteScrapPage = () => {
         if (filter.name && !item.name.toLowerCase().includes(filter.name.toLowerCase())) return false;
         // Filter by SKU
         if (filter.sku && !item.sku.toLowerCase().includes(filter.sku.toLowerCase())) return false;
-        // Filter by reason
-        if (filter.reason && cleanReason(item.reason) !== filter.reason) return false;
+        // Filter by reason - skip if 'all'
+        if (filter.reason && filter.reason !== 'all' && cleanReason(item.reason) !== filter.reason) return false;
         // Filter by date range
         if (filter.startDate && new Date(item.date_classified) < new Date(filter.startDate)) return false;
         if (filter.endDate && new Date(item.date_classified) > new Date(filter.endDate)) return false;
@@ -456,7 +462,7 @@ const ObsoleteScrapPage = () => {
                     <div className="flex items-center gap-2">
                         <Filter className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">Filters</span>
-                        {(filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason) && (
+                        {(filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason !== 'all') && (
                             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-6 px-2 text-xs">
                                 <X className="h-3 w-3 mr-1" /> Clear all
                             </Button>
@@ -495,8 +501,11 @@ const ObsoleteScrapPage = () => {
                                 <SelectValue placeholder="All Reasons" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">All Reasons</SelectItem>
-                                {REASONS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                                {FILTER_REASONS.map(r => (
+                                    <SelectItem key={r.value} value={r.value}>
+                                        {r.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -561,7 +570,7 @@ const ObsoleteScrapPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-muted-foreground">
-                                {filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason 
+                                {filter.name || filter.sku || filter.startDate || filter.endDate || filter.reason !== 'all' 
                                     ? 'Filtered Obsolete & Scrap Value' 
                                     : 'Total Obsolete & Scrap Value'}
                             </p>
