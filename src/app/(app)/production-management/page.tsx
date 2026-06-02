@@ -681,117 +681,16 @@ const [blowingBatch, setBlowingBatch] = useState<BlowingBatch>({
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Preforms</p>
-                <p className="text-2xl font-bold">
-                  {(getPreformAvailable('18G') + getPreformAvailable('14G')).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">In Stock</p>
-              </div>
-              <Package className="h-8 w-8 text-blue-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Caps</p>
-                <p className="text-2xl font-bold">{getCapsAvailable()} ctns</p>
-                <p className="text-xs text-muted-foreground">{getCapsAvailable() * CAPS_PER_CARTON} pcs</p>
-              </div>
-              <Layers className="h-8 w-8 text-yellow-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Labels</p>
-                <p className="text-2xl font-bold">{getLabelsAvailable().toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Pieces</p>
-              </div>
-              <Package className="h-8 w-8 text-purple-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Gum</p>
-                <p className="text-2xl font-bold">{getGumAvailable()} boxes</p>
-                <p className="text-xs text-muted-foreground">1 box = 1 piece</p>
-              </div>
-              <Box className="h-8 w-8 text-indigo-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Batches</p>
-                <p className="text-2xl font-bold">{injectionBatches.length + blowingBatches.length}</p>
-                <p className="text-xs text-muted-foreground">Completed</p>
-              </div>
-              <TrendingDown className="h-8 w-8 text-orange-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
       
       <Tabs defaultValue="preform-inventory">
         <TabsList className="grid w-full grid-cols-1 md:grid-cols-6">
-          <TabsTrigger value="preform-inventory">Preforms</TabsTrigger>
           <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
           <TabsTrigger value="finished-products">Finished Products</TabsTrigger>
           <TabsTrigger value="injection-batches">Injection</TabsTrigger>
           <TabsTrigger value="blowing-batches">Blowing</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="preform-inventory" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Preform Inventory</CardTitle>
-              <CardDescription>Preforms produced from injection molding.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left p-2">SKU</th>
-                      <th className="text-left p-2">Name</th>
-                      <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Quantity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.filter(p => p.sku.includes('PREFORM')).map((item) => (
-                      <tr key={item.id} className="border-b">
-                        <td className="p-2 font-mono text-xs">{item.sku}</td>
-                        <td className="p-2 font-medium">{item.name}</td>
-                        <td className="p-2">{item.unit_of_measure}</td>
-                        <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    {products.filter(p => p.sku.includes('PREFORM')).length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="text-center p-4 text-muted-foreground">No preform items found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+
         
         <TabsContent value="raw-materials" className="space-y-4">
           <Card>
