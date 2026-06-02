@@ -314,6 +314,12 @@ export const allNavItems = [
                 icon: Store,
                 permission: 'view_pos',
             },
+             {
+                href: '/sales-trail',
+                label: 'Sales Trail',
+                icon: FileClock,
+                permission: 'view_pending_invoices',
+            },
             {
                 href: '/sales/pending-invoices',
                 label: 'Pending Invoices',
