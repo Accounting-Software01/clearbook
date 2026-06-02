@@ -43,107 +43,18 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Send,
   Eye,
   FileEdit,
-  PlayCircle,
   Package,
   Layers,
   Droplets,
-  Box
+  Box,
+  RefreshCw
 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// Mock Data
-const MOCK_RAW_MATERIALS = [
-  { id: 1, sku: "001", name: "PET Resin", category: "Raw Material", unit_of_measure: "KG", quantity_on_hand: 5000, average_unit_cost: 1.20 },
-  { id: 2, sku: "002", name: "Masterbatch", category: "Raw Material", unit_of_measure: "KG", quantity_on_hand: 1000, average_unit_cost: 2.50 },
-];
-
-const MOCK_PREFORM_INVENTORY = [
-  { id: 1, sku: "PREFORM-18G", name: "18g Preforms", unit_of_measure: "PCS", quantity_on_hand: 50000, average_unit_cost: 0.05 },
-  { id: 2, sku: "PREFORM-14G", name: "14g Preforms", unit_of_measure: "PCS", quantity_on_hand: 30000, average_unit_cost: 0.04 },
-];
-
-const MOCK_CAPS_INVENTORY = [
-  { id: 1, sku: "CAPS", name: "Bottle Caps", unit_of_measure: "CARTON", quantity_on_hand: 150, average_unit_cost: 45.00, pieces_per_carton: 9000 },
-];
-
-const MOCK_LABELS_INVENTORY = [
-  { id: 1, sku: "LABELS", name: "Bottle Labels", unit_of_measure: "PCS", quantity_on_hand: 100000, average_unit_cost: 0.02 },
-];
-
-const MOCK_GUM_INVENTORY = [
-  { id: 1, sku: "GUM", name: "Gum/Glue", unit_of_measure: "BOX", quantity_on_hand: 500, average_unit_cost: 25.00 },
-];
-
-const MOCK_FINISHED_GOODS = [
-  { id: 1, sku: "FG001", name: "75cl Water Bottle (12-pack)", unit_of_measure: "PACK", quantity_on_hand: 1200, average_unit_cost: 4.50 },
-  { id: 2, sku: "FG002", name: "50cl Water Bottle (12-pack)", unit_of_measure: "PACK", quantity_on_hand: 800, average_unit_cost: 3.80 },
-  { id: 3, sku: "FG003", name: "33cl Water Bottle (20-pack)", unit_of_measure: "PACK", quantity_on_hand: 1500, average_unit_cost: 3.20 },
-];
-
-const MOCK_INJECTION_BATCHES = [
-  {
-    id: 1,
-    batch_number: "INJ-20231201-0001",
-    production_date: "2023-12-01",
-    shift: "Morning",
-    operator_name: "John Doe",
-    status: "completed",
-    notes: "Production completed successfully",
-    preform_type: "18g",
-    resin_used_kg: 500,
-    masterbatch_used_kg: 25,
-    good_preforms_qty: 27500,
-    bad_preforms_qty: 500,
-    purge_weight_kg: 10,
-    bags_produced: 20,
-    preform_weight_grams: 18
-  }
-];
-
-const MOCK_BLOWING_BATCHES = [
-  {
-    id: 1,
-    batch_number: "BP-20231201-0001",
-    production_date: "2023-12-01",
-    shift: "Morning",
-    operator_name: "Jane Smith",
-    status: "completed",
-    notes: "Production completed successfully",
-    preform_type: "18g",
-    finished_product: "75cl",
-    preform_bags: 16,
-    preforms_taken: 26667,
-    bottles_produced: 26500,
-    bottles_damaged: 167,
-    bottles_filled: 26400,
-    bottles_filled_damaged: 100,
-    caps_cartons_taken: 3,
-    caps_pieces_taken: 27000,
-    caps_used: 26400,
-    caps_good: 26200,
-    caps_damaged: 200,
-    caps_left: 600,
-    caps_remaining_cartons: 147,
-    labels_taken: 26400,
-    labels_used: 26400,
-    labels_good: 26200,
-    labels_damaged: 200,
-    labels_left: 0,
-    gum_boxes_taken: 50,
-    gum_used: 48,
-    gum_left: 2,
-    finished_pallets: 22,
-    finished_packs: 0,
-    finished_pieces: 0,
-    damaged_pieces: 200,
-    shrink_wrap_type: "60",
-    shrink_wrap_used_kg: 25
-  }
-];
+// API Base URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hariindustries.net/api/clearbook/';
 
 interface RawMaterial {
   id: number;
@@ -153,52 +64,19 @@ interface RawMaterial {
   unit_of_measure: string;
   quantity_on_hand: number;
   average_unit_cost: number;
+  reorder_level?: number;
+  inventory_account_id?: number;
 }
 
-interface PreformInventory {
+interface Product {
   id: number;
   sku: string;
   name: string;
+  category: string;
   unit_of_measure: string;
   quantity_on_hand: number;
   average_unit_cost: number;
-}
-
-interface CapsInventory {
-  id: number;
-  sku: string;
-  name: string;
-  unit_of_measure: string;
-  quantity_on_hand: number;
-  average_unit_cost: number;
-  pieces_per_carton: number;
-}
-
-interface LabelsInventory {
-  id: number;
-  sku: string;
-  name: string;
-  unit_of_measure: string;
-  quantity_on_hand: number;
-  average_unit_cost: number;
-}
-
-interface GumInventory {
-  id: number;
-  sku: string;
-  name: string;
-  unit_of_measure: string;
-  quantity_on_hand: number;
-  average_unit_cost: number;
-}
-
-interface FinishedGood {
-  id: number;
-  sku: string;
-  name: string;
-  unit_of_measure: string;
-  quantity_on_hand: number;
-  average_unit_cost: number;
+  inventory_account_id?: number;
 }
 
 interface InjectionBatch {
@@ -260,7 +138,7 @@ interface BlowingBatch {
 }
 
 const ProductionModule = () => {
-  const { user } = useAuth();
+  const { user, getToken } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -269,14 +147,11 @@ const ProductionModule = () => {
   const [isStockErrorDialogOpen, setIsStockErrorDialogOpen] = useState(false);
   
   // State for data
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(MOCK_RAW_MATERIALS);
-  const [preformInventory, setPreformInventory] = useState<PreformInventory[]>(MOCK_PREFORM_INVENTORY);
-  const [capsInventory, setCapsInventory] = useState<CapsInventory[]>(MOCK_CAPS_INVENTORY);
-  const [labelsInventory, setLabelsInventory] = useState<LabelsInventory[]>(MOCK_LABELS_INVENTORY);
-  const [gumInventory, setGumInventory] = useState<GumInventory[]>(MOCK_GUM_INVENTORY);
-  const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>(MOCK_FINISHED_GOODS);
-  const [injectionBatches, setInjectionBatches] = useState<InjectionBatch[]>(MOCK_INJECTION_BATCHES);
-  const [blowingBatches, setBlowingBatches] = useState<BlowingBatch[]>(MOCK_BLOWING_BATCHES);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [obsoleteItems, setObsoleteItems] = useState<RawMaterial[]>([]);
+  const [injectionBatches, setInjectionBatches] = useState<InjectionBatch[]>([]);
+  const [blowingBatches, setBlowingBatches] = useState<BlowingBatch[]>([]);
   
   // Modal states
   const [isInjectionModalOpen, setIsInjectionModalOpen] = useState(false);
@@ -367,6 +242,49 @@ const ProductionModule = () => {
     return `BP-${date}-${random}`;
   };
   
+  // API calls
+  const apiCall = async (endpoint: string, method: string = 'GET', data?: any) => {
+    const token = await getToken();
+    const response = await fetch(`${API_BASE_URL}/production.php?action=${endpoint}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    return response.json();
+  };
+  
+  // Fetch all data
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [rawRes, productsRes, obsoleteRes, injectionRes, blowingRes] = await Promise.all([
+        apiCall('inventory&type=raw'),
+        apiCall('inventory&type=products'),
+        apiCall('inventory&type=obsolete'),
+        apiCall('batches&type=injection'),
+        apiCall('batches&type=blowing'),
+      ]);
+      
+      if (rawRes.success) setRawMaterials(rawRes.data);
+      if (productsRes.success) setProducts(productsRes.data);
+      if (obsoleteRes.success) setObsoleteItems(obsoleteRes.data);
+      if (injectionRes.success) setInjectionBatches(injectionRes.data);
+      if (blowingRes.success) setBlowingBatches(blowingRes.data);
+      
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+  
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+  
   // Injection calculations
   const injectionTotalInputKg = injectionBatch.resin_used_kg + injectionBatch.masterbatch_used_kg;
   const injectionTotalOutputKg = (injectionBatch.good_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
@@ -387,7 +305,6 @@ const ProductionModule = () => {
     ? ((blowingBatch.bottles_produced / blowingBatch.preforms_taken) * 100).toFixed(1) 
     : 0;
   
-  // Calculate total finished pieces from pallets, packs, and pieces
   const calculateTotalFinishedPieces = () => {
     const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
     const totalPieces = (blowingBatch.finished_pallets * PALLET_PACKS * packsPerProduct) + 
@@ -419,86 +336,57 @@ const ProductionModule = () => {
     calculateGoodPreforms();
   }, [injectionBatch.bags_produced, injectionBatch.preform_weight_grams]);
   
-  // Fetch mock data
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setRawMaterials(MOCK_RAW_MATERIALS);
-      setPreformInventory(MOCK_PREFORM_INVENTORY);
-      setCapsInventory(MOCK_CAPS_INVENTORY);
-      setLabelsInventory(MOCK_LABELS_INVENTORY);
-      setGumInventory(MOCK_GUM_INVENTORY);
-      setFinishedGoods(MOCK_FINISHED_GOODS);
-      setInjectionBatches(MOCK_INJECTION_BATCHES);
-      setBlowingBatches(MOCK_BLOWING_BATCHES);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-  
+  // Auto-calculate caps based on bottles filled
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (blowingBatch.bottles_filled > 0) {
+      const capsNeeded = blowingBatch.bottles_filled;
+      const capsCartonsNeeded = Math.ceil(capsNeeded / CAPS_PER_CARTON);
+      const capsPiecesNeeded = capsNeeded;
+      
+      setBlowingBatch(prev => ({
+        ...prev,
+        caps_cartons_taken: capsCartonsNeeded,
+        caps_pieces_taken: capsPiecesNeeded
+      }));
+    }
+  }, [blowingBatch.bottles_filled]);
+  
+  // Auto-calculate labels based on bottles filled
+  useEffect(() => {
+    if (blowingBatch.bottles_filled > 0 && blowingBatch.labels_taken === 0) {
+      setBlowingBatch(prev => ({
+        ...prev,
+        labels_taken: blowingBatch.bottles_filled,
+        labels_used: blowingBatch.bottles_filled
+      }));
+    }
+  }, [blowingBatch.bottles_filled]);
+  
+  // Calculate good caps
+  useEffect(() => {
+    const calculatedCapsGood = blowingBatch.caps_used - blowingBatch.caps_damaged;
+    if (calculatedCapsGood !== blowingBatch.caps_good && blowingBatch.caps_used > 0) {
+      setBlowingBatch(prev => ({ ...prev, caps_good: Math.max(0, calculatedCapsGood) }));
+    }
+  }, [blowingBatch.caps_used, blowingBatch.caps_damaged]);
+  
+  // Calculate good labels
+  useEffect(() => {
+    const calculatedLabelsGood = blowingBatch.labels_used - blowingBatch.labels_damaged;
+    if (calculatedLabelsGood !== blowingBatch.labels_good && blowingBatch.labels_used > 0) {
+      setBlowingBatch(prev => ({ ...prev, labels_good: Math.max(0, calculatedLabelsGood) }));
+    }
+  }, [blowingBatch.labels_used, blowingBatch.labels_damaged]);
   
   // View batch details
   const viewBatchDetails = async (batchId: number, type: 'injection' | 'blowing') => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (type === 'injection') {
-        const batch = MOCK_INJECTION_BATCHES.find(b => b.id === batchId);
-        if (batch) {
-          setSelectedViewBatch(batch);
-          setViewType('injection');
-          setIsViewDialogOpen(true);
-        }
-      } else {
-        const batch = MOCK_BLOWING_BATCHES.find(b => b.id === batchId);
-        if (batch) {
-          setSelectedViewBatch(batch);
-          setViewType('blowing');
-          setIsViewDialogOpen(true);
-        }
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  // Load batch for editing
-  const loadInjectionBatchForEditing = async (batchId: number) => {
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const batchData = MOCK_INJECTION_BATCHES.find(b => b.id === batchId);
-      if (batchData) {
-        setEditingBatch(batchData);
-        setInjectionBatch(batchData);
-        setCurrentBatchId(batchData.id);
-        setIsInjectionModalOpen(true);
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const loadBlowingBatchForEditing = async (batchId: number) => {
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const batchData = MOCK_BLOWING_BATCHES.find(b => b.id === batchId);
-      if (batchData) {
-        setEditingBatch(batchData);
-        setBlowingBatch(batchData as BlowingBatch);
-        setCurrentBatchId(batchData.id);
-        setIsBlowingModalOpen(true);
+      const response = await apiCall(`batches&type=${type}&batch_id=${batchId}`);
+      if (response.success && response.data.length > 0) {
+        setSelectedViewBatch(response.data[0]);
+        setViewType(type);
+        setIsViewDialogOpen(true);
       }
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -589,35 +477,24 @@ const ProductionModule = () => {
     
     setIsSubmitting(true);
     
-    // Check if we have enough resin stock
-    const resinStock = MOCK_RAW_MATERIALS.find(r => r.sku === "001");
-    if (resinStock && resinStock.quantity_on_hand < injectionBatch.resin_used_kg) {
-      setStockErrors([`Insufficient PET Resin stock. Available: ${resinStock.quantity_on_hand} KG, Required: ${injectionBatch.resin_used_kg} KG`]);
-      setIsStockErrorDialogOpen(true);
-      setIsSubmitting(false);
-      return;
-    }
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await apiCall('injection', 'POST', injectionBatch);
       
-      // Add preforms to inventory
-      const preformSKU = injectionBatch.preform_type === '18g' ? 'PREFORM-18G' : 'PREFORM-14G';
-      const preformItem = preformInventory.find(p => p.sku === preformSKU);
-      if (preformItem) {
-        preformItem.quantity_on_hand += injectionBatch.good_preforms_qty;
-        setPreformInventory([...preformInventory]);
+      if (response.success) {
+        toast({ 
+          title: "Success", 
+          description: response.message 
+        });
+        setIsInjectionModalOpen(false);
+        await fetchData();
+      } else {
+        if (response.stock_issue) {
+          setStockErrors(response.errors || [response.message]);
+          setIsStockErrorDialogOpen(true);
+        } else {
+          throw new Error(response.message);
+        }
       }
-      
-      toast({ 
-        title: "Success", 
-        description: `${injectionBatch.good_preforms_qty.toLocaleString()} ${injectionBatch.preform_type} preforms added to inventory!` 
-      });
-      
-      setIsInjectionModalOpen(false);
-      setCurrentBatchId(null);
-      setEditingBatch(null);
-      await fetchData();
     } catch (error: any) {
       toast({ title: "Process Failed", description: error.message, variant: "destructive" });
     } finally {
@@ -644,92 +521,24 @@ const ProductionModule = () => {
     
     setIsSubmitting(true);
     
-    // Check preform stock
-    const preformItem = preformInventory.find(p => p.sku === `PREFORM-${blowingBatch.preform_type}`);
-    if (preformItem && preformItem.quantity_on_hand < blowingBatch.preforms_taken) {
-      setStockErrors([`Insufficient ${blowingBatch.preform_type} preforms. Available: ${preformItem.quantity_on_hand.toLocaleString()}, Required: ${blowingBatch.preforms_taken.toLocaleString()}`]);
-      setIsStockErrorDialogOpen(true);
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Check caps stock
-    const capsItem = capsInventory[0];
-    if (capsItem && capsItem.quantity_on_hand < blowingBatch.caps_cartons_taken) {
-      setStockErrors([`Insufficient Caps stock. Available: ${capsItem.quantity_on_hand} cartons (${capsItem.quantity_on_hand * CAPS_PER_CARTON} pieces), Required: ${blowingBatch.caps_cartons_taken} cartons (${blowingBatch.caps_cartons_taken * CAPS_PER_CARTON} pieces)`]);
-      setIsStockErrorDialogOpen(true);
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Check labels stock
-    const labelsItem = labelsInventory[0];
-    if (labelsItem && labelsItem.quantity_on_hand < blowingBatch.labels_taken) {
-      setStockErrors([`Insufficient Labels stock. Available: ${labelsItem.quantity_on_hand.toLocaleString()} pieces, Required: ${blowingBatch.labels_taken.toLocaleString()} pieces`]);
-      setIsStockErrorDialogOpen(true);
-      setIsSubmitting(false);
-      return;
-    }
-    
-    // Check gum stock
-    const gumItem = gumInventory[0];
-    if (gumItem && gumItem.quantity_on_hand < blowingBatch.gum_boxes_taken) {
-      setStockErrors([`Insufficient Gum/Glue stock. Available: ${gumItem.quantity_on_hand} boxes, Required: ${blowingBatch.gum_boxes_taken} boxes`]);
-      setIsStockErrorDialogOpen(true);
-      setIsSubmitting(false);
-      return;
-    }
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await apiCall('blowing', 'POST', blowingBatch);
       
-      // Deduct preforms from inventory
-      if (preformItem) {
-        preformItem.quantity_on_hand -= blowingBatch.preforms_taken;
-        setPreformInventory([...preformInventory]);
+      if (response.success) {
+        toast({ 
+          title: "Success", 
+          description: response.message 
+        });
+        setIsBlowingModalOpen(false);
+        await fetchData();
+      } else {
+        if (response.stock_issue) {
+          setStockErrors(response.errors || [response.message]);
+          setIsStockErrorDialogOpen(true);
+        } else {
+          throw new Error(response.message);
+        }
       }
-      
-      // Deduct caps from inventory
-      if (capsItem) {
-        capsItem.quantity_on_hand -= blowingBatch.caps_cartons_taken;
-        setCapsInventory([...capsItem]);
-      }
-      
-      // Deduct labels from inventory
-      if (labelsItem) {
-        labelsItem.quantity_on_hand -= blowingBatch.labels_taken;
-        setLabelsInventory([...labelsItem]);
-      }
-      
-      // Deduct gum from inventory
-      if (gumItem) {
-        gumItem.quantity_on_hand -= blowingBatch.gum_boxes_taken;
-        setGumInventory([...gumItem]);
-      }
-      
-      // Calculate total packs for finished goods
-      const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
-      const totalPacks = (blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs;
-      
-      // Add finished goods to inventory
-      const finishedGoodSKU = 
-        blowingBatch.finished_product === '75cl' ? 'FG001' : 
-        blowingBatch.finished_product === '50cl' ? 'FG002' : 'FG003';
-      const finishedGoodItem = finishedGoods.find(f => f.sku === finishedGoodSKU);
-      if (finishedGoodItem) {
-        finishedGoodItem.quantity_on_hand += totalPacks;
-        setFinishedGoods([...finishedGoods]);
-      }
-      
-      toast({ 
-        title: "Success", 
-        description: `Production completed! ${totalPacks.toLocaleString()} packs (${totalFinishedPieces.toLocaleString()} pieces) of ${blowingBatch.finished_product} added to inventory.` 
-      });
-      
-      setIsBlowingModalOpen(false);
-      setCurrentBatchId(null);
-      setEditingBatch(null);
-      await fetchData();
     } catch (error: any) {
       toast({ title: "Process Failed", description: error.message, variant: "destructive" });
     } finally {
@@ -745,6 +554,30 @@ const ProductionModule = () => {
       case 'cancelled': return <Badge className="bg-red-500">Cancelled</Badge>;
       default: return <Badge>{status}</Badge>;
     }
+  };
+  
+  // Get preform available quantity
+  const getPreformAvailable = (type: string) => {
+    const preform = products.find(p => p.sku === `PREFORM-${type}`);
+    return preform?.quantity_on_hand || 0;
+  };
+  
+  // Get caps available
+  const getCapsAvailable = () => {
+    const caps = rawMaterials.find(r => r.sku === 'CAPS');
+    return caps?.quantity_on_hand || 0;
+  };
+  
+  // Get labels available
+  const getLabelsAvailable = () => {
+    const labels = rawMaterials.find(r => r.sku === 'LABELS');
+    return labels?.quantity_on_hand || 0;
+  };
+  
+  // Get gum available
+  const getGumAvailable = () => {
+    const gum = rawMaterials.find(r => r.sku === 'GUM');
+    return gum?.quantity_on_hand || 0;
   };
   
   if (isLoading) {
@@ -771,16 +604,21 @@ const ProductionModule = () => {
             <Box className="mr-2 h-4 w-4" />
             New Blowing Batch
           </Button>
+          <Button onClick={fetchData} variant="outline" size="icon">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Preforms</p>
-                <p className="text-2xl font-bold">{preformInventory.reduce((sum, p) => sum + p.quantity_on_hand, 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold">
+                  {(getPreformAvailable('18G') + getPreformAvailable('14G')).toLocaleString()}
+                </p>
                 <p className="text-xs text-muted-foreground">In Stock</p>
               </div>
               <Package className="h-8 w-8 text-blue-500 opacity-50" />
@@ -792,8 +630,8 @@ const ProductionModule = () => {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Caps</p>
-                <p className="text-2xl font-bold">{capsInventory[0]?.quantity_on_hand || 0} ctns</p>
-                <p className="text-xs text-muted-foreground">{((capsInventory[0]?.quantity_on_hand || 0) * CAPS_PER_CARTON).toLocaleString()} pcs</p>
+                <p className="text-2xl font-bold">{getCapsAvailable()} ctns</p>
+                <p className="text-xs text-muted-foreground">{getCapsAvailable() * CAPS_PER_CARTON} pcs</p>
               </div>
               <Layers className="h-8 w-8 text-yellow-500 opacity-50" />
             </div>
@@ -804,7 +642,7 @@ const ProductionModule = () => {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Labels</p>
-                <p className="text-2xl font-bold">{labelsInventory[0]?.quantity_on_hand.toLocaleString() || 0}</p>
+                <p className="text-2xl font-bold">{getLabelsAvailable().toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Pieces</p>
               </div>
               <Package className="h-8 w-8 text-purple-500 opacity-50" />
@@ -816,22 +654,10 @@ const ProductionModule = () => {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm text-muted-foreground">Gum</p>
-                <p className="text-2xl font-bold">{gumInventory[0]?.quantity_on_hand || 0} boxes</p>
+                <p className="text-2xl font-bold">{getGumAvailable()} boxes</p>
                 <p className="text-xs text-muted-foreground">1 box = 1 piece</p>
               </div>
               <Box className="h-8 w-8 text-indigo-500 opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-sm text-muted-foreground">Finished Goods</p>
-                <p className="text-2xl font-bold">{finishedGoods.reduce((sum, f) => sum + f.quantity_on_hand, 0).toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Total Packs</p>
-              </div>
-              <Factory className="h-8 w-8 text-green-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -852,10 +678,9 @@ const ProductionModule = () => {
       <Tabs defaultValue="preform-inventory">
         <TabsList className="grid w-full grid-cols-1 md:grid-cols-7">
           <TabsTrigger value="preform-inventory">Preforms</TabsTrigger>
-          <TabsTrigger value="caps-inventory">Caps</TabsTrigger>
-          <TabsTrigger value="labels-inventory">Labels</TabsTrigger>
-          <TabsTrigger value="gum-inventory">Gum</TabsTrigger>
-          <TabsTrigger value="finished-goods">Finished Goods</TabsTrigger>
+          <TabsTrigger value="raw-materials">Raw Materials</TabsTrigger>
+          <TabsTrigger value="finished-products">Finished Products</TabsTrigger>
+          <TabsTrigger value="obsolete">Obsolete/Scrap</TabsTrigger>
           <TabsTrigger value="injection-batches">Injection</TabsTrigger>
           <TabsTrigger value="blowing-batches">Blowing</TabsTrigger>
         </TabsList>
@@ -878,7 +703,7 @@ const ProductionModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {preformInventory.map((item) => (
+                    {products.filter(p => p.sku.includes('PREFORM')).map((item) => (
                       <tr key={item.id} className="border-b">
                         <td className="p-2 font-mono text-xs">{item.sku}</td>
                         <td className="p-2 font-medium">{item.name}</td>
@@ -886,41 +711,11 @@ const ProductionModule = () => {
                         <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
                       </tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="caps-inventory" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Caps Inventory</CardTitle>
-              <CardDescription>Caps for bottling (9,000 pieces per carton).</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left p-2">SKU</th>
-                      <th className="text-left p-2">Name</th>
-                      <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Cartons</th>
-                      <th className="text-right p-2">Pieces</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {capsInventory.map((item) => (
-                      <tr key={item.id} className="border-b">
-                        <td className="p-2 font-mono text-xs">{item.sku}</td>
-                        <td className="p-2 font-medium">{item.name}</td>
-                        <td className="p-2">{item.unit_of_measure}</td>
-                        <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
-                        <td className="p-2 text-right">{(item.quantity_on_hand * CAPS_PER_CARTON).toLocaleString()}</td>
+                    {products.filter(p => p.sku.includes('PREFORM')).length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-center p-4 text-muted-foreground">No preform items found</td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -928,11 +723,11 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        <TabsContent value="labels-inventory" className="space-y-4">
+        <TabsContent value="raw-materials" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Labels Inventory</CardTitle>
-              <CardDescription>Bottle labels in pieces.</CardDescription>
+              <CardTitle>Raw Materials Inventory</CardTitle>
+              <CardDescription>Materials used in production.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -946,12 +741,17 @@ const ProductionModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {labelsInventory.map((item) => (
+                    {rawMaterials.filter(r => !r.sku.includes('SCRAP')).map((item) => (
                       <tr key={item.id} className="border-b">
                         <td className="p-2 font-mono text-xs">{item.sku}</td>
                         <td className="p-2 font-medium">{item.name}</td>
                         <td className="p-2">{item.unit_of_measure}</td>
-                        <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
+                        <td className="p-2 text-right">
+                          {item.unit_of_measure === 'CARTON' 
+                            ? `${item.quantity_on_hand.toLocaleString()} (${(item.quantity_on_hand * CAPS_PER_CARTON).toLocaleString()} pcs)`
+                            : item.quantity_on_hand.toLocaleString()
+                          }
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -961,43 +761,10 @@ const ProductionModule = () => {
           </Card>
         </TabsContent>
         
-        <TabsContent value="gum-inventory" className="space-y-4">
+        <TabsContent value="finished-products" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Gum/Glue Inventory</CardTitle>
-              <CardDescription>Adhesive for labeling (1 box = 1 piece).</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left p-2">SKU</th>
-                      <th className="text-left p-2">Name</th>
-                      <th className="text-left p-2">UOM</th>
-                      <th className="text-right p-2">Boxes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gumInventory.map((item) => (
-                      <tr key={item.id} className="border-b">
-                        <td className="p-2 font-mono text-xs">{item.sku}</td>
-                        <td className="p-2 font-medium">{item.name}</td>
-                        <td className="p-2">{item.unit_of_measure}</td>
-                        <td className="p-2 text-right font-bold">{item.quantity_on_hand.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="finished-goods" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Finished Goods Inventory</CardTitle>
+              <CardTitle>Finished Products Inventory</CardTitle>
               <CardDescription>Completed products ready for sale.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1012,7 +779,7 @@ const ProductionModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {finishedGoods.map((item) => (
+                    {products.filter(p => !p.sku.includes('PREFORM')).map((item) => (
                       <tr key={item.id} className="border-b">
                         <td className="p-2 font-mono text-xs">{item.sku}</td>
                         <td className="p-2 font-medium">{item.name}</td>
@@ -1020,6 +787,44 @@ const ProductionModule = () => {
                         <td className="p-2 text-right">{item.quantity_on_hand.toLocaleString()}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="obsolete" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Obsolete & Scrap Inventory</CardTitle>
+              <CardDescription>Damaged items and production waste.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2">SKU</th>
+                      <th className="text-left p-2">Name</th>
+                      <th className="text-left p-2">UOM</th>
+                      <th className="text-right p-2">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {obsoleteItems.map((item) => (
+                      <tr key={item.id} className="border-b">
+                        <td className="p-2 font-mono text-xs">{item.sku}</td>
+                        <td className="p-2 font-medium">{item.name}</td>
+                        <td className="p-2">{item.unit_of_measure}</td>
+                        <td className="p-2 text-right font-mono">{item.quantity_on_hand.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {obsoleteItems.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-center p-4 text-muted-foreground">No scrap items found</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1049,30 +854,25 @@ const ProductionModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {injectionBatches.map((batchItem) => (
-                      <tr key={batchItem.id} className="border-b">
-                        <td className="p-2 font-mono text-xs">{batchItem.batch_number}</td>
-                        <td className="p-2">{batchItem.production_date}</td>
-                        <td className="p-2">{batchItem.preform_type}</td>
-                        <td className="p-2 text-right">{batchItem.resin_used_kg.toLocaleString()}</td>
-                        <td className="p-2 text-right">{batchItem.bags_produced.toLocaleString()}</td>
-                        <td className="p-2 text-right font-semibold text-green-600">{batchItem.good_preforms_qty.toLocaleString()}</td>
-                        <td className="p-2">{getStatusBadge(batchItem.status)}</td>
+                    {injectionBatches.map((batch) => (
+                      <tr key={batch.id} className="border-b">
+                        <td className="p-2 font-mono text-xs">{batch.batch_number}</td>
+                        <td className="p-2">{batch.production_date}</td>
+                        <td className="p-2">{batch.preform_type}</td>
+                        <td className="p-2 text-right">{batch.resin_used_kg.toLocaleString()}</td>
+                        <td className="p-2 text-right">{batch.bags_produced.toLocaleString()}</td>
+                        <td className="p-2 text-right font-semibold text-green-600">{batch.good_preforms_qty.toLocaleString()}</td>
+                        <td className="p-2">{getStatusBadge(batch.status)}</td>
                         <td className="p-2">
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => viewBatchDetails(batchItem.id!, 'injection')}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => loadInjectionBatchForEditing(batchItem.id!)}>
-                              <FileEdit className="h-4 w-4 text-blue-500" />
-                            </Button>
-                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => viewBatchDetails(batch.id!, 'injection')}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </td>
                       </tr>
                     ))}
                     {injectionBatches.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="text-center p-4 text-muted-foreground">No injection batches found. Click "New Injection Batch" to create one.</td>
+                        <td colSpan={8} className="text-center p-4 text-muted-foreground">No injection batches found</td>
                       </tr>
                     )}
                   </tbody>
@@ -1104,30 +904,27 @@ const ProductionModule = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {blowingBatches.map((batchItem) => (
-                      <tr key={batchItem.id} className="border-b">
-                        <td className="p-2 font-mono text-xs">{batchItem.batch_number}</td>
-                        <td className="p-2">{batchItem.production_date}</td>
-                        <td className="p-2">{batchItem.finished_product}</td>
-                        <td className="p-2 text-right">{batchItem.preforms_taken.toLocaleString()}</td>
-                        <td className="p-2 text-right">{batchItem.finished_pallets.toLocaleString()}</td>
-                        <td className="p-2 text-right font-semibold text-green-600">{((batchItem.finished_pallets * PALLET_PACKS) + batchItem.finished_packs).toLocaleString()}</td>
-                        <td className="p-2">{getStatusBadge(batchItem.status)}</td>
+                    {blowingBatches.map((batch) => (
+                      <tr key={batch.id} className="border-b">
+                        <td className="p-2 font-mono text-xs">{batch.batch_number}</td>
+                        <td className="p-2">{batch.production_date}</td>
+                        <td className="p-2">{batch.finished_product}</td>
+                        <td className="p-2 text-right">{batch.preforms_taken.toLocaleString()}</td>
+                        <td className="p-2 text-right">{batch.finished_pallets.toLocaleString()}</td>
+                        <td className="p-2 text-right font-semibold text-green-600">
+                          {((batch.finished_pallets * PALLET_PACKS) + batch.finished_packs).toLocaleString()}
+                        </td>
+                        <td className="p-2">{getStatusBadge(batch.status)}</td>
                         <td className="p-2">
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => viewBatchDetails(batchItem.id!, 'blowing')}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => loadBlowingBatchForEditing(batchItem.id!)}>
-                              <FileEdit className="h-4 w-4 text-blue-500" />
-                            </Button>
-                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => viewBatchDetails(batch.id!, 'blowing')}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                         </td>
                       </tr>
                     ))}
                     {blowingBatches.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="text-center p-4 text-muted-foreground">No blowing batches found. Click "New Blowing Batch" to create one.</td>
+                        <td colSpan={8} className="text-center p-4 text-muted-foreground">No blowing batches found</td>
                       </tr>
                     )}
                   </tbody>
@@ -1474,7 +1271,7 @@ const ProductionModule = () => {
                         <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pieces</span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Available: {preformInventory.find(p => p.sku === `PREFORM-${blowingBatch.preform_type}`)?.quantity_on_hand.toLocaleString() || 0} pcs
+                        Available: {getPreformAvailable(blowingBatch.preform_type).toLocaleString()} pcs
                       </p>
                     </div>
                   )}
@@ -1512,7 +1309,7 @@ const ProductionModule = () => {
                               ...blowingBatch,
                               caps_cartons_taken: cartons,
                               caps_pieces_taken: pieces,
-                              caps_remaining_cartons: (capsInventory[0]?.quantity_on_hand || 0) - cartons
+                              caps_remaining_cartons: getCapsAvailable() - cartons
                             });
                           }}
                         />
@@ -1591,11 +1388,11 @@ const ProductionModule = () => {
                     <div className="mt-2 p-2 bg-yellow-100 rounded">
                       <div className="flex justify-between text-sm">
                         <span>Available in Inventory:</span>
-                        <span className="font-bold">{capsInventory[0]?.quantity_on_hand || 0} cartons</span>
+                        <span className="font-bold">{getCapsAvailable()} cartons</span>
                       </div>
                       <div className="flex justify-between text-sm mt-1">
                         <span>Remaining after taking:</span>
-                        <span className="font-semibold">{blowingBatch.caps_remaining_cartons || capsInventory[0]?.quantity_on_hand || 0} cartons</span>
+                        <span className="font-semibold">{blowingBatch.caps_remaining_cartons || getCapsAvailable()} cartons</span>
                       </div>
                     </div>
                   </div>
@@ -1685,7 +1482,7 @@ const ProductionModule = () => {
                     <div className="mt-2 p-2 bg-purple-100 rounded">
                       <div className="flex justify-between text-sm">
                         <span>Available in Inventory:</span>
-                        <span className="font-bold">{labelsInventory[0]?.quantity_on_hand.toLocaleString() || 0} pieces</span>
+                        <span className="font-bold">{getLabelsAvailable().toLocaleString()} pieces</span>
                       </div>
                     </div>
                   </div>
@@ -1742,7 +1539,7 @@ const ProductionModule = () => {
                   <div className="mt-2 p-2 bg-indigo-100 rounded">
                     <div className="flex justify-between text-sm">
                       <span>Available in Inventory:</span>
-                      <span className="font-bold">{gumInventory[0]?.quantity_on_hand || 0} boxes</span>
+                      <span className="font-bold">{getGumAvailable()} boxes</span>
                     </div>
                   </div>
                 </div>
