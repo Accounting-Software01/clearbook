@@ -1082,52 +1082,80 @@ const ProductionModule = () => {
                 <div className="p-3 bg-green-50 rounded-lg">
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label>Good Bottles</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        value={blowingBatch.bottles_good || 0} 
-                        onChange={e => {
-                          const good = Math.max(0, parseInt(e.target.value) || 0);
-                          const waste = blowingBatch.bottles_damaged || 0;
-                          setBlowingBatch({...blowingBatch, bottles_good: good, bottles_produced: good + waste});
-                        }} 
-                      />
-                    </div>
-                    <div>
-                      <Label>Bottles Filled</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        value={blowingBatch.bottles_filled} 
-                        onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)} 
-                      />
-                    </div>
-                    <div>
-                      <Label>Waste Bottles</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        value={blowingBatch.bottles_damaged || 0} 
-                        onChange={e => {
-                          const waste = Math.max(0, parseInt(e.target.value) || 0);
-                          const good = blowingBatch.bottles_good || 0;
-                          setBlowingBatch({...blowingBatch, bottles_damaged: waste, bottles_produced: good + waste});
-                        }} 
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm">
-                    <span>Total Produced: </span>
-                    <span className="font-semibold">{((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} bottles</span>
-                    <span className="ml-4">Yield: </span>
-                    <span className="font-semibold">
-                      {blowingBatch.preforms_taken > 0 
-                        ? ((((blowingBatch.bottles_good || 0) + (blowingBatch.bottles_damaged || 0)) / blowingBatch.preforms_taken) * 100).toFixed(1) 
-                        : 0}%
-                    </span>
-                  </div>
-                </div>
+                     <div className="grid grid-cols-3 gap-2">
+  <div>
+    <Label>Bottles Blown</Label>
+    <Input 
+      type="number" 
+      min="0"
+      value={blowingBatch.bottles_good || 0}
+      onChange={e => {
+        const good = Math.max(0, parseInt(e.target.value) || 0);
+        setBlowingBatch({
+          ...blowingBatch, 
+          bottles_good: good,
+          bottles_produced: good + (blowingBatch.bottles_damaged || 0)
+        });
+      }}
+    />
+  </div>
+  <div>
+    <Label>Bottles Filled</Label>
+    <Input 
+      type="number" 
+      min="0"
+      value={blowingBatch.bottles_filled || 0}
+      onChange={e => handleNumberChange(setBlowingBatch, 'bottles_filled', e.target.value)}
+    />
+  </div>
+  <div>
+    <Label>Waste Bottles</Label>
+    <Input 
+      type="number" 
+      min="0"
+      value={blowingBatch.bottles_damaged || 0}
+      onChange={e => {
+        const waste = Math.max(0, parseInt(e.target.value) || 0);
+        setBlowingBatch({
+          ...blowingBatch, 
+          bottles_damaged: waste,
+          bottles_produced: (blowingBatch.bottles_good || 0) + waste
+        });
+      }}
+    />
+  </div>
+</div>
+
+<div className="mt-2 p-2 bg-green-100 rounded space-y-1 text-sm">
+  <div className="flex justify-between">
+    <span>Total Preforms Used:</span>
+    <span className="font-semibold">
+      {((blowingBatch.bottles_filled || 0) + (blowingBatch.bottles_damaged || 0)).toLocaleString()} pcs
+    </span>
+  </div>
+  <div className="flex justify-between">
+    <span>Preforms Taken:</span>
+    <span className="font-semibold">{blowingBatch.preforms_taken.toLocaleString()} pcs</span>
+  </div>
+  <div className="flex justify-between border-t pt-1 mt-1">
+    <span>Remaining:</span>
+    <span className={`font-semibold ${
+      blowingBatch.preforms_taken - (blowingBatch.bottles_filled || 0) - (blowingBatch.bottles_damaged || 0) > 0
+        ? 'text-orange-500'
+        : 'text-green-600'
+    }`}>
+      {(blowingBatch.preforms_taken - (blowingBatch.bottles_filled || 0) - (blowingBatch.bottles_damaged || 0)).toLocaleString()} pcs
+    </span>
+  </div>
+  <div className="flex justify-between">
+    <span>Yield:</span>
+    <span className="font-semibold">
+      {blowingBatch.preforms_taken > 0
+        ? (((blowingBatch.bottles_filled || 0) / blowingBatch.preforms_taken) * 100).toFixed(1)
+        : 0}%
+    </span>
+  </div>
+</div>
               </div>
             </div>
             
