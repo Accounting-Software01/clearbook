@@ -1,7 +1,4 @@
-eck if production module file exists in outputs
 
-Create full updated ProductionModule.tsx with manual bottle inputs and corrected summary
-typescript
 
 'use client';
 
