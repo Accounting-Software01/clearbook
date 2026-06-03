@@ -1401,18 +1401,15 @@ const ProductionModule = () => {
                     <span>Yield:</span>
                     <span className="font-bold text-green-600">{blowingYield}%</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Total Waste Units:</span>
-                    <span className="font-bold text-red-500">
-                      {(
-                        (blowingBatch.bottles_damaged || 0) +
-                        (blowingBatch.caps_damaged || 0) +
-                        (blowingBatch.labels_damaged || 0) +
-                        (blowingBatch.gum_damaged || 0) +
-                        (blowingBatch.damaged_pieces || 0)
-                      ).toLocaleString()} units
-                    </span>
-                  </div>
+
+
+
+
+
+
+
+
+                  
                 </div>
               </div>
             </div>
