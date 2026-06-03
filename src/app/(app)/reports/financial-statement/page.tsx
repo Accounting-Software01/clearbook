@@ -1,352 +1,529 @@
 'use client';
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { DatePicker } from '@/components/ui/date-picker';
-import { Checkbox } from '@/components/ui/checkbox';
-import { format } from 'date-fns';
-import { Loader2, AlertCircle, CheckCircle, TrendingUp, ShoppingCart, TrendingDown, PiggyBank, Landmark, Users, ChevronsRight, Target, DollarSign, FileText, Download, Printer } from 'lucide-react';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+    Loader2, 
+    Download, 
+    Calendar, 
+    CheckCircle, 
+    XCircle, 
+    Printer,
+    FileText,
+    FileSpreadsheet,
+    TrendingUp,
+    TrendingDown,
+    DollarSign,
+    Building2
+} from 'lucide-react';
+import { format } from 'date-fns';
 
-// Interfaces
-interface Account {
-    id: string;
-    account_name: string;
-    account_type: string;
-    sub_type: string;
-}
-interface ReportAccount {
-    id: string;
+// Import PDF libraries
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
+interface AccountBalance {
+    code: string;
     name: string;
     balance: number;
+    balance_display: string;
 }
-interface ReportGroup {
-    accounts: ReportAccount[];
-    total: number;
-}
-interface ProcessedData {
-    incomeStatement: {
-        revenue: ReportGroup;
-        cogs: ReportGroup;
-        expenses: ReportGroup;
-        grossProfit: number;
-        netIncome: number;
-    };
-    balanceSheet: {
-        assets: Record<string, ReportGroup>;
-        liabilities: Record<string, ReportGroup>;
-        equity: Record<string, ReportGroup>;
-        totalAssets: number;
-        totalLiabilities: number;
-        totalEquity: number;
-        totalLiabilitiesAndEquity: number;
+
+interface BalanceSheetData {
+    assets: AccountBalance[];
+    liabilities: AccountBalance[];
+    equity: AccountBalance[];
+    totals: {
+        total_assets: number;
+        total_assets_display: string;
+        total_liabilities: number;
+        total_liabilities_display: string;
+        total_equity: number;
+        total_equity_display: string;
+        is_balanced: boolean;
     };
 }
 
-const formatCurrency = (amount: number | null | undefined, zeroAsDash = false) => {
-    if (amount === null || amount === undefined || isNaN(amount) || (zeroAsDash && amount === 0)) {
-        return '-';
-    }
-    const formatted = new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(amount));
-    return amount < 0 ? `(${formatted})` : formatted;
-};
+interface IncomeStatementData {
+    revenue: AccountBalance[];
+    expenses: AccountBalance[];
+    totals: {
+        total_revenue: number;
+        total_revenue_display: string;
+        total_expenses: number;
+        total_expenses_display: string;
+        net_income: number;
+        net_income_display: string;
+        is_profitable: boolean;
+    };
+}
 
-const FinancialStatementPage = () => {
-    const { user } = useAuth();
+interface FinancialData {
+    success: boolean;
+    as_of_date: string;
+    generated_at: string;
+    company_id: string;
+    balance_sheet: BalanceSheetData;
+    income_statement: IncomeStatementData;
+    formula: string;
+}
+
+const API_URL = 'https://hariindustries.net/api/clearbook/financial_statements.php';
+
+export default function FinancialStatements() {
+    const [data, setData] = useState<FinancialData | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('balance-sheet');
+    const [asOfDate, setAsOfDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [isExporting, setIsExporting] = useState(false);
+    
+    const reportRef = useRef<HTMLDivElement>(null);
+    
     const { toast } = useToast();
-    const [data, setData] = useState<ProcessedData | null>(null);
+    const { user } = useAuth();
+    const companyId = user?.company_id;
+    const userId = user?.uid;
 
-    // Date States
-    const [bsDate, setBsDate] = useState<Date | undefined>(new Date());
-    const [isStartDate, setIsStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 0, 1));
-    const [isEndDate, setIsEndDate] = useState<Date | undefined>(new Date());
-
-    const [hideZeroBalances, setHideZeroBalances] = useState(true);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const generateReport = useCallback(async () => {
-        if (!bsDate || !isStartDate || !isEndDate || !user?.company_id) {
-            setError("Please select all required dates.");
+    const fetchFinancials = useCallback(async () => {
+        if (!companyId) {
+            toast({ title: 'Error', description: 'Company ID not found', variant: 'destructive' });
+            setIsLoading(false);
             return;
         }
+
         setIsLoading(true);
-        setError(null);
-        setData(null);
-
-        const formatDateStr = (d: Date) => format(d, 'yyyy-MM-dd');
-        const bsUrl = `https://hariindustries.net/api/clearbook/balance-sheet.php?company_id=${user.company_id}&toDate=${formatDateStr(bsDate)}`;
-        const isUrl = `https://hariindustries.net/api/clearbook/income-statement.php?company_id=${user.company_id}&fromDate=${formatDateStr(isStartDate)}&toDate=${formatDateStr(isEndDate)}`;
-
+        
         try {
-            const [bsRes, isRes] = await Promise.all([fetch(bsUrl), fetch(isUrl)]);
-            if (!bsRes.ok || !isRes.ok) throw new Error('Failed to fetch one or more reports.');
-            const [bsData, isData] = await Promise.all([bsRes.json(), isRes.json()]);
-
-            if (!bsData.success || !isData.success) {
-                throw new Error(bsData.message || isData.message || 'API call failed');
+            const url = new URL(API_URL);
+            url.searchParams.set('company_id', companyId);
+            url.searchParams.set('as_of_date', asOfDate);
+            url.searchParams.set('type', 'all');
+            url.searchParams.set('format', 'json');
+            if (userId) url.searchParams.set('user_id', userId);
+            
+            const response = await fetch(url.toString());
+            const result = await response.json();
+            
+            if (result.success) {
+                setData(result);
+            } else {
+                throw new Error(result.error || result.message || 'Failed to fetch financial data');
             }
-            
-            const transformIsGroup = (group: any): ReportGroup => {
-                if (!group || !Array.isArray(group.accounts)) return { accounts: [], total: 0 };
-                return {
-                    accounts: group.accounts.map((acc: any) => ({
-                        id: acc.id,
-                        name: acc.name,
-                        balance: acc.amount 
-                    })),
-                    total: group.total
-                };
-            };
-            
-            const transformBsGroup = (groups: any): Record<string, ReportGroup> => {
-                 if (!groups) return {};
-                 const result: Record<string, ReportGroup> = {};
-                 for (const key in groups) {
-                     result[key] = {
-                         accounts: groups[key].accounts.map((acc: any) => ({
-                             id: acc.id,
-                             name: acc.name,
-                             balance: acc.balance
-                         })),
-                         total: groups[key].total
-                     };
-                 }
-                 return result;
-            };
-
-            const processed: ProcessedData = {
-                incomeStatement: {
-                    revenue: transformIsGroup(isData.processedData.revenue),
-                    cogs: transformIsGroup(isData.processedData.costOfGoodsSold),
-                    expenses: transformIsGroup(isData.processedData.expenses),
-                    grossProfit: isData.processedData.grossProfit.amount,
-                    netIncome: isData.processedData.netIncome.amount,
-                },
-                balanceSheet: {
-                    assets: transformBsGroup(bsData.processedData.assets.subGroups),
-                    liabilities: transformBsGroup(bsData.processedData.liabilities.subGroups),
-                    equity: transformBsGroup(bsData.processedData.equity.subGroups),
-                    totalAssets: bsData.processedData.assets.total,
-                    totalLiabilities: bsData.processedData.liabilities.total,
-                    totalEquity: bsData.processedData.equity.total,
-                    totalLiabilitiesAndEquity: bsData.processedData.totalLiabilitiesAndEquity
-                }
-            };
-            setData(processed);
-        } catch (e: any) {
-            setError(`Failed to generate report: ${e.message}`);
-            toast({ title: "Error", description: e.message, variant: "destructive" });
+        } catch (error: any) {
+            console.error('Financial data error:', error);
+            toast({ 
+                title: 'Error', 
+                description: error.message || 'Failed to load financial statements', 
+                variant: 'destructive' 
+            });
         } finally {
             setIsLoading(false);
         }
-    }, [bsDate, isStartDate, isEndDate, user, toast]);
-    
-    const handleExportExcel = () => {
-        if (!data) return;
-        const wb = XLSX.utils.book_new();
+    }, [companyId, userId, asOfDate, toast]);
+
+    useEffect(() => {
+        fetchFinancials();
+    }, [fetchFinancials]);
+
+    const exportToPDF = async () => {
+        if (!reportRef.current) return;
         
-        // Income Statement
-        const isHeader = ['INCOME STATEMENT', 'Amount'];
-        const isData = [
-            ...data.incomeStatement.revenue.accounts.map(a => [a.name, a.balance]),
-            ['Total Revenue', data.incomeStatement.revenue.total],
-            ...data.incomeStatement.cogs.accounts.map(a => [a.name, a.balance]),
-            ['Total COGS', data.incomeStatement.cogs.total],
-            ['Gross Profit', data.incomeStatement.grossProfit],
-            ...data.incomeStatement.expenses.accounts.map(a => [a.name, a.balance]),
-            ['Total Expenses', data.incomeStatement.expenses.total],
-            ['Net Income', data.incomeStatement.netIncome]
-        ];
-        const isWs = XLSX.utils.aoa_to_sheet([isHeader, ...isData]);
-        XLSX.utils.book_append_sheet(wb, isWs, "Income Statement");
-
-        // Balance Sheet
-        const bsHeader = ['BALANCE SHEET', 'Amount'];
-        let bsData: (string | number)[][] = [];
-        bsData.push(['ASSETS', '']);
-        Object.values(data.balanceSheet.assets).forEach(g => { g.accounts.forEach(a => bsData.push([a.name, a.balance])) });
-        bsData.push(['Total Assets', data.balanceSheet.totalAssets]);
-        bsData.push(['LIABILITIES', '']);
-        Object.values(data.balanceSheet.liabilities).forEach(g => { g.accounts.forEach(a => bsData.push([a.name, a.balance])) });
-        bsData.push(['Total Liabilities', data.balanceSheet.totalLiabilities]);
-        bsData.push(['EQUITY', '']);
-        Object.values(data.balanceSheet.equity).forEach(g => { g.accounts.forEach(a => bsData.push([a.name, a.balance])) });
-        bsData.push(['Total Equity', data.balanceSheet.totalEquity]);
-
-        const bsWs = XLSX.utils.aoa_to_sheet([bsHeader, ...bsData]);
-        XLSX.utils.book_append_sheet(wb, bsWs, "Balance Sheet");
-
-        XLSX.writeFile(wb, 'Financial_Statement.xlsx');
+        setIsExporting(true);
+        
+        try {
+            const element = reportRef.current;
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true
+            });
+            
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+            
+            const imgWidth = 210; // A4 width in mm
+            const pageHeight = 297; // A4 height in mm
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+            
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+            
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+            
+            pdf.save(`financial_statements_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+            
+            toast({ 
+                title: 'Success', 
+                description: 'PDF exported successfully', 
+                variant: 'default' 
+            });
+        } catch (error) {
+            console.error('PDF export error:', error);
+            toast({ 
+                title: 'Error', 
+                description: 'Failed to export PDF', 
+                variant: 'destructive' 
+            });
+        } finally {
+            setIsExporting(false);
+        }
     };
 
-    const handleExportPdf = () => {
+    const exportToCSV = () => {
         if (!data) return;
-        const doc = new jsPDF();
-        const table = (config: any) => (doc as any).autoTable(config);
-
-        doc.text("Financial Statement", 14, 15);
         
-        // Income Statement
-        table({
-            startY: 20,
-            head: [['INCOME STATEMENT', '']],
-            body: [
-                ...data.incomeStatement.revenue.accounts.map(a => [a.name, formatCurrency(a.balance)]),
-                ['Total Revenue', formatCurrency(data.incomeStatement.revenue.total)],
-                ...data.incomeStatement.cogs.accounts.map(a => [a.name, formatCurrency(a.balance)]),
-                ['Total COGS', formatCurrency(data.incomeStatement.cogs.total)],
-                ['Gross Profit', formatCurrency(data.incomeStatement.grossProfit)],
-                ...data.incomeStatement.expenses.accounts.map(a => [a.name, formatCurrency(a.balance)]),
-                ['Total Expenses', formatCurrency(data.incomeStatement.expenses.total)],
-                ['Net Income', formatCurrency(data.incomeStatement.netIncome)],
-            ]
-        });
-
-        // Balance Sheet
-        table({
-            head: [['BALANCE SHEET', '']],
-            body: [
-                ['ASSETS', ''],
-                ...Object.values(data.balanceSheet.assets).flatMap(g => g.accounts.map(a => [a.name, formatCurrency(a.balance)])),
-                ['Total Assets', formatCurrency(data.balanceSheet.totalAssets)],
-                ['LIABILITIES', ''],
-                ...Object.values(data.balanceSheet.liabilities).flatMap(g => g.accounts.map(a => [a.name, formatCurrency(a.balance)])),
-                ['Total Liabilities', formatCurrency(data.balanceSheet.totalLiabilities)],
-                ['EQUITY', ''],
-                ...Object.values(data.balanceSheet.equity).flatMap(g => g.accounts.map(a => [a.name, formatCurrency(a.balance)])),
-                ['Total Equity', formatCurrency(data.balanceSheet.totalEquity)],
-            ]
-        });
+        // Prepare CSV data
+        const csvRows = [];
         
-        doc.save('Financial_Statement.pdf');
+        // Balance Sheet CSV
+        csvRows.push(['BALANCE SHEET']);
+        csvRows.push(['As of', format(new Date(data.as_of_date), 'dd MMM yyyy')]);
+        csvRows.push([]);
+        csvRows.push(['ASSETS', 'Amount']);
+        data.balance_sheet.assets.forEach(asset => {
+            csvRows.push([`${asset.code} - ${asset.name}`, asset.balance_display]);
+        });
+        csvRows.push(['TOTAL ASSETS', data.balance_sheet.totals.total_assets_display]);
+        csvRows.push([]);
+        csvRows.push(['LIABILITIES', 'Amount']);
+        data.balance_sheet.liabilities.forEach(liability => {
+            csvRows.push([`${liability.code} - ${liability.name}`, liability.balance_display]);
+        });
+        csvRows.push(['TOTAL LIABILITIES', data.balance_sheet.totals.total_liabilities_display]);
+        csvRows.push([]);
+        csvRows.push(['EQUITY', 'Amount']);
+        data.balance_sheet.equity.forEach(equity => {
+            csvRows.push([`${equity.code} - ${equity.name}`, equity.balance_display]);
+        });
+        csvRows.push(['TOTAL EQUITY', data.balance_sheet.totals.total_equity_display]);
+        csvRows.push([]);
+        
+        // Income Statement CSV
+        csvRows.push(['INCOME STATEMENT']);
+        csvRows.push(['For the period ending', format(new Date(data.as_of_date), 'dd MMM yyyy')]);
+        csvRows.push([]);
+        csvRows.push(['REVENUE', 'Amount']);
+        data.income_statement.revenue.forEach(rev => {
+            csvRows.push([`${rev.code} - ${rev.name}`, rev.balance_display]);
+        });
+        csvRows.push(['TOTAL REVENUE', data.income_statement.totals.total_revenue_display]);
+        csvRows.push([]);
+        csvRows.push(['EXPENSES', 'Amount']);
+        data.income_statement.expenses.forEach(exp => {
+            csvRows.push([`${exp.code} - ${exp.name}`, exp.balance_display]);
+        });
+        csvRows.push(['TOTAL EXPENSES', data.income_statement.totals.total_expenses_display]);
+        csvRows.push([]);
+        csvRows.push(['NET INCOME (LOSS)', data.income_statement.totals.net_income_display]);
+        
+        const csvContent = csvRows.map(row => row.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `financial_statements_${data.as_of_date}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        toast({ title: 'Success', description: 'CSV exported successfully' });
     };
-    
-    const isBalanced = useMemo(() => data ? Math.abs(data.balanceSheet.totalAssets - data.balanceSheet.totalLiabilitiesAndEquity) < 0.01 : false, [data]);
 
-    // RENDER HELPERS
-    const renderSummary = () => data && (
-        <div className="space-y-4">
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card><CardHeader><CardTitle>Total Revenue</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.incomeStatement.revenue.total)}</p></CardContent></Card>
-                <Card><CardHeader><CardTitle>Net Income</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.incomeStatement.netIncome)}</p></CardContent></Card>
-                <Card><CardHeader><CardTitle>Total Assets</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.balanceSheet.totalAssets)}</p></CardContent></Card>
-                <Card><CardHeader><CardTitle>Total Equity</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatCurrency(data.balanceSheet.totalEquity)}</p></CardContent></Card>
-            </div>
-            <Card className={`border-2 ${isBalanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}>
-                <CardContent className="p-4 flex justify-between items-center">
-                    <div className={`flex items-center font-semibold ${isBalanced ? 'text-green-700' : 'text-red-700'}`}><CheckCircle className="h-5 w-5 mr-2"/> Balance: {isBalanced ? 'Balanced' : 'Out of Balance'}</div>
-                    <div className="text-sm font-semibold">Assets: {formatCurrency(data.balanceSheet.totalAssets)} | Liab. + Equity: {formatCurrency(data.balanceSheet.totalLiabilitiesAndEquity)}</div>
-                </CardContent>
-            </Card>
+    const renderAccountList = (accounts: AccountBalance[], title: string) => (
+        <div className="space-y-1">
+            <h4 className="font-semibold text-gray-700 mt-4 mb-2">{title}</h4>
+            {accounts.length > 0 ? (
+                accounts.map((account, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                        <span className="text-sm">
+                            <span className="font-mono text-xs text-gray-500">{account.code}</span>
+                            {' '}
+                            {account.name}
+                        </span>
+                        <span className="text-sm font-mono font-medium">{account.balance_display}</span>
+                    </div>
+                ))
+            ) : (
+                <div className="text-sm text-gray-400 italic py-2">No accounts with balance</div>
+            )}
         </div>
     );
 
-    const renderIncomeStatement = () => data && (
-        <Card>
-            <CardHeader><CardTitle>INCOME STATEMENT</CardTitle></CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                        <TableRow className="font-bold"><TableCell colSpan={2}><TrendingUp className="inline-flex mr-2 h-4 w-4"/>REVENUE</TableCell></TableRow>
-                        {data.incomeStatement.revenue.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-10">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        <TableRow className="font-semibold bg-gray-50"><TableCell>Total Revenue</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.incomeStatement.revenue.total)}</TableCell></TableRow>
-                        
-                        <TableRow className="font-bold"><TableCell colSpan={2}><ShoppingCart className="inline-flex mr-2 h-4 w-4 pt-4"/>COST OF GOODS SOLD</TableCell></TableRow>
-                        {data.incomeStatement.cogs.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-10">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        <TableRow className="font-semibold bg-gray-50"><TableCell>Total COGS</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.incomeStatement.cogs.total)}</TableCell></TableRow>
-                        
-                        <TableRow className="font-bold text-lg bg-green-100"><TableCell><ChevronsRight className="inline-flex mr-2 h-4 w-4"/>GROSS PROFIT</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.incomeStatement.grossProfit)}</TableCell></TableRow>
-                        
-                        <TableRow className="font-bold"><TableCell colSpan={2}><TrendingDown className="inline-flex mr-2 h-4 w-4 pt-4"/>OPERATING EXPENSES</TableCell></TableRow>
-                        {data.incomeStatement.expenses.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-10">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        <TableRow className="font-semibold bg-gray-50"><TableCell>Total Operating Expenses</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.incomeStatement.expenses.total)}</TableCell></TableRow>
-                    </TableBody>
-                    <TableFooter><TableRow className="font-extrabold text-xl bg-gray-800 text-white hover:bg-black"><TableCell><Target className="inline-flex mr-2 h-5 w-5"/>NET INCOME</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.incomeStatement.netIncome)}</TableCell></TableRow></TableFooter>
-                </Table>
-            </CardContent>
-        </Card>
-    );
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+        );
+    }
 
-    const renderBalanceSheet = () => data && (
-        <Card>
-            <CardHeader><CardTitle>BALANCE SHEET</CardTitle></CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>Description</TableHead><TableHead className="text-right">{`As of ${format(bsDate!, 'MMM dd, yyyy')}`}</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                        <TableRow className="font-bold text-lg"><TableCell colSpan={2}><PiggyBank className="inline-flex mr-2 h-5 w-5"/>ASSETS</TableCell></TableRow>
-                        {Object.entries(data.balanceSheet.assets).map(([subType, group]) => <React.Fragment key={subType}> 
-                            <TableRow className="font-semibold bg-gray-50"><TableCell colSpan={2} className="pl-8">{subType}</TableCell></TableRow>
-                            {group.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-12">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        </React.Fragment>)}
-                        <TableRow className="font-bold bg-blue-100"><TableCell>TOTAL ASSETS</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.balanceSheet.totalAssets)}</TableCell></TableRow>
-
-                        <TableRow className="font-bold text-lg"><TableCell colSpan={2} className="pt-6"><Landmark className="inline-flex mr-2 h-5 w-5"/>LIABILITIES</TableCell></TableRow>
-                        {Object.entries(data.balanceSheet.liabilities).map(([subType, group]) => <React.Fragment key={subType}> 
-                            <TableRow className="font-semibold bg-gray-50"><TableCell colSpan={2} className="pl-8">{subType}</TableCell></TableRow>
-                             {group.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-12">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        </React.Fragment>)}
-                         <TableRow className="font-bold bg-yellow-100"><TableCell>TOTAL LIABILITIES</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.balanceSheet.totalLiabilities)}</TableCell></TableRow>
-
-                        <TableRow className="font-bold text-lg"><TableCell colSpan={2} className="pt-6"><Users className="inline-flex mr-2 h-5 w-5"/>EQUITY</TableCell></TableRow>
-                        {Object.entries(data.balanceSheet.equity).map(([subType, group]) => <React.Fragment key={subType}> 
-                            <TableRow className="font-semibold bg-gray-50"><TableCell colSpan={2} className="pl-8">{subType}</TableCell></TableRow>
-                            {group.accounts.map(acc => <TableRow key={acc.id}><TableCell className="pl-12">{acc.name}</TableCell><TableCell className="text-right font-mono">{formatCurrency(acc.balance, hideZeroBalances)}</TableCell></TableRow>)}
-                        </React.Fragment>)}
-                        <TableRow className="font-bold bg-green-100"><TableCell>TOTAL EQUITY</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.balanceSheet.totalEquity)}</TableCell></TableRow>
-                    </TableBody>
-                     <TableFooter><TableRow className="font-extrabold text-xl bg-gray-800 text-white hover:bg-black"><TableCell>TOTAL LIABILITIES + EQUITY</TableCell><TableCell className="text-right font-mono">{formatCurrency(data.balanceSheet.totalLiabilitiesAndEquity)}</TableCell></TableRow></TableFooter>
-                </Table>
-            </CardContent>
-        </Card>
-    );
+    if (!data || !data.success) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                    <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                    <p className="text-gray-500">Failed to load financial statements</p>
+                    <Button onClick={fetchFinancials} className="mt-4">Retry</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold tracking-tight">Financial Statement</h1>
-                {data && (
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={handleExportExcel}><Download className="mr-2 h-4 w-4" />Excel</Button>
-                        <Button variant="outline" onClick={handleExportPdf}><Printer className="mr-2 h-4 w-4" />PDF</Button>
+        <div className="p-4 md:p-6 max-w-7xl mx-auto">
+            {/* Header Controls */}
+            <div className="print:hidden mb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                    <h1 className="text-2xl font-bold">Financial Statements</h1>
+                    <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-1.5">
+                            <Calendar className="h-4 w-4 text-gray-500" />
+                            <input
+                                type="date"
+                                value={asOfDate}
+                                onChange={(e) => setAsOfDate(e.target.value)}
+                                className="bg-transparent border-none text-sm focus:outline-none"
+                            />
+                        </div>
+                        <Button variant="outline" onClick={exportToCSV} size="sm" disabled={isExporting}>
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            CSV
+                        </Button>
+                        <Button variant="outline" onClick={exportToPDF} size="sm" disabled={isExporting}>
+                            {isExporting ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Printer className="mr-2 h-4 w-4" />
+                            )}
+                            PDF
+                        </Button>
+                        <Button onClick={fetchFinancials} size="sm">
+                            Refresh
+                        </Button>
                     </div>
-                )}
-            </div>
-            
-            <Card>
-                <CardHeader><CardTitle>Report Controls</CardTitle></CardHeader>
-                <CardContent className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
-                    <div className="space-y-2"><label className="text-sm font-medium">Balance Sheet As of</label><DatePicker date={bsDate} setDate={setBsDate} /></div>
-                    <div className="space-y-2"><label className="text-sm font-medium">IS From</label><DatePicker date={isStartDate} setDate={setIsStartDate} /></div>
-                    <div className="space-y-2"><label className="text-sm font-medium">IS To</label><DatePicker date={isEndDate} setDate={setIsEndDate} /></div>
-                    <div className="flex items-center space-x-2"><Checkbox id="hide-zero" checked={hideZeroBalances} onCheckedChange={(c) => setHideZeroBalances(c as boolean)} /><label htmlFor="hide-zero">Hide Zero Balances</label></div>
-                    <Button onClick={generateReport} disabled={isLoading} className="w-full col-span-full lg:col-span-4">
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />} Generate Report
-                    </Button>
-                </CardContent>
-            </Card>
-            
-            {isLoading && <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /> <p className="ml-4">Generating financial statements...</p></div>}
-            {error && <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>}
-
-            {data && (
-                <div className="space-y-6">
-                    {renderSummary()}
-                    {renderIncomeStatement()}
-                    {renderBalanceSheet()}
                 </div>
-            )}
+            </div>
 
-            {!isLoading && !data && !error && <div className="text-center py-12 text-muted-foreground">Please select your desired dates and generate a report.</div>}
+            {/* Report Content - For PDF Export */}
+            <div ref={reportRef} className="bg-white">
+                {/* Header */}
+                <div className="text-center mb-8 pb-4 border-b">
+                    <h1 className="text-2xl font-bold">Financial Statements</h1>
+                    <p className="text-gray-600">As of {format(new Date(data.as_of_date), 'dd MMMM yyyy')}</p>
+                    <p className="text-gray-400 text-sm">Generated on {format(new Date(), 'dd MMM yyyy hh:mm a')}</p>
+                </div>
+
+                {/* Tabs for on-screen viewing */}
+                <div className="print:hidden">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="balance-sheet">Balance Sheet</TabsTrigger>
+                            <TabsTrigger value="income-statement">Income Statement</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="balance-sheet">
+                            <BalanceSheetView data={data} />
+                        </TabsContent>
+                        
+                        <TabsContent value="income-statement">
+                            <IncomeStatementView data={data} />
+                        </TabsContent>
+                    </Tabs>
+                </div>
+
+                {/* Print/PDF view - both statements visible */}
+                <div className="hidden print:block">
+                    <BalanceSheetView data={data} />
+                    <div className="page-break"></div>
+                    <IncomeStatementView data={data} />
+                </div>
+            </div>
+
+            {/* Footer - Hidden on print */}
+            <div className="print:hidden mt-8 text-center text-xs text-gray-400">
+                <p>This is a system-generated financial report. For audit purposes, please retain supporting documentation.</p>
+            </div>
+
+            <style jsx global>{`
+                @media print {
+                    .page-break {
+                        page-break-before: always;
+                    }
+                    body {
+                        print-color-adjust: exact;
+                        -webkit-print-color-adjust: exact;
+                    }
+                }
+            `}</style>
         </div>
     );
-};
+}
 
-export default FinancialStatementPage;
+// Balance Sheet Component
+function BalanceSheetView({ data }: { data: FinancialData }) {
+    return (
+        <div>
+            <div className="text-center mb-6">
+                <h2 className="text-xl font-semibold">Balance Sheet</h2>
+                <p className="text-gray-500 text-sm">As of {format(new Date(data.as_of_date), 'dd MMMM yyyy')}</p>
+            </div>
+
+            {/* Balance Check Alert */}
+            <div className={`mb-6 p-3 rounded-lg text-sm ${data.balance_sheet.totals.is_balanced ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                {data.balance_sheet.totals.is_balanced ? (
+                    <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4" /> ✓ Books are balanced: Assets = Liabilities + Equity</div>
+                ) : (
+                    <div className="flex items-center gap-2"><XCircle className="h-4 w-4" /> ✗ Books are NOT balanced</div>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* ASSETS */}
+                <div>
+                    <div className="bg-blue-50 p-3 rounded-t-lg border-b border-blue-200">
+                        <h3 className="font-bold text-blue-800 flex items-center gap-2"><Building2 className="h-4 w-4" /> ASSETS</h3>
+                    </div>
+                    <div className="p-4 border-x border-b rounded-b-lg">
+                        {renderAccountList(data.balance_sheet.assets, 'Current Assets')}
+                        <div className="mt-4 pt-3 border-t-2 font-bold flex justify-between">
+                            <span>Total Assets</span>
+                            <span className="text-blue-700">{data.balance_sheet.totals.total_assets_display}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* LIABILITIES & EQUITY */}
+                <div className="space-y-6">
+                    <div>
+                        <div className="bg-red-50 p-3 rounded-t-lg border-b border-red-200">
+                            <h3 className="font-bold text-red-800 flex items-center gap-2"><DollarSign className="h-4 w-4" /> LIABILITIES</h3>
+                        </div>
+                        <div className="p-4 border-x border-b rounded-b-lg">
+                            {renderAccountList(data.balance_sheet.liabilities, 'Current Liabilities')}
+                            <div className="mt-4 pt-3 border-t-2 font-bold flex justify-between">
+                                <span>Total Liabilities</span>
+                                <span className="text-red-700">{data.balance_sheet.totals.total_liabilities_display}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div className="bg-green-50 p-3 rounded-t-lg border-b border-green-200">
+                            <h3 className="font-bold text-green-800 flex items-center gap-2"><TrendingUp className="h-4 w-4" /> EQUITY</h3>
+                        </div>
+                        <div className="p-4 border-x border-b rounded-b-lg">
+                            {renderAccountList(data.balance_sheet.equity, 'Shareholders Equity')}
+                            <div className="mt-4 pt-3 border-t-2 font-bold flex justify-between">
+                                <span>Total Equity</span>
+                                <span className="text-green-700">{data.balance_sheet.totals.total_equity_display}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="font-bold flex justify-between text-lg">
+                            <span>Total Liabilities + Equity</span>
+                            <span className={data.balance_sheet.totals.is_balanced ? 'text-green-700' : 'text-red-700'}>
+                                {data.balance_sheet.totals.total_equity_display}
+                            </span>
+                        </div>
+                        <div className="text-center text-sm text-gray-500 mt-2">{data.formula}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Income Statement Component
+function IncomeStatementView({ data }: { data: FinancialData }) {
+    const { totals } = data.income_statement;
+    const isProfitable = totals.is_profitable;
+    
+    return (
+        <div>
+            <div className="text-center mb-6">
+                <h2 className="text-xl font-semibold">Income Statement</h2>
+                <p className="text-gray-500 text-sm">For the period ending {format(new Date(data.as_of_date), 'dd MMMM yyyy')}</p>
+            </div>
+
+            <div className="max-w-2xl mx-auto">
+                {/* REVENUE */}
+                <div className="bg-green-50 p-3 rounded-t-lg border-b border-green-200">
+                    <h3 className="font-bold text-green-800 flex items-center gap-2"><TrendingUp className="h-4 w-4" /> REVENUE</h3>
+                </div>
+                <div className="p-4 border-x">
+                    {renderAccountList(data.income_statement.revenue, 'Sales Revenue')}
+                </div>
+                <div className="p-3 border-x border-b rounded-b-lg bg-gray-50 font-bold flex justify-between">
+                    <span>Total Revenue</span>
+                    <span className="text-green-700">{totals.total_revenue_display}</span>
+                </div>
+
+                {/* EXPENSES */}
+                <div className="mt-6 bg-red-50 p-3 rounded-t-lg border-b border-red-200">
+                    <h3 className="font-bold text-red-800 flex items-center gap-2"><TrendingDown className="h-4 w-4" /> EXPENSES</h3>
+                </div>
+                <div className="p-4 border-x">
+                    {renderAccountList(data.income_statement.expenses, 'Operating Expenses')}
+                </div>
+                <div className="p-3 border-x border-b rounded-b-lg bg-gray-50 font-bold flex justify-between">
+                    <span>Total Expenses</span>
+                    <span className="text-red-700">{totals.total_expenses_display}</span>
+                </div>
+
+                {/* NET INCOME */}
+                <div className={`mt-6 p-4 rounded-lg text-center ${isProfitable ? 'bg-green-100' : 'bg-red-100'}`}>
+                    <div className="font-bold text-lg">
+                        NET INCOME (LOSS)
+                    </div>
+                    <div className={`text-2xl font-bold ${isProfitable ? 'text-green-700' : 'text-red-700'}`}>
+                        {totals.net_income_display}
+                    </div>
+                    {isProfitable ? (
+                        <div className="text-sm text-green-600 mt-1">✓ Profitable period</div>
+                    ) : (
+                        <div className="text-sm text-red-600 mt-1">⚠ Operating at a loss</div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function renderAccountList(accounts: AccountBalance[], title: string) {
+    if (accounts.length === 0) {
+        return <div className="text-sm text-gray-400 italic py-2">No accounts with balance</div>;
+    }
+    
+    return (
+        <div className="space-y-1">
+            <h4 className="font-semibold text-gray-700 mb-2">{title}</h4>
+            {accounts.map((account, idx) => (
+                <div key={idx} className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                    <span className="text-sm">
+                        <span className="font-mono text-xs text-gray-500">{account.code}</span>
+                        {' '}
+                        {account.name}
+                    </span>
+                    <span className="text-sm font-mono font-medium">{account.balance_display}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
