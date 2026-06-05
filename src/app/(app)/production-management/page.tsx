@@ -110,7 +110,6 @@ interface BlowingBatch {
   bottles_damaged: number;
   bottles_produced: number;
   bottles_filled: number;
-  // Caps - Track taken AND used
   caps_cartons_taken: number;
   caps_pieces_taken: number;
   caps_good: number;
@@ -118,26 +117,22 @@ interface BlowingBatch {
   caps_used: number;
   caps_left: number;
   caps_remaining_cartons: number;
-  // Labels - Track taken AND used
   labels_taken: number;
   labels_good: number;
   labels_damaged: number;
   labels_used: number;
   labels_left: number;
-  // Gum - Track taken AND used
   gum_boxes_taken: number;
   gum_good: number;
   gum_damaged: number;
   gum_used: number;
   gum_left: number;
-  // Shrink Wrap - Track taken AND used
   shrink_wrap_type: '60' | '70';
   shrink_wrap_taken: number;
   shrink_wrap_good: number;
   shrink_wrap_damaged: number;
   shrink_wrap_used_kg: number;
   shrink_wrap_left: number;
-  // Finished Goods
   finished_product: '75cl' | '50cl' | '33cl';
   finished_pallets: number;
   finished_packs: number;
@@ -314,10 +309,12 @@ const ProductionModule = () => {
     }
   };
 
+  // Only sync badPreformsKgInput when preform TYPE changes (weight per piece changes)
+  // Do NOT sync when bad_preforms_qty changes — that would fight the user's typing
   useEffect(() => {
     const kgValue = (injectionBatch.bad_preforms_qty * injectionBatch.preform_weight_grams) / 1000;
-    setBadPreformsKgInput(kgValue.toString());
-  }, [injectionBatch.bad_preforms_qty, injectionBatch.preform_weight_grams]);
+    setBadPreformsKgInput(kgValue.toFixed(3));
+  }, [injectionBatch.preform_weight_grams]); // only on type change, NOT bad_preforms_qty
 
   const calculateTotalFinishedPieces = () => {
     const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
@@ -460,9 +457,6 @@ const ProductionModule = () => {
     }
   };
 
-  // ======================================================
-  // FIXED: processBlowingStage - Sends CONSUMED quantities
-  // ======================================================
   const processBlowingStage = async () => {
     if (blowingBatch.preforms_taken === 0) {
       toast({ title: 'Validation Error', description: 'Please enter preforms taken (bags)', variant: 'destructive' });
@@ -473,75 +467,9 @@ const ProductionModule = () => {
       toast({ title: 'Validation Error', description: 'Please enter finished goods (pallets, packs, or pieces)', variant: 'destructive' });
       return;
     }
-    
-    // Validate that consumed quantities are entered
-    if (blowingBatch.caps_used === 0) {
-      toast({ title: 'Validation Error', description: 'Please enter caps consumed (Good + Waste)', variant: 'destructive' });
-      return;
-    }
-    if (blowingBatch.labels_used === 0) {
-      toast({ title: 'Validation Error', description: 'Please enter labels consumed (Good + Waste)', variant: 'destructive' });
-      return;
-    }
-    if (blowingBatch.gum_used === 0) {
-      toast({ title: 'Validation Error', description: 'Please enter gum consumed (Good + Waste)', variant: 'destructive' });
-      return;
-    }
-    if (blowingBatch.shrink_wrap_used_kg === 0) {
-      toast({ title: 'Validation Error', description: 'Please enter shrink wrap consumed (KG)', variant: 'destructive' });
-      return;
-    }
-    
     setIsSubmitting(true);
     try {
-      // Convert caps_used from pieces to cartons for backend
-      const caps_cartons_used = blowingBatch.caps_used / CAPS_PER_CARTON;
-      
-      // Prepare payload with CONSUMED quantities
-      const payload = {
-        batch_number: blowingBatch.batch_number,
-        production_date: blowingBatch.production_date,
-        shift: blowingBatch.shift,
-        operator_name: blowingBatch.operator_name,
-        notes: blowingBatch.notes,
-        preform_type: blowingBatch.preform_type,
-        preform_bags: blowingBatch.preform_bags,
-        preforms_taken: blowingBatch.preforms_taken,
-        bottles_good: blowingBatch.bottles_good,
-        bottles_damaged: blowingBatch.bottles_damaged,
-        bottles_produced: blowingBatch.bottles_produced,
-        bottles_filled: blowingBatch.bottles_filled,
-        // CAPS - Send CONSUMED quantity (in cartons)
-        caps_used: caps_cartons_used,
-        // LABELS - Send CONSUMED quantity
-        labels_used: blowingBatch.labels_used,
-        // GUM - Send CONSUMED quantity
-        gum_used: blowingBatch.gum_used,
-        // SHRINK WRAP - Send CONSUMED quantity (already correct)
-        shrink_wrap_type: blowingBatch.shrink_wrap_type,
-        shrink_wrap_used_kg: blowingBatch.shrink_wrap_used_kg,
-        // Finished Goods
-        finished_product: blowingBatch.finished_product,
-        finished_pallets: blowingBatch.finished_pallets,
-        finished_packs: blowingBatch.finished_packs,
-        finished_pieces: blowingBatch.finished_pieces,
-        damaged_pieces: blowingBatch.damaged_pieces,
-        // Additional fields for tracking
-        caps_cartons_taken: blowingBatch.caps_cartons_taken,
-        caps_good: blowingBatch.caps_good,
-        caps_damaged: blowingBatch.caps_damaged,
-        labels_taken: blowingBatch.labels_taken,
-        labels_good: blowingBatch.labels_good,
-        labels_damaged: blowingBatch.labels_damaged,
-        gum_boxes_taken: blowingBatch.gum_boxes_taken,
-        gum_good: blowingBatch.gum_good,
-        gum_damaged: blowingBatch.gum_damaged,
-        shrink_wrap_taken: blowingBatch.shrink_wrap_taken,
-        shrink_wrap_good: blowingBatch.shrink_wrap_good,
-        shrink_wrap_damaged: blowingBatch.shrink_wrap_damaged,
-      };
-      
-      const response = await apiCall('blowing', 'POST', payload);
+      const response = await apiCall('blowing', 'POST', blowingBatch);
       if (response.success) {
         toast({ title: 'Success', description: response.message });
         setIsBlowingModalOpen(false);
@@ -898,7 +826,7 @@ const ProductionModule = () => {
                       <div className="flex justify-between"><span>Cartons Taken:</span><span className="font-semibold">{selectedViewBatch.caps_cartons_taken?.toLocaleString()} cartons</span></div>
                       <div className="flex justify-between"><span>Good Caps:</span><span className="font-semibold text-green-600">{selectedViewBatch.caps_good?.toLocaleString()} pcs</span></div>
                       <div className="flex justify-between"><span>Waste Caps:</span><span className="font-semibold text-red-600">{selectedViewBatch.caps_damaged?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between"><span>Caps Consumed:</span><span className="font-semibold text-blue-600">{selectedViewBatch.caps_used?.toLocaleString()} pcs</span></div>
+                      <div className="flex justify-between"><span>Caps Left:</span><span className="font-semibold">{selectedViewBatch.caps_left?.toLocaleString()} pcs</span></div>
                     </div>
                   </CardContent>
                 </Card>
@@ -909,8 +837,7 @@ const ProductionModule = () => {
                       <div className="flex justify-between"><span>Labels Taken:</span><span className="font-semibold">{selectedViewBatch.labels_taken?.toLocaleString()} pcs</span></div>
                       <div className="flex justify-between"><span>Good Labels:</span><span className="font-semibold text-green-600">{selectedViewBatch.labels_good?.toLocaleString()} pcs</span></div>
                       <div className="flex justify-between"><span>Waste Labels:</span><span className="font-semibold text-red-600">{selectedViewBatch.labels_damaged?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between"><span>Labels Consumed:</span><span className="font-semibold text-blue-600">{selectedViewBatch.labels_used?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between border-t pt-1 mt-1"><span>Gum Consumed:</span><span className="font-semibold">{selectedViewBatch.gum_used} boxes</span></div>
+                      <div className="flex justify-between border-t pt-1 mt-1"><span>Gum Used:</span><span className="font-semibold">{selectedViewBatch.gum_used} boxes</span></div>
                     </div>
                   </CardContent>
                 </Card>
@@ -1260,7 +1187,7 @@ const ProductionModule = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Caps Used (Auto - Will be deducted)</Label><Input value={blowingBatch.caps_used || 0} readOnly className="bg-blue-100 font-semibold" /></div>
+                    <div><Label>Caps Used (Auto)</Label><Input value={blowingBatch.caps_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
                     <div><Label>Caps Left (Auto)</Label><Input value={blowingBatch.caps_left || 0} readOnly className="bg-gray-100" /></div>
                   </div>
                   <div className="p-2 bg-yellow-100 rounded text-sm">
@@ -1299,7 +1226,7 @@ const ProductionModule = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Labels Used (Auto - Will be deducted)</Label><Input value={blowingBatch.labels_used || 0} readOnly className="bg-blue-100 font-semibold" /></div>
+                    <div><Label>Labels Used (Auto)</Label><Input value={blowingBatch.labels_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
                     <div><Label>Labels Left (Auto)</Label><Input value={blowingBatch.labels_left || 0} readOnly className="bg-gray-100" /></div>
                   </div>
                   <div className="p-2 bg-purple-100 rounded text-sm">
@@ -1341,7 +1268,7 @@ const ProductionModule = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Gum Used (Auto - Will be deducted)</Label><Input value={blowingBatch.gum_used || 0} readOnly className="bg-blue-100 font-semibold" /></div>
+                    <div><Label>Gum Used (Auto)</Label><Input value={blowingBatch.gum_used || 0} readOnly className="bg-gray-100 font-semibold" /></div>
                     <div><Label>Gum Left (Auto)</Label><Input value={blowingBatch.gum_left || 0} readOnly className="bg-gray-100" /></div>
                   </div>
                   <div className="p-2 bg-indigo-100 rounded text-sm">
@@ -1393,8 +1320,8 @@ const ProductionModule = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div><Label>Shrink Used (Auto - Will be deducted)</Label><Input value={blowingBatch.shrink_wrap_used_kg || 0} readOnly className="bg-blue-100 font-semibold" /></div>
-                    <div><Label>Shrink Left (Auto)</Label><Input value={blowingBatch.shrink_wrap_left || 0} readOnly className="bg-gray-100" /></div>
+                    <div><Label>Used (Auto)</Label><Input value={blowingBatch.shrink_wrap_used_kg || 0} readOnly className="bg-gray-100 font-semibold" /></div>
+                    <div><Label>Left (Auto)</Label><Input value={blowingBatch.shrink_wrap_left || 0} readOnly className="bg-gray-100" /></div>
                   </div>
                   <div className="p-2 bg-pink-100 rounded text-sm">
                     <div className="flex justify-between"><span>Available:</span><span>{getShrinkAvailable(blowingBatch.shrink_wrap_type).toLocaleString()} KG</span></div>
@@ -1473,6 +1400,18 @@ const ProductionModule = () => {
                   <div className="flex justify-between">
                     <span>Yield:</span>
                     <span className="font-bold text-green-600">{blowingYield}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Waste Units:</span>
+                    <span className="font-bold text-red-500">
+                      {(
+                        (blowingBatch.bottles_damaged || 0) +
+                        (blowingBatch.caps_damaged || 0) +
+                        (blowingBatch.labels_damaged || 0) +
+                        (blowingBatch.gum_damaged || 0) +
+                        (blowingBatch.damaged_pieces || 0)
+                      ).toLocaleString()} units
+                    </span>
                   </div>
                 </div>
               </div>
