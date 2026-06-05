@@ -1,325 +1,326 @@
 'use client';
-
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/hooks/use-toast';
+import React, { useState, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Download, Calendar, CheckCircle, XCircle, Printer } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableFooter
+} from "@/components/ui/table";
+import { DatePicker } from '@/components/ui/date-picker'; // Changed from DateRangePicker
 import { format } from 'date-fns';
+import { Loader2, AlertCircle, FileDown } from 'lucide-react';
+import { chartOfAccounts } from '@/lib/chart-of-accounts';
+import { useAuth } from '@/hooks/useAuth';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-interface AccountBalance {
-    code: string;
+interface ReportAccount {
     name: string;
-    type: string;
-    parent: string | null;
-    debit: number;
-    credit: number;
-    balance: number;
-    balance_display: string;
+    amount: number;
+}
+
+interface ReportSection {
+    title: string;
+    accounts: ReportAccount[];
+    total: number;
 }
 
 interface BalanceSheetData {
-    assets: AccountBalance[];
-    liabilities: AccountBalance[];
-    equity: AccountBalance[];
+    assets: ReportSection;
+    liabilities: ReportSection;
+    equity: ReportSection;
+    totalLiabilitiesAndEquity: number;
 }
 
-interface BalanceSheetTotals {
-    total_assets: number;
-    total_assets_display: string;
-    total_liabilities: number;
-    total_liabilities_display: string;
-    total_equity: number;
-    total_equity_display: string;
-    total_liabilities_equity: number;
-    total_liabilities_equity_display: string;
-    is_balanced: boolean;
-    difference: number;
-    difference_display: string;
+// Simplified interface to match the new, efficient API response
+interface BackendBalance {
+    accountId: string;
+    balance: number; // Net balance (credit - debit)
 }
 
-interface BalanceSheetResponse {
-    success: boolean;
-    as_of_date: string;
-    balance_sheet: BalanceSheetData;
-    totals: BalanceSheetTotals;
-    formula: string;
-}
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(amount);
+};
 
-const API_URL = 'https://hariindustries.net/api/clearbook/balance_sheet.php';
-
-export default function BalanceSheet() {
-    const [data, setData] = useState<BalanceSheetResponse | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [asOfDate, setAsOfDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-    
-    const { toast } = useToast();
+const BalanceSheetPage = () => {
     const { user } = useAuth();
-    const companyId = user?.company_id;
-    const userId = user?.uid;
+    const [reportData, setReportData] = useState<BalanceSheetData | null>(null);
+    const [reportDate, setReportDate] = useState<Date | undefined>(new Date());
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const fetchBalanceSheet = useCallback(async () => {
-        if (!companyId) {
-            toast({ title: 'Error', description: 'Company ID not found', variant: 'destructive' });
-            setIsLoading(false);
+    const generateReport = useCallback(async () => {
+        if (!reportDate) {
+            setError("Please select a date for the report.");
+            return;
+        }
+
+        if (!user?.company_id) {
+            setError("Could not determine your company. Please ensure you are logged in correctly.");
             return;
         }
 
         setIsLoading(true);
-        
+        setError(null);
+        setReportData(null);
+
+        const toDate = format(reportDate, 'yyyy-MM-dd');
+
+        const url = new URL('https://hariindustries.net/api/clearbook/balance_sheet.php');
+        url.searchParams.append('company_id', user.company_id);
+        url.searchParams.append('toDate', toDate);
+
         try {
-            const url = new URL(API_URL);
-            url.searchParams.set('company_id', companyId);
-            url.searchParams.set('as_of_date', asOfDate);
-            if (userId) url.searchParams.set('user_id', userId);
-            
             const response = await fetch(url.toString());
-            const result = await response.json();
-            
-            if (result.success) {
-                setData(result);
-            } else {
-                throw new Error(result.error || result.message || 'Failed to fetch balance sheet');
+            if (!response.ok) {
+                const errorJson = await response.json().catch(() => ({}));
+                throw new Error(errorJson.error || `HTTP error! status: ${response.status}`);
             }
-        } catch (error: any) {
-            console.error('Balance sheet error:', error);
-            toast({ 
-                title: 'Error', 
-                description: error.message || 'Failed to load balance sheet', 
-                variant: 'destructive' 
-            });
+            const data: BackendBalance[] = await response.json();
+
+            if (Array.isArray(data)) {
+                const assets: ReportSection = { title: 'Assets', accounts: [], total: 0 };
+                const liabilities: ReportSection = { title: 'Liabilities', accounts: [], total: 0 };
+                const equity: ReportSection = { title: 'Equity', accounts: [], total: 0 };
+                let totalRevenue = 0;
+                let totalExpense = 0;
+
+                data.forEach(item => {
+                    const account = chartOfAccounts.find(acc => acc.code === item.accountId);
+                    if (!account) return;
+
+                    const balance = item.balance; // This is (credit - debit)
+
+                    switch (account.type) {
+                        case 'Asset':
+                            // Assets have a debit balance, so we invert the sign
+                            assets.accounts.push({ name: account.name, amount: -balance });
+                            assets.total -= balance;
+                            break;
+                        case 'Liability':
+                            // Liabilities have a credit balance, which is correct
+                            liabilities.accounts.push({ name: account.name, amount: balance });
+                            liabilities.total += balance;
+                            break;
+                        case 'Equity':
+                            // Equity has a credit balance, which is correct
+                            equity.accounts.push({ name: account.name, amount: balance });
+                            equity.total += balance;
+                            break;
+                        case 'Revenue':
+                             totalRevenue += balance; // Credit balance
+                             break;
+                        case 'Expense':
+                        case 'Cost of Sales':
+                             totalExpense += balance; // Debit balance (negative)
+                             break;
+                    }
+                });
+
+                const retainedEarnings = totalRevenue + totalExpense;
+                equity.accounts.push({ name: "Retained Earnings", amount: retainedEarnings });
+                equity.total += retainedEarnings;
+                
+                setReportData({
+                    assets,
+                    liabilities,
+                    equity,
+                    totalLiabilitiesAndEquity: liabilities.total + equity.total,
+                });
+            } else {
+                throw new Error("Invalid data format received from server.");
+            }
+        } catch (e: any) {
+            setError(`Failed to load data: ${e.message}`);
+            setReportData(null);
         } finally {
             setIsLoading(false);
         }
-    }, [companyId, userId, asOfDate, toast]);
+    }, [reportDate, user]);
 
-    useEffect(() => {
-        fetchBalanceSheet();
-    }, [fetchBalanceSheet]);
+    const handleExportPdf = useCallback(() => {
+        if (!reportData || !user?.company_id || !reportDate) return;
 
-    const handlePrint = () => {
-        window.print();
-    };
-
-    const handleExport = () => {
-        if (!data) return;
+        const doc = new jsPDF();
+        const toDateFmt = format(reportDate, 'PPP');
         
-        const exportData = {
-            as_of_date: data.as_of_date,
-            generated_on: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-            balance_sheet: data.balance_sheet,
-            totals: data.totals
-        };
+        doc.setFontSize(18);
+        doc.text('Balance Sheet', 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Company: ${user.company_name || user.company_id}`, 14, 30);
+        doc.text(`As of: ${toDateFmt}`, 14, 36);
+
+        const body = [];
+        // Assets
+        body.push([{ content: reportData.assets.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.assets.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.assets.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.assets.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+        body.push([' ', ' ']); // Spacer
+        // Liabilities
+        body.push([{ content: reportData.liabilities.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.liabilities.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.liabilities.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.liabilities.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+         body.push([' ', ' ']); // Spacer
+        // Equity
+        body.push([{ content: reportData.equity.title, colSpan: 2, styles: { fontStyle: 'bold'} }]);
+        reportData.equity.accounts.forEach(acc => body.push([`  ${acc.name}`, { content: formatCurrency(acc.amount), styles: { halign: 'right' }}]));
+        body.push([{ content: `Total ${reportData.equity.title}`, styles: { fontStyle: 'bold' }}, { content: formatCurrency(reportData.equity.total), styles: { halign: 'right', fontStyle: 'bold' }}]);
+        body.push([' ', ' ']); // Spacer
+        // Total L + E
+        body.push([{ content: 'Total Liabilities & Equity', colSpan: 2, styles: { fontStyle: 'bold', fillColor: '#f1f5f9' } }]);
+        body[body.length - 1][1] = { content: formatCurrency(reportData.totalLiabilitiesAndEquity), styles: { fontStyle: 'bold', halign: 'right', fillColor: '#f1f5f9' } };
+
+
+        autoTable(doc, {
+            startY: 42,
+            head: [['Description', 'Amount']],
+            body: body,
+            theme: 'grid',
+            headStyles: { fillColor: [34, 41, 47] },
+        });
         
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `balance_sheet_${data.as_of_date}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        toast({ title: 'Success', description: 'Balance sheet exported successfully' });
-    };
+        doc.save(`Balance-Sheet-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
 
-    const renderAccountRow = (account: AccountBalance, index: number) => (
-        <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 hover:bg-gray-50 px-2">
-            <span className="text-sm">
-                <span className="font-mono text-xs text-gray-500">{account.code}</span>
-                {' '}
-                <span className="font-medium">{account.name}</span>
-            </span>
-            <span className={`text-sm font-mono font-medium ${account.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {account.balance_display}
-            </span>
-        </div>
-    );
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-96">
-                <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-        );
-    }
-
-    if (!data || !data.success) {
-        return (
-            <div className="flex items-center justify-center h-96">
-                <div className="text-center">
-                    <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                    <p className="text-gray-500">Failed to load balance sheet</p>
-                    <Button onClick={fetchBalanceSheet} className="mt-4">Retry</Button>
-                </div>
-            </div>
-        );
-    }
-
-    const { balance_sheet, totals, as_of_date, formula } = data;
+    }, [reportData, reportDate, user]);
 
     return (
-        <div className="printable-area p-4 md:p-6 max-w-7xl mx-auto">
-            {/* Header - Hidden on print */}
-            <div className="print:hidden mb-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                    <h1 className="text-2xl font-bold">Balance Sheet</h1>
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={handlePrint} size="sm">
-                            <Printer className="mr-2 h-4 w-4" />
-                            Print
-                        </Button>
-                        <Button variant="outline" onClick={handleExport} size="sm">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export
-                        </Button>
-                        <Button onClick={fetchBalanceSheet} size="sm">
-                            Refresh
-                        </Button>
-                    </div>
-                </div>
-                
-                {/* Date Picker */}
-                <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-                    <Calendar className="h-5 w-5 text-gray-500" />
-                    <input
-                        type="date"
-                        value={asOfDate}
-                        onChange={(e) => setAsOfDate(e.target.value)}
-                        className="border rounded px-3 py-1.5 text-sm"
-                    />
-                    <span className="text-sm text-gray-500">
-                        Showing balances as of {format(new Date(as_of_date), 'dd MMMM yyyy')}
-                    </span>
-                </div>
-            </div>
-
-            {/* Header - Only on print */}
-            <div className="hidden print:block mb-8 text-center">
+        <>
+            <div className="mb-6">
                 <h1 className="text-2xl font-bold">Balance Sheet</h1>
-                <p className="text-gray-600">As of {format(new Date(as_of_date), 'dd MMMM yyyy')}</p>
-                <p className="text-gray-500 text-sm">Generated on {format(new Date(), 'dd MMM yyyy hh:mm a')}</p>
+                <p className="text-muted-foreground">Review your company’s financial position at a specific point in time.</p>
             </div>
 
-            {/* Balance Check Alert */}
-            <div className={`mb-6 p-4 rounded-lg ${totals.is_balanced ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-                <div className="flex items-center gap-2">
-                    {totals.is_balanced ? (
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                    ) : (
-                        <XCircle className="h-5 w-5 text-yellow-600" />
-                    )}
-                    <span className={totals.is_balanced ? 'text-green-700' : 'text-yellow-700'}>
-                        {totals.is_balanced 
-                            ? '✓ Books are balanced: Assets = Liabilities + Equity' 
-                            : `⚠️ Difference of ${totals.difference_display}. Check your entries.`}
-                    </span>
-                </div>
-            </div>
-
-            {/* Balance Sheet Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* ASSETS COLUMN */}
-                <div>
-                    <Card className="h-full">
-                        <CardHeader className="bg-blue-50 border-b">
-                            <CardTitle className="text-blue-800 text-xl">ASSETS</CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            <div className="space-y-1">
-                                {balance_sheet.assets.length > 0 ? (
-                                    balance_sheet.assets.map((account, idx) => renderAccountRow(account, idx))
-                                ) : (
-                                    <div className="text-center text-gray-500 py-8">No asset accounts with balance</div>
-                                )}
-                            </div>
-                            <div className="mt-4 pt-3 border-t-2 border-blue-200">
-                                <div className="flex justify-between items-center font-bold text-base">
-                                    <span>Total Assets</span>
-                                    <span className="text-blue-700">{totals.total_assets_display}</span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* LIABILITIES & EQUITY COLUMN */}
-                <div className="space-y-6">
-                    {/* LIABILITIES */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                {/* Left Column: Controls */}
+                <div className="lg:col-span-2 lg:sticky lg:top-20">
                     <Card>
-                        <CardHeader className="bg-red-50 border-b">
-                            <CardTitle className="text-red-800 text-xl">LIABILITIES</CardTitle>
+                        <CardHeader>
+                            <CardTitle>Report Options</CardTitle>
+                            <CardDescription>Select the date for the report.</CardDescription>
                         </CardHeader>
-                        <CardContent className="pt-4">
-                            <div className="space-y-1">
-                                {balance_sheet.liabilities.length > 0 ? (
-                                    balance_sheet.liabilities.map((account, idx) => renderAccountRow(account, idx))
-                                ) : (
-                                    <div className="text-center text-gray-500 py-8">No liability accounts with balance</div>
-                                )}
-                            </div>
-                            <div className="mt-4 pt-3 border-t-2 border-red-200">
-                                <div className="flex justify-between items-center font-bold text-base">
-                                    <span>Total Liabilities</span>
-                                    <span className="text-red-700">{totals.total_liabilities_display}</span>
-                                </div>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <label htmlFor="report-date" className="font-semibold text-sm">As of Date</label>
+                                <DatePicker id="report-date" date={reportDate} onDateChange={setReportDate} />
                             </div>
                         </CardContent>
+                         <CardFooter>
+                            <Button onClick={generateReport} disabled={isLoading} className="w-full">
+                                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Generate Report
+                            </Button>
+                        </CardFooter>
                     </Card>
+                </div>
 
-                    {/* EQUITY */}
-                    <Card>
-                        <CardHeader className="bg-green-50 border-b">
-                            <CardTitle className="text-green-800 text-xl">EQUITY</CardTitle>
+                {/* Right Column: Report Display */}
+                <div className="lg:col-span-3">
+                     <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Balance Sheet</CardTitle>
+                                <CardDescription>
+                                    {reportDate 
+                                        ? `As of ${format(reportDate, 'PPP')}`
+                                        : "Generate a report to get started."}
+                                </CardDescription>
+                            </div>
+                             <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={handleExportPdf}
+                                disabled={!reportData || isLoading}
+                            >
+                                <FileDown className="mr-2 h-4 w-4"/>
+                                Export to PDF
+                            </Button>
                         </CardHeader>
-                        <CardContent className="pt-4">
-                            <div className="space-y-1">
-                                {balance_sheet.equity.length > 0 ? (
-                                    balance_sheet.equity.map((account, idx) => renderAccountRow(account, idx))
-                                ) : (
-                                    <div className="text-center text-gray-500 py-8">No equity accounts with balance</div>
-                                )}
-                            </div>
-                            <div className="mt-4 pt-3 border-t-2 border-green-200">
-                                <div className="flex justify-between items-center font-bold text-base">
-                                    <span>Total Equity</span>
-                                    <span className="text-green-700">{totals.total_equity_display}</span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex justify-center items-center h-60"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+                            ) : error ? (
+                                <div className="flex flex-col justify-center items-center h-60 text-destructive"><AlertCircle className="h-8 w-8 mb-2" /><p>{error}</p></div>
+                            ) : reportData ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Description</TableHead>
+                                            <TableHead className="text-right">Amount</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow className="font-bold text-md bg-muted">
+                                            <TableCell>{reportData.assets.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.assets.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        <TableRow className="font-bold text-lg">
+                                            <TableCell className="pl-4">Total {reportData.assets.title}</TableCell>
+                                            <TableCell className="text-right font-mono border-t-2 border-b-4">{formatCurrency(reportData.assets.total)}</TableCell>
+                                        </TableRow>
+                                        
+                                        <TableRow><TableCell colSpan={2}>&nbsp;</TableCell></TableRow>
 
-                    {/* TOTAL LIABILITIES + EQUITY */}
-                    <Card className={`${totals.is_balanced ? 'bg-green-50' : 'bg-yellow-50'}`}>
-                        <CardContent className="pt-6">
-                            <div className="flex justify-between items-center font-bold text-lg">
-                                <span>Total Liabilities + Equity</span>
-                                <span className={totals.is_balanced ? 'text-green-700' : 'text-yellow-700'}>
-                                    {totals.total_liabilities_equity_display}
-                                </span>
-                            </div>
-                            <div className="text-center mt-4 pt-3 border-t text-sm text-gray-500">
-                                {formula}
-                            </div>
-                            {totals.is_balanced && (
-                                <div className="text-center mt-2 text-sm text-green-600">
-                                    ✓ Assets equal Liabilities + Equity
-                                </div>
-                            )}
-                            {!totals.is_balanced && (
-                                <div className="text-center mt-2 text-sm text-yellow-600">
-                                    Difference: {totals.difference_display}
-                                </div>
+                                        <TableRow className="font-bold text-md bg-muted">
+                                            <TableCell>{reportData.liabilities.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.liabilities.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                         <TableRow className="font-semibold">
+                                            <TableCell className="pl-4">Total {reportData.liabilities.title}</TableCell>
+                                            <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.liabilities.total)}</TableCell>
+                                        </TableRow>
+
+                                        <TableRow className="font-bold text-md bg-muted mt-4">
+                                            <TableCell>{reportData.equity.title}</TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                        {reportData.equity.accounts.map(acc => (
+                                            <TableRow key={acc.name}>
+                                                <TableCell className="pl-8">{acc.name}</TableCell>
+                                                <TableCell className="text-right font-mono">{formatCurrency(acc.amount)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        <TableRow className="font-semibold">
+                                            <TableCell className="pl-4">Total {reportData.equity.title}</TableCell>
+                                            <TableCell className="text-right font-bold font-mono border-t">{formatCurrency(reportData.equity.total)}</TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                     <TableFooter>
+                                        <TableRow className="font-bold text-lg">
+                                            <TableCell>Total Liabilities &amp; Equity</TableCell>
+                                            <TableCell className="text-right font-mono border-t-2 border-b-4">{formatCurrency(reportData.totalLiabilitiesAndEquity)}</TableCell>
+                                        </TableRow>
+                                    </TableFooter>
+                                </Table>
+                            ) : (
+                                 <div className="flex justify-center items-center h-60 text-muted-foreground"><p>Generate a report to see the Balance Sheet.</p></div>
                             )}
                         </CardContent>
                     </Card>
                 </div>
             </div>
-
-            {/* Footer - Hidden on print */}
-            <div className="print:hidden mt-8 text-center text-xs text-gray-400">
-                <p>This is a system-generated balance sheet. For audit purposes, please retain supporting documentation.</p>
-            </div>
-        </div>
+        </>
     );
-}
+};
+
+export default BalanceSheetPage;
