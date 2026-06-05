@@ -364,6 +364,12 @@ export const allNavItems = [
                 icon: Factory,
                 permission: 'view_production',
             },
+             {
+                href: '/production-trail',
+                label: 'Production Trail',
+                icon: Factory,
+                permission: 'view_production',
+            },
         ],
     },
 
