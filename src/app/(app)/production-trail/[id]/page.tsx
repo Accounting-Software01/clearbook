@@ -1,8 +1,8 @@
-// app/production-trail/[id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 interface BatchDetail {
   id: number;
@@ -34,37 +34,53 @@ interface BatchDetail {
   shrink_wrap_used_kg?: number;
 }
 
+const API_BASE_URL = 'https://hariindustries.net/api/clearbook';
+
 export default function ProductionDetailPage() {
   const params = useParams();
+  const { user, isLoading: authLoading } = useAuth();
   const [batch, setBatch] = useState<BatchDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user?.company_id) return;
+
     const fetchDetail = async () => {
       const searchParams = new URLSearchParams(window.location.search);
       const type = searchParams.get('type');
-      
+      const batchId = params.id;
+
+      if (!type || !batchId) {
+        setError('Missing batch type or ID');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
       try {
-        const res = await fetch(
-          `/api/production?type=${type}&batch_id=${params.id}&company_id=HARI123`
-        );
+        const url = `${API_BASE_URL}/production.php?action=batches&type=${type}&batch_id=${batchId}&company_id=${user.company_id}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (data.success && data.data.length > 0) {
+
+        if (data.success && data.data && data.data.length > 0) {
           setBatch(data.data[0]);
+        } else {
+          setError('Batch not found');
         }
-      } catch (error) {
-        console.error('Error fetching batch details:', error);
+      } catch (err) {
+        console.error('Error fetching batch details:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load details');
       } finally {
         setLoading(false);
       }
     };
 
-    if (params.id) {
-      fetchDetail();
-    }
-  }, [params.id]);
+    fetchDetail();
+  }, [params.id, user?.company_id]);
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -72,8 +88,12 @@ export default function ProductionDetailPage() {
     );
   }
 
-  if (!batch) {
-    return <div className="text-center py-10">Batch not found</div>;
+  if (error || !batch) {
+    return (
+      <div className="text-center py-10 text-red-600">
+        {error || 'Batch not found'}
+      </div>
+    );
   }
 
   const isInjection = !!batch.preform_type;
