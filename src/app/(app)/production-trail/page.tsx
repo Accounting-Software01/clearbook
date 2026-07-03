@@ -1,9 +1,8 @@
 // app/production-trail/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
 
 interface ProductionBatch {
   id: number;
@@ -39,7 +38,6 @@ interface FilterOptions {
 
 export default function ProductionTrailPage() {
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
-  const [filteredBatches, setFilteredBatches] = useState<ProductionBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<FilterOptions>({
     startDate: '',
@@ -56,18 +54,46 @@ export default function ProductionTrailPage() {
     totalScrap: 0,
   });
 
+  // Fetch data on mount
   useEffect(() => {
     fetchProductionData();
   }, []);
 
-  useEffect(() => {
-    applyFilters();
+  // Apply filters whenever batches or filters change
+  const filteredBatches = useMemo(() => {
+    let filtered = [...batches];
+
+    if (filters.startDate) {
+      filtered = filtered.filter(
+        (b) => new Date(b.production_date) >= new Date(filters.startDate)
+      );
+    }
+    if (filters.endDate) {
+      filtered = filtered.filter(
+        (b) => new Date(b.production_date) <= new Date(filters.endDate)
+      );
+    }
+    if (filters.shift) {
+      filtered = filtered.filter((b) => b.shift === filters.shift);
+    }
+    if (filters.batchType) {
+      filtered = filtered.filter((b) => b.batch_type === filters.batchType);
+    }
+    if (filters.productType && filters.productType !== 'all') {
+      filtered = filtered.filter(
+        (b) => b.finished_product === filters.productType
+      );
+    }
+
+    return filtered;
   }, [batches, filters]);
 
   const fetchProductionData = async () => {
     setLoading(true);
     try {
-      const companyId = 'HARI123'; // Get from session/context
+      // TODO: Replace with actual company ID from authentication context/session
+      const companyId = 'HARI123';
+
       const [injectionRes, blowingRes] = await Promise.all([
         fetch(`/api/production?type=injection&company_id=${companyId}`),
         fetch(`/api/production?type=blowing&company_id=${companyId}`),
@@ -124,34 +150,6 @@ export default function ProductionTrailPage() {
     });
   };
 
-  const applyFilters = () => {
-    let filtered = [...batches];
-
-    if (filters.startDate) {
-      filtered = filtered.filter(
-        (b) => new Date(b.production_date) >= new Date(filters.startDate)
-      );
-    }
-    if (filters.endDate) {
-      filtered = filtered.filter(
-        (b) => new Date(b.production_date) <= new Date(filters.endDate)
-      );
-    }
-    if (filters.shift) {
-      filtered = filtered.filter((b) => b.shift === filters.shift);
-    }
-    if (filters.batchType) {
-      filtered = filtered.filter((b) => b.batch_type === filters.batchType);
-    }
-    if (filters.productType && filters.productType !== 'all') {
-      filtered = filtered.filter(
-        (b) => b.finished_product === filters.productType
-      );
-    }
-
-    setFilteredBatches(filtered);
-  };
-
   const resetFilters = () => {
     setFilters({
       startDate: '',
@@ -195,12 +193,6 @@ export default function ProductionTrailPage() {
     XLSX.writeFile(wb, `production_trail_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const getEfficiencyColor = (efficiency: number) => {
-    if (efficiency >= 95) return 'text-green-600 bg-green-100';
-    if (efficiency >= 85) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -229,7 +221,7 @@ export default function ProductionTrailPage() {
           </div>
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
             <p className="text-gray-500 text-sm">Injection Output (pcs)</p>
-            <p className="text-2xl font-bold">{statistics.totalInjectionQtoLocaleString()}</p>
+            <p className="text-2xl font-bold">{statistics.totalInjectionQty.toLocaleString()}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
             <p className="text-gray-500 text-sm">Blowing Output (pcs)</p>
