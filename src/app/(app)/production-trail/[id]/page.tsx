@@ -60,7 +60,10 @@ export default function ProductionDetailPage() {
       setLoading(true);
       try {
         const url = `${API_BASE_URL}/production.php?action=batches&type=${type}&batch_id=${batchId}&company_id=${user.company_id}`;
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          credentials: 'include',  // ✅ sends session cookie
+        });
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
