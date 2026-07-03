@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ProductionBatch {
   id: number;
@@ -37,8 +38,13 @@ interface FilterOptions {
 }
 
 export default function ProductionTrailPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const companyId = user?.company_id;
+
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [filters, setFilters] = useState<FilterOptions>({
     startDate: '',
     endDate: '',
@@ -46,6 +52,7 @@ export default function ProductionTrailPage() {
     batchType: '',
     productType: '',
   });
+
   const [statistics, setStatistics] = useState({
     totalBatches: 0,
     totalInjectionQty: 0,
@@ -54,10 +61,12 @@ export default function ProductionTrailPage() {
     totalScrap: 0,
   });
 
-  // Fetch data on mount
+  // Fetch data when companyId becomes available
   useEffect(() => {
-    fetchProductionData();
-  }, []);
+    if (companyId) {
+      fetchProductionData(companyId);
+    }
+  }, [companyId]);
 
   // Apply filters whenever batches or filters change
   const filteredBatches = useMemo(() => {
@@ -88,26 +97,32 @@ export default function ProductionTrailPage() {
     return filtered;
   }, [batches, filters]);
 
-  const fetchProductionData = async () => {
-    setLoading(true);
+  const fetchProductionData = async (companyId: string) => {
+    setLoadingData(true);
+    setError(null);
     try {
-      // TODO: Replace with actual company ID from authentication context/session
-      const companyId = 'HARI123';
+      // ✅ Use your actual endpoint
+      const baseUrl = '/api/clearbook/production.php';
 
       const [injectionRes, blowingRes] = await Promise.all([
-        fetch(`/api/production?type=injection&company_id=${companyId}`),
-        fetch(`/api/production?type=blowing&company_id=${companyId}`),
+        fetch(`${baseUrl}?action=batches&type=injection&company_id=${companyId}`),
+        fetch(`${baseUrl}?action=batches&type=blowing&company_id=${companyId}`),
       ]);
+
+      if (!injectionRes.ok || !blowingRes.ok) {
+        throw new Error(`API error: ${injectionRes.status} ${injectionRes.statusText}`);
+      }
 
       const injectionData = await injectionRes.json();
       const blowingData = await blowingRes.json();
 
-      const injectionBatches = (injectionData.data || []).map((batch: any) => ({
+      // Handle both possible response shapes (direct array or { data: [...] })
+      const injectionBatches = (injectionData.data || injectionData || []).map((batch: any) => ({
         ...batch,
         batch_type: 'injection' as const,
       }));
 
-      const blowingBatches = (blowingData.data || []).map((batch: any) => ({
+      const blowingBatches = (blowingData.data || blowingData || []).map((batch: any) => ({
         ...batch,
         batch_type: 'blowing' as const,
       }));
@@ -118,10 +133,11 @@ export default function ProductionTrailPage() {
 
       setBatches(allBatches);
       calculateStatistics(allBatches);
-    } catch (error) {
-      console.error('Error fetching production data:', error);
+    } catch (err) {
+      console.error('Error fetching production data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load production data');
     } finally {
-      setLoading(false);
+      setLoadingData(false);
     }
   };
 
@@ -193,6 +209,24 @@ export default function ProductionTrailPage() {
     XLSX.writeFile(wb, `production_trail_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  // Handle authentication loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // If user is not logged in, show error
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-600">
+        <p>You must be logged in to view production records.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -201,6 +235,9 @@ export default function ProductionTrailPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Production Trail Report</h1>
             <p className="text-gray-600 mt-1">Track injection molding and blowing production history</p>
+            {companyId && (
+              <p className="text-sm text-gray-500 mt-1">Company: {companyId}</p>
+            )}
           </div>
           <button
             onClick={exportToExcel}
@@ -212,6 +249,13 @@ export default function ProductionTrailPage() {
             Export to Excel
           </button>
         </div>
+
+        {/* Error display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            <p>⚠️ {error}</p>
+          </div>
+        )}
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
@@ -344,7 +388,7 @@ export default function ProductionTrailPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
+                {loadingData ? (
                   <tr>
                     <td colSpan={9} className="px-6 py-4 text-center">
                       <div className="flex justify-center">
@@ -403,7 +447,12 @@ export default function ProductionTrailPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
-                          onClick={() => window.open(`/production-trail/${batch.id}?type=${batch.batch_type}`, '_blank')}
+                          onClick={() =>
+                            window.open(
+                              `/production-trail/${batch.id}?type=${batch.batch_type}`,
+                              '_blank'
+                            )
+                          }
                           className="text-blue-600 hover:text-blue-800"
                         >
                           View Details
