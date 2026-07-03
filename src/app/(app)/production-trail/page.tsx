@@ -1,4 +1,3 @@
-// app/production-trail/page.tsx
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -101,12 +100,15 @@ export default function ProductionTrailPage() {
     setLoadingData(true);
     setError(null);
     try {
-      // ✅ Use your actual endpoint
       const baseUrl = '/api/clearbook/production.php';
 
       const [injectionRes, blowingRes] = await Promise.all([
-        fetch(`${baseUrl}?action=batches&type=injection&company_id=${companyId}`),
-        fetch(`${baseUrl}?action=batches&type=blowing&company_id=${companyId}`),
+        fetch(`${baseUrl}?action=batches&type=injection&company_id=${companyId}`, {
+          credentials: 'include',  // ✅ sends session cookie
+        }),
+        fetch(`${baseUrl}?action=batches&type=blowing&company_id=${companyId}`, {
+          credentials: 'include',  // ✅ sends session cookie
+        }),
       ]);
 
       if (!injectionRes.ok || !blowingRes.ok) {
@@ -116,7 +118,6 @@ export default function ProductionTrailPage() {
       const injectionData = await injectionRes.json();
       const blowingData = await blowingRes.json();
 
-      // Handle both possible response shapes (direct array or { data: [...] })
       const injectionBatches = (injectionData.data || injectionData || []).map((batch: any) => ({
         ...batch,
         batch_type: 'injection' as const,
@@ -161,7 +162,7 @@ export default function ProductionTrailPage() {
       totalBatches: data.length,
       totalInjectionQty,
       totalBlowingQty,
-      avgEfficiency: 0, // Calculate based on your efficiency formula
+      avgEfficiency: 0,
       totalScrap,
     });
   };
@@ -209,7 +210,6 @@ export default function ProductionTrailPage() {
     XLSX.writeFile(wb, `production_trail_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Handle authentication loading state
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -218,7 +218,6 @@ export default function ProductionTrailPage() {
     );
   }
 
-  // If user is not logged in, show error
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-red-600">
@@ -230,7 +229,6 @@ export default function ProductionTrailPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Production Trail Report</h1>
@@ -250,14 +248,12 @@ export default function ProductionTrailPage() {
           </button>
         </div>
 
-        {/* Error display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
             <p>⚠️ {error}</p>
           </div>
         )}
 
-        {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
             <p className="text-gray-500 text-sm">Total Batches</p>
@@ -281,7 +277,6 @@ export default function ProductionTrailPage() {
           </div>
         </div>
 
-        {/* Filters */}
         <div className="bg-white rounded-lg shadow mb-6 p-4">
           <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
@@ -352,39 +347,20 @@ export default function ProductionTrailPage() {
           </div>
         </div>
 
-        {/* Production Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Batch #
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Shift
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Product
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Output
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Scrap
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Batch #</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Scrap</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -398,37 +374,21 @@ export default function ProductionTrailPage() {
                   </tr>
                 ) : filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
-                      No production records found
-                    </td>
+                    <td colSpan={9} className="px-6 py-4 text-center text-gray-500">No production records found</td>
                   </tr>
                 ) : (
                   filteredBatches.map((batch) => (
                     <tr key={`${batch.batch_type}-${batch.id}`} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {batch.batch_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(batch.production_date).toLocaleDateString()}
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{batch.batch_number}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{new Date(batch.production_date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            batch.batch_type === 'injection'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}
-                        >
+                        <span className={`px-2 py-1 text-xs rounded-full ${batch.batch_type === 'injection' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
                           {batch.batch_type === 'injection' ? 'Injection' : 'Blowing'}
                         </span>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{batch.shift}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {batch.shift}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {batch.batch_type === 'injection'
-                          ? batch.preform_type
-                          : batch.finished_product}
+                        {batch.batch_type === 'injection' ? batch.preform_type : batch.finished_product}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
                         {batch.batch_type === 'injection'
@@ -441,18 +401,11 @@ export default function ProductionTrailPage() {
                           : batch.bottles_damaged?.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                          {batch.status}
-                        </span>
+                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">{batch.status}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
-                          onClick={() =>
-                            window.open(
-                              `/production-trail/${batch.id}?type=${batch.batch_type}`,
-                              '_blank'
-                            )
-                          }
+                          onClick={() => window.open(`/production-trail/${batch.id}?type=${batch.batch_type}`, '_blank')}
                           className="text-blue-600 hover:text-blue-800"
                         >
                           View Details
