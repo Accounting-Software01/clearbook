@@ -143,7 +143,8 @@ const OpeningBalancePage = () => {
 
                 <div className="space-y-2">
                     <label className="font-semibold text-sm">Opening Balance Date *</label>
-                    <DatePicker date={openingDate} onDateChange={setOpeningDate} />
+                   
+                    <DatePicker date={openingDate} setDate={setOpeningDate} />
                 </div>
 
                 <div className="space-y-2">
