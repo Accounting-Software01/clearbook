@@ -65,7 +65,7 @@ const STEPS = [
     { id: 6, title: 'Review & Confirm' },
 ];
 
-const apAccounts = chartOfAccounts.filter(acc => acc.code.startsWith('2010'));
+const apAccounts = chartOfAccounts.filter(acc => acc.code.startsWith('2011'));
 
 export function SupplierRegistrationWizard({ isOpen, onOpenChange, onComplete }: SupplierRegistrationWizardProps) {
     const { toast } = useToast();
