@@ -1350,7 +1350,7 @@ const ProductionModule = () => {
                       </Select>
                     </div>
                     <div>
-                      <Label>Pallets (100 packs)</Label>
+                      <Label>Pallets</Label>
                       <Input type="number" min="0" value={blowingBatch.finished_pallets}
                         onChange={e => handleNumberChange(setBlowingBatch, 'finished_pallets', e.target.value)} />
                     </div>
