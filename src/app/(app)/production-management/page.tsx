@@ -162,7 +162,15 @@ const ProductionModule = () => {
   const [viewType, setViewType] = useState<'injection' | 'blowing'>('injection');
 
   const CAPS_PER_CARTON = 9000;
-  const PALLET_PACKS = 100;
+
+  
+  const getPalletPacks = (product: string) => {
+  if (product === '50cl') return 120;
+  if (product === '33cl') return 100; // ← confirm this figure, same as backend
+  return 100; // 75cl
+};
+
+  
   const getPacksPerProduct = (product: string) => product === '33cl' ? 20 : 12;
 
   const [injectionBatch, setInjectionBatch] = useState<InjectionBatch>({
@@ -316,13 +324,21 @@ const ProductionModule = () => {
     setBadPreformsKgInput(kgValue.toFixed(3));
   }, [injectionBatch.preform_weight_grams]); // only on type change, NOT bad_preforms_qty
 
-  const calculateTotalFinishedPieces = () => {
-    const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
-    return (blowingBatch.finished_pallets * PALLET_PACKS * packsPerProduct)
-      + (blowingBatch.finished_packs * packsPerProduct)
-      + blowingBatch.finished_pieces;
-  };
 
+
+
+
+
+const calculateTotalFinishedPieces = () => {
+  const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
+  const palletPacks = getPalletPacks(blowingBatch.finished_product);
+  return (blowingBatch.finished_pallets * palletPacks * packsPerProduct)
+    + (blowingBatch.finished_packs * packsPerProduct)
+    + blowingBatch.finished_pieces;
+};
+
+
+  
   useEffect(() => {
     if (injectionBatch.production_date && injectionBatch.status === 'draft' && !injectionBatch.batch_number) {
       setInjectionBatch(prev => ({ ...prev, batch_number: generateInjectionBatchNumber(prev.production_date) }));
@@ -718,7 +734,8 @@ const ProductionModule = () => {
                         <td className="p-2 text-right">{batch.preforms_taken.toLocaleString()}</td>
                         <td className="p-2 text-right">{batch.finished_pallets.toLocaleString()}</td>
                         <td className="p-2 text-right font-semibold text-green-600">
-                          {((batch.finished_pallets * PALLET_PACKS) + batch.finished_packs).toLocaleString()}
+                          
+                          {((batch.finished_pallets * getPalletPacks(batch.finished_product)) + batch.finished_packs).toLocaleString()}
                         </td>
                         <td className="p-2">{getStatusBadge(batch.status)}</td>
                         <td className="p-2">
@@ -852,7 +869,8 @@ const ProductionModule = () => {
                       <div className="flex justify-between border-t pt-2 mt-2">
                         <span>Total Packs:</span>
                         <span className="font-bold text-green-600">
-                          {((selectedViewBatch.finished_pallets * PALLET_PACKS) + selectedViewBatch.finished_packs).toLocaleString()}
+                          
+                          {((selectedViewBatch.finished_pallets * getPalletPacks(selectedViewBatch.finished_product)) + selectedViewBatch.finished_packs).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -1390,7 +1408,9 @@ const ProductionModule = () => {
                   <div className="flex justify-between border-t pt-2 mt-2">
                     <span>Total Finished Packs:</span>
                     <span className="font-bold text-green-600">
-                      {((blowingBatch.finished_pallets * PALLET_PACKS) + blowingBatch.finished_packs).toLocaleString()}
+                      
+                      {((blowingBatch.finished_pallets * getPalletPacks(blowingBatch.finished_product)) + blowingBatch.finished_packs).toLocaleString()}
+                      
                     </span>
                   </div>
                   <div className="flex justify-between">
