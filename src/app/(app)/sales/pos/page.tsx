@@ -13,6 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label'; // add to the top imports
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // Hooks and Libs
 import { useToast } from '@/hooks/use-toast';
@@ -527,7 +533,7 @@ const getFreeQuantity = (productId: string) => {
         }
     };
 
-  const FreeGiftModal = ({ 
+ const FreeGiftModal = ({ 
   isOpen, 
   onClose, 
   items, 
@@ -541,7 +547,6 @@ const getFreeQuantity = (productId: string) => {
   const [search, setSearch] = useState('');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  // Reset quantities when modal opens
   useEffect(() => {
     if (isOpen) {
       setQuantities({});
@@ -571,11 +576,11 @@ const getFreeQuantity = (productId: string) => {
   );
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Add Free Cartons</SheetTitle>
-        </SheetHeader>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[540px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add Free Cartons</DialogTitle>
+        </DialogHeader>
         <div className="py-4 space-y-4">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -586,7 +591,7 @@ const getFreeQuantity = (productId: string) => {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {filteredItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">No products found.</p>
             ) : (
@@ -614,10 +619,11 @@ const getFreeQuantity = (productId: string) => {
             Add Free Items
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 };
+  
   const addFreeItems = (selections: { productId: string; quantity: number }[]) => {
   setCart(prev => {
     const newCart = [...prev];
