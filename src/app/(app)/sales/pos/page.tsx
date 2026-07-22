@@ -467,16 +467,32 @@ export default function PointOfSalePage() {
                         </SelectContent>
                     </Select>
 
- <div className="flex items-center gap-2">
-      <Label htmlFor="invoice-date" className="whitespace-nowrap">Invoice Date</Label>
+ {/* Invoice Date */}
+    <div className="relative">
       <Input
-        id="invoice-date"
         type="date"
         value={invoiceDate}
         onChange={(e) => setInvoiceDate(e.target.value)}
         disabled={isSubmitting}
-        className="w-[160px]"
+        className="pl-28 w-[180px]"
       />
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
+        Invoice Date
+      </span>
+    </div>
+
+    {/* Due Date */}
+    <div className="relative">
+      <Input
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+        disabled={isSubmitting}
+        className="pl-24 w-[180px]"
+      />
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
+        Due Date
+      </span>
     </div>
 
 
