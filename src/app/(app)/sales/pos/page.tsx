@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-
+import { Label } from '@/components/ui/label'; // add to the top imports
 
 // Hooks and Libs
 import { useToast } from '@/hooks/use-toast';
@@ -277,6 +277,7 @@ export default function PointOfSalePage() {
     }, [vatRate]);
 
     const [invoiceDate, setInvoiceDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   
     const fetchInitialData = useCallback(async () => {
         if (!user?.company_id) return;
@@ -398,10 +399,16 @@ export default function PointOfSalePage() {
         setIsSubmitting(true);
         const payload = {
             customer_id: selectedCustomerId,
+          
             invoice_date: format(new Date(), 'yyyy-MM-dd'),
             due_date: format(new Date(), 'yyyy-MM-dd'),
+            
+            invoice_date: invoiceDate,
+            due_date: dueDate, // or separate due date if you want
+          
             payment_type: 'Cash', 
-            narration: `Point of Sale transaction on ${format(new Date(), 'PPP')}`,
+            
+            narration: `Point of Sale transaction on ${format(new Date(invoiceDate), 'PPP')}`,
             sales_items: cart.map(item => ({ 
                 item_id: item.id.toString(),
                 item_name: item.name,
@@ -460,14 +467,17 @@ export default function PointOfSalePage() {
                         </SelectContent>
                     </Select>
 
- <Label htmlFor="invoice-date">Invoice Date</Label>
-  <Input
-    id="invoice-date"
-    type="date"
-    value={invoiceDate}
-    onChange={(e) => setInvoiceDate(e.target.value)}
-    disabled={isSubmitting}
-  />
+ <div className="flex items-center gap-2">
+      <Label htmlFor="invoice-date" className="whitespace-nowrap">Invoice Date</Label>
+      <Input
+        id="invoice-date"
+        type="date"
+        value={invoiceDate}
+        onChange={(e) => setInvoiceDate(e.target.value)}
+        disabled={isSubmitting}
+        className="w-[160px]"
+      />
+    </div>
 
 
                   
