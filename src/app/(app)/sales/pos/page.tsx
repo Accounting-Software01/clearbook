@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Package, ShoppingCart, Trash2, PlusCircle, Settings, Clock, Tag, User, Loader2 } from 'lucide-react';
+import { Search, Package, ShoppingCart, Trash2, PlusCircle, Settings, Clock, Tag, User, Loader2, Gift } from 'lucide-react';
 import { format } from 'date-fns';
 
 // UI Components
@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Label } from '@/components/ui/label'; // add to the top imports
 
 // Hooks and Libs
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +33,10 @@ interface Item {
   category: string; // Assuming items have a category
   stock: number;
   base_price: number;
+  cost_price: number;
   price_tiers: Record<string, number>;
+  promo_buy?: number;           // e.g., 10
+  promo_get?: number;           // e.g., 1
 }
 
 interface CartItem extends Item {
@@ -42,6 +44,7 @@ interface CartItem extends Item {
     unit_price: number;
     discount: number;
     vat: number;
+    is_freebie?: boolean; 
 }
 
 const currencyFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' });
@@ -90,27 +93,41 @@ const ProductListItem = ({ product, onAddToCart, disabled, activePriceTier }: { 
 };
 
 
-const CartItemView = ({ item, onRemove, onQuantityChange }: { item: CartItem, onRemove: (id: string) => void, onQuantityChange: (id: string, quantity: number) => void }) => (
-    <div className="flex justify-between items-center mb-4">
-        <div>
-            <p className="font-semibold">{item.name}</p>
-            <p className="text-sm text-muted-foreground">{currencyFormatter.format(item.unit_price)}</p>
-        </div>
-        <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity - 1)} disabled={item.quantity <= 1}>-</Button>
-            <Input 
-                type="number" 
-                className="w-16 h-8 text-center" 
-                value={item.quantity}
-                onChange={(e) => onQuantityChange(item.id, parseInt(e.target.value, 10) || 1)}
-            />
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity + 1)}>+</Button>
-            <p className="font-bold w-24 text-right">{currencyFormatter.format(item.unit_price * item.quantity)}</p>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(item.id)}>
-                <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-        </div>
+const CartItemView = ({ 
+  item, 
+  onRemove, 
+  onQuantityChange 
+}: { 
+  item: CartItem; 
+  onRemove: (id: string) => void; 
+  onQuantityChange: (id: string, quantity: number) => void;
+}) => (
+  <div className="flex justify-between items-center mb-4">
+    <div>
+      <p className="font-semibold">
+        {item.name}
+        {item.is_freebie && <Badge variant="secondary" className="ml-2 text-xs">FREE</Badge>}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {item.is_freebie ? 'Free gift' : currencyFormatter.format(item.unit_price)}
+      </p>
     </div>
+    <div className="flex items-center gap-2">
+      {/* For freebies, disable quantity controls */}
+      {!item.is_freebie && (
+        <>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity - 1)} disabled={item.quantity <= 1}>-</Button>
+          <Input type="number" className="w-16 h-8 text-center" value={item.quantity} onChange={(e) => onQuantityChange(item.id, parseInt(e.target.value, 10) || 1)} />
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity + 1)}>+</Button>
+        </>
+      )}
+      {item.is_freebie && <span className="w-16 text-center">{item.quantity}</span>}
+      <p className="font-bold w-24 text-right">{currencyFormatter.format(item.unit_price * item.quantity)}</p>
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(item.id)}>
+        <Trash2 className="h-4 w-4 text-red-500" />
+      </Button>
+    </div>
+  </div>
 );
 
 
@@ -263,6 +280,9 @@ export default function PointOfSalePage() {
     const [priceTiers, setPriceTiers] = useState<string[]>([]);
     const [activePriceTier, setActivePriceTier] = useState<string>('base_price');
 
+
+  
+
     // POS state
     const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
     const [activeCategory, setActiveCategory] = useState('All Products');
@@ -278,6 +298,7 @@ export default function PointOfSalePage() {
 
     const [invoiceDate, setInvoiceDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
   
     const fetchInitialData = useCallback(async () => {
         if (!user?.company_id) return;
@@ -368,6 +389,58 @@ export default function PointOfSalePage() {
         }));
     };
 
+  const computeFreeQuantity = (item: CartItem) => {
+  if (!item.promo_buy || !item.promo_get) return 0;
+  if (item.is_freebie) return 0; // don't compute freebies from freebies
+  const blocks = Math.floor(item.quantity / item.promo_buy);
+  return blocks * item.promo_get;
+};
+  const handleApplyFreebies = () => {
+  if (!selectedCustomerId) {
+    toast({ variant: 'destructive', title: 'Please select a customer first.' });
+    return;
+  }
+
+  setCart(prevCart => {
+    const newItems = [...prevCart];
+
+    // For each regular item in the cart, check if we can add freebies
+    prevCart.forEach(item => {
+      if (item.is_freebie) return; // skip freebies
+
+      const freeQty = computeFreeQuantity(item);
+      if (freeQty <= 0) return;
+
+      // Check if a freebie line already exists for this product
+      const existingFreeIndex = newItems.findIndex(
+        i => i.id === item.id && i.is_freebie
+      );
+      if (existingFreeIndex !== -1) {
+        // Update the freebie quantity to match the new calculation
+        const freeItem = newItems[existingFreeIndex];
+        const newFreeQty = freeQty;
+        // Recalculate VAT (if any) – using cost price as base? For freebies, unit_price=0 so vat=0
+        freeItem.quantity = newFreeQty;
+        freeItem.vat = 0; // or compute if needed
+        newItems[existingFreeIndex] = freeItem;
+      } else {
+        // Add a new freebie line
+        const freeItem: CartItem = {
+          ...item,
+          id: `${item.id}-free`, // unique id
+          quantity: freeQty,
+          unit_price: 0, // customer pays nothing
+          discount: 0,
+          vat: 0,        // no VAT on zero price
+          is_freebie: true,
+        };
+        newItems.push(freeItem);
+      }
+    });
+
+    return newItems;
+  });
+};
     
     const handleRemoveFromCart = (itemId: string) => {
         setCart(prevCart => prevCart.filter(item => item.id !== itemId));
@@ -400,8 +473,7 @@ export default function PointOfSalePage() {
         const payload = {
             customer_id: selectedCustomerId,
           
-            invoice_date: format(new Date(), 'yyyy-MM-dd'),
-            due_date: format(new Date(), 'yyyy-MM-dd'),
+
             
             invoice_date: invoiceDate,
             due_date: dueDate, // or separate due date if you want
@@ -416,6 +488,8 @@ export default function PointOfSalePage() {
                 quantity: item.quantity,
                 discount: item.discount,
                 vat: item.vat,
+                cost_price: item.cost_price,      // send cost for all items
+                is_freebie: item.is_freebie || false,
             })),
             sub_total: subTotal,
             total_discount: totalDiscount,
@@ -559,9 +633,20 @@ export default function PointOfSalePage() {
                 <Card className="flex-[2] flex flex-col">
                     <CardHeader className="flex-row items-center justify-between">
                         <CardTitle>Cart Items ({cart.reduce((acc, item) => acc + item.quantity, 0)})</CardTitle>
-                        <Button variant="destructive" size="sm" onClick={handleClearCart} disabled={cart.length === 0 || isSubmitting}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Clear
-                        </Button>
+
+ <div className="flex gap-2">
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={handleApplyFreebies} 
+      disabled={cart.length === 0 || isSubmitting}
+    >
+      <Gift className="mr-2 h-4 w-4" /> Apply Free Gifts
+    </Button>
+    <Button variant="destructive" size="sm" onClick={handleClearCart} disabled={cart.length === 0 || isSubmitting}>
+      <Trash2 className="mr-2 h-4 w-4" /> Clear
+    </Button>
+  </div>
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col justify-between p-4">
                         <div className="flex-1 overflow-y-auto">
