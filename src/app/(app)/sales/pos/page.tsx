@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, Package, ShoppingCart, Trash2, PlusCircle, Settings, Clock, Tag, User, Loader2 } from 'lucide-react';
+import { Search, Package, ShoppingCart, Trash2, PlusCircle, Settings, Clock, Tag, User, Loader2, Gift } from 'lucide-react';
 import { format } from 'date-fns';
 
 // UI Components
@@ -297,6 +297,8 @@ export default function PointOfSalePage() {
     const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
     const [activeCategory, setActiveCategory] = useState('All Products');
     const [cart, setCart] = useState<CartItem[]>([]);
+    const [isFreeGiftModalOpen, setIsFreeGiftModalOpen] = useState(false);
+    const [freeGiftQuantities, setFreeGiftQuantities] = useState<Record<string, number>>({});  
 
     useEffect(() => {
         setCart(currentCart => currentCart.map(item => {
@@ -464,6 +466,7 @@ const getFreeQuantity = (productId: string) => {
     }, [cart]);
 
 
+  
     const handleCompleteSale = async () => {
         if (!selectedCustomerId || cart.length === 0) {
             toast({ variant: 'destructive', title: 'Validation Error', description: 'Please select a customer and add items to the cart.' });
@@ -523,7 +526,131 @@ const getFreeQuantity = (productId: string) => {
             setIsSubmitting(false);
         }
     };
-    
+
+  const FreeGiftModal = ({ 
+  isOpen, 
+  onClose, 
+  items, 
+  onAddFreeItems 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  items: Item[]; 
+  onAddFreeItems: (selections: { productId: string; quantity: number }[]) => void; 
+}) => {
+  const [search, setSearch] = useState('');
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
+  // Reset quantities when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setQuantities({});
+      setSearch('');
+    }
+  }, [isOpen]);
+
+  const handleQuantityChange = (productId: string, value: number) => {
+    setQuantities(prev => ({
+      ...prev,
+      [productId]: Math.max(0, value || 0),
+    }));
+  };
+
+  const handleAdd = () => {
+    const selections = Object.entries(quantities)
+      .filter(([, qty]) => qty > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }));
+    if (selections.length === 0) return;
+    onAddFreeItems(selections);
+    onClose();
+  };
+
+  const filteredItems = items.filter(item =>
+    item.name.toLowerCase().includes(search.toLowerCase()) ||
+    item.code?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <Sheet open={isOpen} onOpenChange={onClose}>
+      <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Add Free Cartons</SheetTitle>
+        </SheetHeader>
+        <div className="py-4 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search products..."
+              className="pl-8"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {filteredItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No products found.</p>
+            ) : (
+              filteredItems.map(item => (
+                <div key={item.id} className="flex items-center justify-between p-2 border rounded-md">
+                  <div>
+                    <p className="font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.code}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">Free:</span>
+                    <Input
+                      type="number"
+                      className="w-20 h-8 text-center"
+                      value={quantities[item.id] || 0}
+                      onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value, 10) || 0)}
+                      min="0"
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <Button className="w-full" onClick={handleAdd} disabled={!Object.values(quantities).some(q => q > 0)}>
+            Add Free Items
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+  const addFreeItems = (selections: { productId: string; quantity: number }[]) => {
+  setCart(prev => {
+    const newCart = [...prev];
+    selections.forEach(({ productId, quantity }) => {
+      // Find the regular item to copy properties
+      const regularItem = prev.find(item => item.id === productId && !item.is_freebie);
+      if (!regularItem) return;
+
+      const freeId = `${productId}-free`;
+      const existingIndex = newCart.findIndex(i => i.id === freeId && i.is_freebie);
+
+      if (existingIndex !== -1) {
+        // Update existing free line – add to its quantity
+        const existing = newCart[existingIndex];
+        existing.quantity += quantity;
+        // VAT is already 0; no change needed
+      } else {
+        // Add new free line
+        const freeItem: CartItem = {
+          ...regularItem,
+          id: freeId,
+          quantity: quantity,
+          unit_price: 0,
+          discount: 0,
+          vat: 0,
+          is_freebie: true,
+        };
+        newCart.push(freeItem);
+      }
+    });
+    return newCart;
+  });
+};
     const filteredProducts = items.filter(p => activeCategory === 'All Products' || p.category === activeCategory);
     
     if (isLoading) {
@@ -635,12 +762,22 @@ const getFreeQuantity = (productId: string) => {
 
                 {/* Cart Section */}
                 <Card className="flex-[2] flex flex-col">
-                    <CardHeader className="flex-row items-center justify-between">
-                        <CardTitle>Cart Items ({cart.reduce((acc, item) => acc + item.quantity, 0)})</CardTitle>
-                        <Button variant="destructive" size="sm" onClick={handleClearCart} disabled={cart.length === 0 || isSubmitting}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Clear
-                        </Button>
-                    </CardHeader>
+                   <CardHeader className="flex-row items-center justify-between">
+  <CardTitle>Cart Items ({cart.reduce((acc, item) => acc + item.quantity, 0)})</CardTitle>
+  <div className="flex gap-2">
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={() => setIsFreeGiftModalOpen(true)} 
+      disabled={cart.length === 0 || isSubmitting}
+    >
+      <Gift className="mr-2 h-4 w-4" /> Free Cartons
+    </Button>
+    <Button variant="destructive" size="sm" onClick={handleClearCart} disabled={cart.length === 0 || isSubmitting}>
+      <Trash2 className="mr-2 h-4 w-4" /> Clear
+    </Button>
+  </div>
+</CardHeader>
                     <CardContent className="flex-1 flex flex-col justify-between p-4">
                         <div className="flex-1 overflow-y-auto">
 
@@ -673,6 +810,15 @@ const getFreeQuantity = (productId: string) => {
 ) : (
   <EmptyCart />
 )}
+
+
+
+                          <FreeGiftModal
+  isOpen={isFreeGiftModalOpen}
+  onClose={() => setIsFreeGiftModalOpen(false)}
+  items={items} // all products
+  onAddFreeItems={addFreeItems}
+/>
                         </div>
                         <div>
                           <Separator className="my-4" />
