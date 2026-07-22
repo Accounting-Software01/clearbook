@@ -96,11 +96,15 @@ const ProductListItem = ({ product, onAddToCart, disabled, activePriceTier }: { 
 const CartItemView = ({ 
   item, 
   onRemove, 
-  onQuantityChange 
+  onQuantityChange, 
+  onFreeQuantityChange,   // new prop
+  freeQty                 // current free quantity for this product
 }: { 
   item: CartItem; 
   onRemove: (id: string) => void; 
   onQuantityChange: (id: string, quantity: number) => void;
+  onFreeQuantityChange: (id: string, qty: number) => void;
+  freeQty: number;
 }) => (
   <div className="flex justify-between items-center mb-4">
     <div>
@@ -113,12 +117,22 @@ const CartItemView = ({
       </p>
     </div>
     <div className="flex items-center gap-2">
-      {/* For freebies, disable quantity controls */}
       {!item.is_freebie && (
         <>
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity - 1)} disabled={item.quantity <= 1}>-</Button>
           <Input type="number" className="w-16 h-8 text-center" value={item.quantity} onChange={(e) => onQuantityChange(item.id, parseInt(e.target.value, 10) || 1)} />
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => onQuantityChange(item.id, item.quantity + 1)}>+</Button>
+          {/* Free Qty input */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">Free:</span>
+            <Input
+              type="number"
+              className="w-14 h-8 text-center"
+              value={freeQty}
+              onChange={(e) => onFreeQuantityChange(item.id, parseInt(e.target.value, 10) || 0)}
+              min="0"
+            />
+          </div>
         </>
       )}
       {item.is_freebie && <span className="w-16 text-center">{item.quantity}</span>}
@@ -314,12 +328,11 @@ export default function PointOfSalePage() {
             const customersData = await customersRes.json();
             let itemsData = await itemsRes.json();
 
-       itemsData = itemsData.map((item: any) => ({
+itemsData = itemsData.map((item: any) => ({
   ...item,
-  cost_price: Number(item.cost_price) || 200,
-  promo_buy: Number(item.promo_buy) || 5,
-  promo_get: Number(item.promo_get) || 1,
+  cost_price: Number(item.cost_price) || 0,
 }));
+
 
             if (customersData.success) setCustomers(customersData.data);
             setItems(itemsData);
@@ -396,88 +409,44 @@ export default function PointOfSalePage() {
         }));
     };
 
-  const computeFreeQuantity = (item: CartItem) => {
-  if (!item.promo_buy || !item.promo_get) return 0;
-  if (item.is_freebie) return 0; // don't compute freebies from freebies
-  const blocks = Math.floor(item.quantity / item.promo_buy);
-  return blocks * item.promo_get;
-};
 
-  
+ const handleFreeQuantityChange = (productId: string, freeQty: number) => {
+  setCart(prev => {
+    const regularItem = prev.find(item => item.id === productId && !item.is_freebie);
+    if (!regularItem) return prev;
 
-  
-  const handleApplyFreebies = () => {
-  // 1. Must have a customer selected
-  if (!selectedCustomerId) {
-    toast({ 
-      variant: 'destructive', 
-      title: 'Please select a customer first.' 
-    });
-    return;
-  }
+    const freeId = `${productId}-free`;
+    const existingFreeIndex = prev.findIndex(i => i.id === freeId && i.is_freebie);
 
-  // 2. Compute freebies and update cart
-  let freebiesAdded = false;
-
-  setCart(prevCart => {
-    const newItems = [...prevCart];
-
-    prevCart.forEach(item => {
-      // Skip freebie lines – they don't generate more freebies
-      if (item.is_freebie) return;
-
-      const freeQty = computeFreeQuantity(item);
-      if (freeQty <= 0) return;
-
-      freebiesAdded = true; // at least one freebie will be added/updated
-
-      // Check if a freebie line already exists for this product
-      const existingFreeIndex = newItems.findIndex(
-        i => i.id === item.id && i.is_freebie
-      );
-
+    if (freeQty <= 0) {
       if (existingFreeIndex !== -1) {
-        // Update existing freebie line
-        const freeItem = newItems[existingFreeIndex];
-        freeItem.quantity = freeQty;
-        freeItem.unit_price = 0;
-        freeItem.discount = 0;
-        freeItem.vat = 0;
-        newItems[existingFreeIndex] = freeItem;
-      } else {
-        // Create a new freebie line
-        const freeItem: CartItem = {
-          ...item,
-          id: `${item.id}-free`,        // unique id
-          quantity: freeQty,
-          unit_price: 0,                // customer pays nothing
-          discount: 0,
-          vat: 0,                       // no VAT on zero price
-          is_freebie: true,
-        };
-        newItems.push(freeItem);
+        const newCart = [...prev];
+        newCart.splice(existingFreeIndex, 1);
+        return newCart;
       }
-    });
-
-    return newItems;
-  });
-
-  // 3. Show feedback after state update (setCart is async)
-  // We use a short timeout to let React update and then check the new cart
-  setTimeout(() => {
-    if (!freebiesAdded) {
-      toast({ 
-        title: 'No free gifts applicable', 
-        description: 'Check that products have promo rules (promo_buy / promo_get).' 
-      });
-    } else {
-      toast({ 
-        title: 'Free gifts applied!', 
-        description: 'Check your cart for the new FREE items.' 
-      });
+      return prev;
     }
-  }, 100);
+
+    const freeItem: CartItem = {
+      ...regularItem,
+      id: freeId,
+      quantity: freeQty,
+      unit_price: 0,
+      discount: 0,
+      vat: 0,
+      is_freebie: true,
+    };
+
+    if (existingFreeIndex !== -1) {
+      const newCart = [...prev];
+      newCart[existingFreeIndex] = freeItem;
+      return newCart;
+    } else {
+      return [...prev, freeItem];
+    }
+  });
 };
+  
     
     const handleRemoveFromCart = (itemId: string) => {
         setCart(prevCart => prevCart.filter(item => item.id !== itemId));
@@ -671,26 +640,40 @@ export default function PointOfSalePage() {
                     <CardHeader className="flex-row items-center justify-between">
                         <CardTitle>Cart Items ({cart.reduce((acc, item) => acc + item.quantity, 0)})</CardTitle>
 
- <div className="flex gap-2">
-    <Button 
-      variant="outline" 
-      size="sm" 
-      onClick={handleApplyFreebies} 
-      disabled={cart.length === 0 || isSubmitting}
-    >
-      <Gift className="mr-2 h-4 w-4" /> Apply Free Gifts
-    </Button>
-    <Button variant="destructive" size="sm" onClick={handleClearCart} disabled={cart.length === 0 || isSubmitting}>
-      <Trash2 className="mr-2 h-4 w-4" /> Clear
-    </Button>
-  </div>
+
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col justify-between p-4">
                         <div className="flex-1 overflow-y-auto">
-
-                           {cart.length > 0 ? cart.map(item => <CartItemView key={item.id} item={item} onRemove={handleRemoveFromCart} onQuantityChange={handleQuantityChange} />) : <EmptyCart />}
-
-                        </div>
+  {cart.length > 0 ? (
+    cart.map(item => {
+      if (item.is_freebie) {
+        return (
+          <CartItemView
+            key={item.id}
+            item={item}
+            onRemove={handleRemoveFromCart}
+            onQuantityChange={() => {}}
+            freeQty={0}
+            onFreeQuantityChange={() => {}}
+          />
+        );
+      } else {
+        return (
+          <CartItemView
+            key={item.id}
+            item={item}
+            onRemove={handleRemoveFromCart}
+            onQuantityChange={handleQuantityChange}
+            freeQty={getFreeQuantity(item.id)}
+            onFreeQuantityChange={handleFreeQuantityChange}
+          />
+        );
+      }
+    })
+  ) : (
+    <EmptyCart />
+  )}
+</div>
                         <div>
                           <Separator className="my-4" />
                           <div className="space-y-2 text-sm">
