@@ -316,7 +316,7 @@ export default function PointOfSalePage() {
 
           itemsData = itemsData.map((item: Item) => ({
       ...item,
-             cost_price: item.cost_price ?? 0, 
+             cost_price: item.cost_price ?? 250, 
       promo_buy: item.promo_buy ?? 5,   // default: buy 5 get 1 free
       promo_get: item.promo_get ?? 1,
     }));
