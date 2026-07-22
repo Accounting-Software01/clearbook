@@ -275,7 +275,9 @@ export default function PointOfSalePage() {
             return { ...item, vat: newVat };
         }));
     }, [vatRate]);
-    
+
+    const [invoiceDate, setInvoiceDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  
     const fetchInitialData = useCallback(async () => {
         if (!user?.company_id) return;
         setIsLoading(true);
@@ -457,7 +459,18 @@ export default function PointOfSalePage() {
                             {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                
+
+ <Label htmlFor="invoice-date">Invoice Date</Label>
+  <Input
+    id="invoice-date"
+    type="date"
+    value={invoiceDate}
+    onChange={(e) => setInvoiceDate(e.target.value)}
+    disabled={isSubmitting}
+  />
+
+
+                  
                     <Select value={activePriceTier} onValueChange={setActivePriceTier} disabled={isSubmitting || cart.length > 0}>
                         <SelectTrigger className="w-[180px]">
                             <Tag className="h-4 w-4 mr-2 text-muted-foreground"/>
