@@ -312,7 +312,14 @@ export default function PointOfSalePage() {
             if (!customersRes.ok || !itemsRes.ok) throw new Error('Failed to fetch initial data.');
 
             const customersData = await customersRes.json();
-            const itemsData = await itemsRes.json();
+            let itemsData = await itemsRes.json();
+
+          itemsData = itemsData.map((item: Item) => ({
+      ...item,
+             cost_price: item.cost_price ?? 0, 
+      promo_buy: item.promo_buy ?? 5,   // default: buy 5 get 1 free
+      promo_get: item.promo_get ?? 1,
+    }));
 
             if (customersData.success) setCustomers(customersData.data);
             setItems(itemsData);
@@ -395,43 +402,57 @@ export default function PointOfSalePage() {
   const blocks = Math.floor(item.quantity / item.promo_buy);
   return blocks * item.promo_get;
 };
+
+  
+
+  
   const handleApplyFreebies = () => {
+  // 1. Must have a customer selected
   if (!selectedCustomerId) {
-    toast({ variant: 'destructive', title: 'Please select a customer first.' });
+    toast({ 
+      variant: 'destructive', 
+      title: 'Please select a customer first.' 
+    });
     return;
   }
+
+  // 2. Compute freebies and update cart
+  let freebiesAdded = false;
 
   setCart(prevCart => {
     const newItems = [...prevCart];
 
-    // For each regular item in the cart, check if we can add freebies
     prevCart.forEach(item => {
-      if (item.is_freebie) return; // skip freebies
+      // Skip freebie lines – they don't generate more freebies
+      if (item.is_freebie) return;
 
       const freeQty = computeFreeQuantity(item);
       if (freeQty <= 0) return;
+
+      freebiesAdded = true; // at least one freebie will be added/updated
 
       // Check if a freebie line already exists for this product
       const existingFreeIndex = newItems.findIndex(
         i => i.id === item.id && i.is_freebie
       );
+
       if (existingFreeIndex !== -1) {
-        // Update the freebie quantity to match the new calculation
+        // Update existing freebie line
         const freeItem = newItems[existingFreeIndex];
-        const newFreeQty = freeQty;
-        // Recalculate VAT (if any) – using cost price as base? For freebies, unit_price=0 so vat=0
-        freeItem.quantity = newFreeQty;
-        freeItem.vat = 0; // or compute if needed
+        freeItem.quantity = freeQty;
+        freeItem.unit_price = 0;
+        freeItem.discount = 0;
+        freeItem.vat = 0;
         newItems[existingFreeIndex] = freeItem;
       } else {
-        // Add a new freebie line
+        // Create a new freebie line
         const freeItem: CartItem = {
           ...item,
-          id: `${item.id}-free`, // unique id
+          id: `${item.id}-free`,        // unique id
           quantity: freeQty,
-          unit_price: 0, // customer pays nothing
+          unit_price: 0,                // customer pays nothing
           discount: 0,
-          vat: 0,        // no VAT on zero price
+          vat: 0,                       // no VAT on zero price
           is_freebie: true,
         };
         newItems.push(freeItem);
@@ -440,6 +461,22 @@ export default function PointOfSalePage() {
 
     return newItems;
   });
+
+  // 3. Show feedback after state update (setCart is async)
+  // We use a short timeout to let React update and then check the new cart
+  setTimeout(() => {
+    if (!freebiesAdded) {
+      toast({ 
+        title: 'No free gifts applicable', 
+        description: 'Check that products have promo rules (promo_buy / promo_get).' 
+      });
+    } else {
+      toast({ 
+        title: 'Free gifts applied!', 
+        description: 'Check your cart for the new FREE items.' 
+      });
+    }
+  }, 100);
 };
     
     const handleRemoveFromCart = (itemId: string) => {
