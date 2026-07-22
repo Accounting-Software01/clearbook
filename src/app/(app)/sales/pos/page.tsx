@@ -314,12 +314,12 @@ export default function PointOfSalePage() {
             const customersData = await customersRes.json();
             let itemsData = await itemsRes.json();
 
-          itemsData = itemsData.map((item: Item) => ({
-      ...item,
-             cost_price: item.cost_price ?? 250, 
-      promo_buy: item.promo_buy ?? 5,   // default: buy 5 get 1 free
-      promo_get: item.promo_get ?? 1,
-    }));
+       itemsData = itemsData.map((item: any) => ({
+  ...item,
+  cost_price: Number(item.cost_price) || 200,
+  promo_buy: Number(item.promo_buy) || 5,
+  promo_get: Number(item.promo_get) || 1,
+}));
 
             if (customersData.success) setCustomers(customersData.data);
             setItems(itemsData);
