@@ -118,7 +118,16 @@ const CartItemView = ({
         {item.is_freebie && <Badge variant="secondary" className="ml-2 text-xs">FREE</Badge>}
       </p>
       <p className="text-sm text-muted-foreground">
-        {item.is_freebie ? 'Free gift' : currencyFormatter.format(item.unit_price)}
+        {item.is_freebie
+          ? (
+            <>
+              Free gift
+              {item.base_price !== undefined && (
+                <span className="line-through ml-2">{currencyFormatter.format(item.base_price)}</span>
+              )}
+            </>
+          )
+          : currencyFormatter.format(item.unit_price)}
       </p>
     </div>
     <div className="flex items-center gap-2">
@@ -329,7 +338,9 @@ export default function PointOfSalePage() {
             if (!customersRes.ok || !itemsRes.ok) throw new Error('Failed to fetch initial data.');
 
             const customersData = await customersRes.json();
-            const itemsData = await itemsRes.json();
+            // NOTE: was `const itemsData` but reassigned below — that throws
+            // "Assignment to constant variable" on every load. Changed to `let`.
+            let itemsData = await itemsRes.json();
 
 
             itemsData = itemsData.map((item: any) => ({
@@ -628,9 +639,12 @@ const getFreeQuantity = (productId: string) => {
   setCart(prev => {
     const newCart = [...prev];
     selections.forEach(({ productId, quantity }) => {
-      // Find the regular item to copy properties
-      const regularItem = prev.find(item => item.id === productId && !item.is_freebie);
-      if (!regularItem) return;
+      // Look up from the product catalog (`items`), not the cart (`prev`).
+      // The item selected in the Free Gift modal may not have a paid line
+      // in the cart yet — looking it up in `prev` silently dropped it,
+      // which is why the free line (and its base_price) never appeared.
+      const productInfo = items.find(item => item.id === productId);
+      if (!productInfo) return;
 
       const freeId = `${productId}-free`;
       const existingIndex = newCart.findIndex(i => i.id === freeId && i.is_freebie);
@@ -643,7 +657,7 @@ const getFreeQuantity = (productId: string) => {
       } else {
         // Add new free line
         const freeItem: CartItem = {
-          ...regularItem,
+          ...productInfo,
           id: freeId,
           quantity: quantity,
           unit_price: 0,
