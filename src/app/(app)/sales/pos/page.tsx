@@ -334,7 +334,7 @@ export default function PointOfSalePage() {
 
             itemsData = itemsData.map((item: any) => ({
             ...item,
-            cost_price: Number(item.cost_price) || 0,
+            cost_price: Number(item.base_price) || 0,
             }));
           
             if (customersData.success) setCustomers(customersData.data);
