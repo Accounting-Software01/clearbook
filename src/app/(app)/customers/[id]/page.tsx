@@ -35,12 +35,17 @@ import {
   TrendingUp, TrendingDown, ArrowDownRight, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, Edit, CheckCircle, Clock, AlertCircle,
   BarChart3, Home, Briefcase, Calculator, Archive, FileSignature,
-  Receipt, CreditCardIcon, Loader2, BadgeCheck, Wallet,
+  Receipt, CreditCardIcon, Loader2, BadgeCheck, Wallet, MapPin,
+  Building2, Hash, CalendarClock, ShieldCheck, PieChart as PieChartIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { format, parseISO, isValid, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parseISO, isValid, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, LineChart, Line,
+} from 'recharts';
 
 /* ─── Brand palette ─────────────────────────────────────────────────────────── */
 const BRAND = {
@@ -892,6 +897,280 @@ const InvoicesTable = ({
   );
 };
 
+/* ─── DetailsTab ─────────────────────────────────────────────────────────────
+ *  Full customer profile — expands on the brief CustomerInfoCard shown on
+ *  the Ledger tab, using data already present on `data.customer` (no new
+ *  fetch needed).
+ * ─────────────────────────────────────────────────────────────────────────── */
+const DetailsTab = ({ customer }: { customer: CustomerProfile }) => {
+  const sections = [
+    {
+      title: 'Company / Personal Information', icon: Building2, color: BRAND.blue,
+      items: [
+        { label: 'Customer ID',      value: customer.customer_id },
+        { label: 'Customer Name',    value: customer.customer_name },
+        { label: 'Customer Type',    value: customer.customer_type },
+        { label: 'Status',           value: null, badge: getStatusBadge(customer.status) },
+        { label: 'Registration No.', value: customer.registration_number || 'N/A' },
+        { label: 'Tax ID',           value: customer.tax_id || 'N/A' },
+      ],
+    },
+    {
+      title: 'Contact Information', icon: Phone, color: BRAND.green,
+      items: [
+        { label: 'Primary Phone',   value: customer.primary_phone_number || 'N/A' },
+        { label: 'Secondary Phone', value: customer.secondary_phone_number || 'N/A' },
+        { label: 'Email Address',   value: customer.email_address || 'N/A' },
+      ],
+    },
+    {
+      title: 'Address', icon: MapPin, color: BRAND.orange,
+      items: [
+        { label: 'Street Address', value: customer.address || 'N/A' },
+        { label: 'City',           value: customer.city || 'N/A' },
+        { label: 'State',          value: customer.state || 'N/A' },
+        { label: 'Country',        value: customer.country || 'N/A' },
+      ],
+    },
+    {
+      title: 'Financial & Credit Settings', icon: DollarSign, color: BRAND.purple,
+      items: [
+        { label: 'Credit Limit',       value: formatNGN(customer.credit_limit) },
+        { label: 'Payment Terms',      value: customer.payment_terms || 'N/A' },
+        { label: 'Credit Days',        value: customer.credit_days ? `${customer.credit_days} days` : 'N/A' },
+        { label: 'Preferred Payment',  value: customer.preferred_payment_method || 'N/A' },
+        { label: 'Opening Balance',    value: null, custom: (
+          <span className={resolveBalance(customer.opening_balance ?? 0).textClass}>
+            {resolveBalance(customer.opening_balance ?? 0).display}
+          </span>
+        ) },
+        { label: 'Current Balance',    value: null, custom: (
+          <span className={resolveBalance(customer.balance).textClass}>
+            {resolveBalance(customer.balance).display}
+          </span>
+        ) },
+      ],
+    },
+    {
+      title: 'Account Metadata', icon: CalendarClock, color: '#6b7280',
+      items: [
+        { label: 'Customer Since', value: formatDate(customer.created_at || '') },
+        { label: 'Record ID',      value: customer.id ?? 'N/A' },
+      ],
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {sections.map((s, i) => {
+        const Icon = s.icon;
+        return (
+          <Card key={i} className="border border-gray-200">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: `${s.color}1a` }}>
+                  <Icon className="h-5 w-5" style={{ color: s.color }} />
+                </div>
+                <CardTitle className="text-lg">{s.title}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <dl className="space-y-3">
+                {s.items.map((item: any, j) => (
+                  <div key={j} className="flex justify-between items-center">
+                    <dt className="text-sm text-gray-600">{item.label}</dt>
+                    <dd className="text-sm font-medium text-gray-900">
+                      {item.badge ?? item.custom ?? item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ─── ReportsTab ─────────────────────────────────────────────────────────────
+ *  Aging summary (computed from invoices) + monthly invoiced-vs-received
+ *  trend (computed from the ledger already loaded on page mount).
+ *  Invoices are fetched lazily the same way as the Invoices tab.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+interface AgingBucket {
+  label: string;
+  amount: number;
+  color: string;
+}
+
+const ReportsTab = ({
+  ledger, invoices, invoicesLoading,
+}: {
+  ledger: LedgerTransaction[];
+  invoices: CustomerInvoice[];
+  invoicesLoading: boolean;
+}) => {
+  const agingBuckets: AgingBucket[] = useMemo(() => {
+    const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+    const today = new Date();
+
+    invoices.forEach(inv => {
+      if (inv.amount_due <= 0.001) return;
+      const due = parseISO(inv.due_date);
+      if (!isValid(due)) return;
+      const daysOverdue = differenceInCalendarDays(today, due);
+
+      if (daysOverdue <= 0)       buckets.current += inv.amount_due;
+      else if (daysOverdue <= 30) buckets.d1_30    += inv.amount_due;
+      else if (daysOverdue <= 60) buckets.d31_60   += inv.amount_due;
+      else if (daysOverdue <= 90) buckets.d61_90   += inv.amount_due;
+      else                        buckets.d90_plus += inv.amount_due;
+    });
+
+    return [
+      { label: 'Current (not yet due)', amount: buckets.current, color: BRAND.green },
+      { label: '1–30 days overdue',     amount: buckets.d1_30,   color: '#facc15' },
+      { label: '31–60 days overdue',    amount: buckets.d31_60,  color: BRAND.orange },
+      { label: '61–90 days overdue',    amount: buckets.d61_90,  color: '#dc2626' },
+      { label: '90+ days overdue',      amount: buckets.d90_plus, color: '#7f1d1d' },
+    ];
+  }, [invoices]);
+
+  const totalOutstanding = agingBuckets.reduce((s, b) => s + b.amount, 0);
+  const totalOverdue     = totalOutstanding - agingBuckets[0].amount;
+
+  const monthlyTrend = useMemo(() => {
+    const map = new Map<string, { month: string; sortKey: number; invoiced: number; received: number }>();
+    ledger.forEach(tx => {
+      const d = parseISO(tx.date);
+      if (!isValid(d)) return;
+      const monthStart = startOfMonth(d);
+      const key = format(monthStart, 'MMM yyyy');
+      if (!map.has(key)) {
+        map.set(key, { month: key, sortKey: monthStart.getTime(), invoiced: 0, received: 0 });
+      }
+      const entry = map.get(key)!;
+      entry.invoiced += tx.debit;
+      entry.received += tx.credit;
+    });
+    return Array.from(map.values()).sort((a, b) => a.sortKey - b.sortKey);
+  }, [ledger]);
+
+  if (invoicesLoading) {
+    return (
+      <Card className="border border-gray-200">
+        <CardContent className="py-12 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" style={{ color: BRAND.blue }} />
+          <p className="text-gray-500">Building reports…</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+
+      {/* Aging summary */}
+      <Card className="border border-gray-200 border-t-4" style={{ borderTopColor: BRAND.orange }}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-orange-50 rounded-lg">
+              <PieChartIcon className="h-5 w-5" style={{ color: BRAND.orange }} />
+            </div>
+            <div>
+              <CardTitle className="text-lg">Receivables Aging</CardTitle>
+              <CardDescription>Outstanding balance broken down by how overdue it is</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {totalOutstanding <= 0.001 ? (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2" style={{ color: BRAND.green }}>
+              <BadgeCheck className="h-5 w-5 shrink-0" />
+              <span className="font-medium">No outstanding invoices — nothing to age.</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                {agingBuckets.map((b, i) => (
+                  <div key={i} className="p-4 rounded-lg" style={{ backgroundColor: `${b.color}14` }}>
+                    <div className="text-xs text-gray-600 mb-1">{b.label}</div>
+                    <div className="text-lg font-bold" style={{ color: b.color }}>{formatNGN(b.amount)}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {totalOutstanding > 0 ? `${((b.amount / totalOutstanding) * 100).toFixed(1)}%` : '0%'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Simple stacked bar visual */}
+              <div className="w-full h-4 rounded-full overflow-hidden flex bg-gray-100">
+                {agingBuckets.map((b, i) => (
+                  totalOutstanding > 0 && b.amount > 0 ? (
+                    <div
+                      key={i}
+                      style={{ width: `${(b.amount / totalOutstanding) * 100}%`, backgroundColor: b.color }}
+                      title={`${b.label}: ${formatNGN(b.amount)}`}
+                    />
+                  ) : null
+                ))}
+              </div>
+
+              {totalOverdue > 0 && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span className="font-medium">
+                    {formatNGN(totalOverdue)} is past due out of {formatNGN(totalOutstanding)} total outstanding
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monthly trend */}
+      <Card className="border border-gray-200 border-t-4" style={{ borderTopColor: BRAND.blue }}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <BarChart3 className="h-5 w-5" style={{ color: BRAND.blue }} />
+            </div>
+            <div>
+              <CardTitle className="text-lg">Monthly Invoiced vs. Received</CardTitle>
+              <CardDescription>Based on all ledger activity for this customer</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {monthlyTrend.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-200" />
+              No ledger activity to chart yet
+            </div>
+          ) : (
+            <div className="w-full h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₦${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(value: number) => formatNGN(value)} />
+                  <Legend />
+                  <Bar dataKey="invoiced" name="Invoiced (DR)" fill={BRAND.orange} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="received" name="Received (CR)" fill={BRAND.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 /* ─── PDF export ─────────────────────────────────────────────────────────────── */
 
 const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], periodSummary?: PeriodSummary) => {
@@ -992,7 +1271,8 @@ export default function CustomerLedgerPage() {
   const [loading,       setLoading]       = useState(true);
   const [exportLoading, setExportLoading] = useState(false);
 
-  // Invoices tab state — fetched lazily, only once, when the tab is first opened
+  // Invoices state — fetched lazily, only once, when the Invoices OR Reports
+  // tab is first opened (Reports needs invoices for the aging summary).
   const [invoices,        setInvoices]        = useState<CustomerInvoice[]>([]);
   const [invoiceSummary,  setInvoiceSummary]  = useState<InvoiceSummary | null>(null);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
@@ -1114,7 +1394,7 @@ export default function CustomerLedgerPage() {
           defaultValue="ledger"
           className="mb-6"
           onValueChange={(tab) => {
-            if (tab === 'invoices' && !invoicesFetched) fetchInvoices();
+            if ((tab === 'invoices' || tab === 'reports') && !invoicesFetched) fetchInvoices();
           }}
         >
           <TabsList className="grid w-full md:w-auto grid-cols-2 md:grid-cols-4">
@@ -1136,7 +1416,7 @@ export default function CustomerLedgerPage() {
           </TabsContent>
 
           <TabsContent value="details">
-            <Card><CardHeader><CardTitle>Detailed Customer Information</CardTitle></CardHeader><CardContent /></Card>
+            <DetailsTab customer={data.customer} />
           </TabsContent>
 
           <TabsContent value="invoices">
@@ -1145,6 +1425,14 @@ export default function CustomerLedgerPage() {
               summary={invoiceSummary}
               isLoading={invoicesLoading}
               onPrint={handlePrintInvoice}
+            />
+          </TabsContent>
+
+          <TabsContent value="reports">
+            <ReportsTab
+              ledger={data.ledger}
+              invoices={invoices}
+              invoicesLoading={invoicesLoading}
             />
           </TabsContent>
         </Tabs>
