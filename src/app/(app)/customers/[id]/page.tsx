@@ -103,6 +103,43 @@ interface PeriodSummary {
   net_movement: number;
 }
 
+/* ─── Customer Invoices ──────────────────────────────────────────────────────
+ *  Backed by GET /api/clearbook/get-customer-invoices.php
+ *  Returns each invoice with a computed display `status` of:
+ *  Paid | Partial | Overdue | Pending | Issued
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+interface CustomerInvoice {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  amount_paid: number;
+  amount_due: number;
+  raw_status: string;
+  status: string; // computed: Paid | Partial | Overdue | Pending | Issued
+  notes?: string;
+  created_at?: string;
+}
+
+interface InvoiceSummary {
+  count: number;
+  total_invoiced: number;
+  total_paid: number;
+  total_outstanding: number;
+}
+
+interface InvoicesApiResponse {
+  success: boolean;
+  invoices: CustomerInvoice[];
+  summary: InvoiceSummary;
+  error?: string;
+}
+
 /* ─── Accounting balance semantics ──────────────────────────────────────────────
  *
  *  In a customer (Accounts Receivable) context:
@@ -211,6 +248,7 @@ const getStatusBadge = (status: string) => {
     Pending:  { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
     Paid:     { color: 'bg-blue-100 text-blue-800',     icon: CheckCircle },
     Partial:  { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
+    Issued:   { color: 'bg-indigo-100 text-indigo-800', icon: Clock },
   };
   const cfg = map[status] || { color: 'bg-gray-100 text-gray-800', icon: Clock };
   const Icon = cfg.icon;
@@ -685,6 +723,175 @@ const LedgerTable = ({
   );
 };
 
+/* ─── InvoicesTable ──────────────────────────────────────────────────────────
+ *  Renders the customer's invoices (fetched lazily when the Invoices tab is
+ *  opened). Mirrors LedgerTable's search/filter/pagination pattern.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const InvoicesTable = ({
+  invoices, summary, isLoading, onPrint,
+}: {
+  invoices: CustomerInvoice[];
+  summary: InvoiceSummary | null;
+  isLoading: boolean;
+  onPrint: (invoiceId: number) => void;
+}) => {
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchTerm,   setSearchTerm]   = useState('');
+  const [currentPage,  setCurrentPage]  = useState(1);
+  const itemsPerPage = 10;
+
+  const filteredInvoices = useMemo(() => invoices.filter(inv => {
+    const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
+    const matchSearch = !searchTerm ||
+      inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchStatus && matchSearch;
+  }), [invoices, filterStatus, searchTerm]);
+
+  const totalPages        = Math.ceil(filteredInvoices.length / itemsPerPage);
+  const paginatedInvoices = filteredInvoices.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const statusOptions      = Array.from(new Set(invoices.map(inv => inv.status)));
+
+  if (isLoading) {
+    return (
+      <Card className="border border-gray-200">
+        <CardContent className="py-12 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" style={{ color: BRAND.blue }} />
+          <p className="text-gray-500">Loading invoices…</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border border-gray-200 border-t-4" style={{ borderTopColor: BRAND.orange }}>
+      <CardHeader className="pb-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-lg">Invoices</CardTitle>
+            <CardDescription>Showing {filteredInvoices.length} invoices for this customer</CardDescription>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input placeholder="Search invoice #…" className="pl-9 w-full sm:w-64"
+                value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            </div>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Filter by status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                {statusOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {/* Summary strip */}
+        {summary && (
+          <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Invoice Count</div>
+                <div className="text-base font-semibold text-gray-900">{summary.count}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Invoiced</div>
+                <div className="text-base font-semibold text-red-600">{formatNGN(summary.total_invoiced)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Paid</div>
+                <div className="text-base font-semibold" style={{ color: BRAND.green }}>{formatNGN(summary.total_paid)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Outstanding</div>
+                <div className="text-base font-semibold text-orange-600">{formatNGN(summary.total_outstanding)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader className="bg-gray-50">
+              <TableRow>
+                <TableHead>Invoice #</TableHead>
+                <TableHead className="w-[100px]">Date</TableHead>
+                <TableHead className="w-[100px]">Due Date</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Paid</TableHead>
+                <TableHead className="text-right">Balance Due</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedInvoices.length > 0 ? paginatedInvoices.map((inv) => (
+                <TableRow key={inv.id} className="hover:bg-gray-50">
+                  <TableCell><span className="font-mono text-sm font-medium">{inv.invoice_number}</span></TableCell>
+                  <TableCell>{formatDate(inv.invoice_date)}</TableCell>
+                  <TableCell>{formatDate(inv.due_date)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatNGN(inv.total_amount)}</TableCell>
+                  <TableCell className="text-right" style={{ color: BRAND.green }}>{formatNGN(inv.amount_paid)}</TableCell>
+                  <TableCell className="text-right font-medium">
+                    {inv.amount_due > 0.001
+                      ? <span className="text-red-600">{formatNGN(inv.amount_due)}</span>
+                      : <span className="text-gray-400">—</span>}
+                  </TableCell>
+                  <TableCell>{getStatusBadge(inv.status)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="outline" size="sm" onClick={() => onPrint(inv.id)}>
+                      <Printer className="h-4 w-4 mr-1" /> Print
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-400">
+                    <FileText className="h-12 w-12 mx-auto mb-2 text-gray-200" />
+                    No invoices found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-gray-600">Page {currentPage} of {totalPages}</div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm"
+                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1}>
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = totalPages <= 5 ? i + 1
+                        : currentPage <= 3 ? i + 1
+                        : currentPage >= totalPages - 2 ? totalPages - 4 + i
+                        : currentPage - 2 + i;
+                return (
+                  <Button key={p} variant={currentPage === p ? 'default' : 'outline'} size="sm"
+                    onClick={() => setCurrentPage(p)} className="w-8 h-8 p-0"
+                    style={currentPage === p ? { backgroundColor: BRAND.orange } : {}}>
+                    {p}
+                  </Button>
+                );
+              })}
+              <Button variant="outline" size="sm"
+                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages}>
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 /* ─── PDF export ─────────────────────────────────────────────────────────────── */
 
 const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], periodSummary?: PeriodSummary) => {
@@ -785,6 +992,12 @@ export default function CustomerLedgerPage() {
   const [loading,       setLoading]       = useState(true);
   const [exportLoading, setExportLoading] = useState(false);
 
+  // Invoices tab state — fetched lazily, only once, when the tab is first opened
+  const [invoices,        setInvoices]        = useState<CustomerInvoice[]>([]);
+  const [invoiceSummary,  setInvoiceSummary]  = useState<InvoiceSummary | null>(null);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesFetched, setInvoicesFetched] = useState(false);
+
   useEffect(() => {
     if (!user?.company_id || !id) return;
     const fetch_ = async () => {
@@ -820,6 +1033,34 @@ export default function CustomerLedgerPage() {
     };
     fetch_();
   }, [user, id, toast]);
+
+  const fetchInvoices = async () => {
+    if (!user?.company_id || !id || invoicesFetched) return;
+    setInvoicesLoading(true);
+    try {
+      const res  = await fetch(
+        `https://hariindustries.net/api/clearbook/get-customer-invoices.php?company_id=${user.company_id}&customer_id=${id}`,
+      );
+      const json: InvoicesApiResponse = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to load invoices.');
+      setInvoices(json.invoices);
+      setInvoiceSummary(json.summary);
+      setInvoicesFetched(true);
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Error Loading Invoices', description: e.message });
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  const handlePrintInvoice = (invoiceId: number) => {
+    if (!user?.uid || !user?.company_id) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not get user or company information to print.' });
+      return;
+    }
+    const printUrl = `https://hariindustries.net/print.php?invoice_id=${invoiceId}&company_id=${user.company_id}&user_id=${user.uid}`;
+    window.open(printUrl, '_blank');
+  };
 
   const handleExportPDF = () => {
     if (!data) return;
@@ -869,7 +1110,13 @@ export default function CustomerLedgerPage() {
         <Breadcrumbs code={data.customer.customer_id} name={data.customer.customer_name} />
         <CustomerHeader customer={data.customer} />
 
-        <Tabs defaultValue="ledger" className="mb-6">
+        <Tabs
+          defaultValue="ledger"
+          className="mb-6"
+          onValueChange={(tab) => {
+            if (tab === 'invoices' && !invoicesFetched) fetchInvoices();
+          }}
+        >
           <TabsList className="grid w-full md:w-auto grid-cols-2 md:grid-cols-4">
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
@@ -890,6 +1137,15 @@ export default function CustomerLedgerPage() {
 
           <TabsContent value="details">
             <Card><CardHeader><CardTitle>Detailed Customer Information</CardTitle></CardHeader><CardContent /></Card>
+          </TabsContent>
+
+          <TabsContent value="invoices">
+            <InvoicesTable
+              invoices={invoices}
+              summary={invoiceSummary}
+              isLoading={invoicesLoading}
+              onPrint={handlePrintInvoice}
+            />
           </TabsContent>
         </Tabs>
 
