@@ -989,10 +989,7 @@ const InvoicesTable = ({
     </Card>
   );
 };
- *  Full customer profile — expands on the brief CustomerInfoCard shown on
- *  the Ledger tab, using data already present on `data.customer` (no new
- *  fetch needed).
- * ─────────────────────────────────────────────────────────────────────────── */
+
 /* ─── DetailsTab ─────────────────────────────────────────────────────────────
  *  Full customer profile — expands on the brief CustomerInfoCard shown on
  *  the Ledger tab, using data already present on `data.customer` (no new
