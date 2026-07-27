@@ -31,12 +31,22 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import {
   Printer, FileText, Mail, Phone, User, Calendar, DollarSign,
   TrendingUp, TrendingDown, ArrowDownRight, Search, FileSpreadsheet,
   ChevronLeft, ChevronRight, Edit, CheckCircle, Clock, AlertCircle,
   BarChart3, Home, Briefcase, Calculator, Archive, FileSignature,
   Receipt, CreditCardIcon, Loader2, BadgeCheck, Wallet, MapPin,
   Building2, Hash, CalendarClock, ShieldCheck, PieChart as PieChartIcon,
+  Ban, RotateCcw,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO, isValid, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
@@ -254,6 +264,7 @@ const getStatusBadge = (status: string) => {
     Paid:     { color: 'bg-blue-100 text-blue-800',     icon: CheckCircle },
     Partial:  { color: 'bg-orange-100 text-orange-800', icon: AlertCircle },
     Issued:   { color: 'bg-indigo-100 text-indigo-800', icon: Clock },
+    Reversed: { color: 'bg-slate-200 text-slate-700',   icon: Ban },
   };
   const cfg = map[status] || { color: 'bg-gray-100 text-gray-800', icon: Clock };
   const Icon = cfg.icon;
@@ -733,17 +744,40 @@ const LedgerTable = ({
  *  opened). Mirrors LedgerTable's search/filter/pagination pattern.
  * ─────────────────────────────────────────────────────────────────────────── */
 const InvoicesTable = ({
-  invoices, summary, isLoading, onPrint,
+  invoices, summary, isLoading, onPrint, onReverse,
 }: {
   invoices: CustomerInvoice[];
   summary: InvoiceSummary | null;
   isLoading: boolean;
   onPrint: (invoiceId: number) => void;
+  onReverse: (invoiceId: number, reason: string) => Promise<{ success: boolean }>;
 }) => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm,   setSearchTerm]   = useState('');
   const [currentPage,  setCurrentPage]  = useState(1);
   const itemsPerPage = 10;
+
+  const [reverseDialogOpen, setReverseDialogOpen] = useState(false);
+  const [reversingInvoice,  setReversingInvoice]  = useState<CustomerInvoice | null>(null);
+  const [reversalReason,    setReversalReason]    = useState('');
+  const [reversalSubmitting, setReversalSubmitting] = useState(false);
+
+  const openReverseDialog = (inv: CustomerInvoice) => {
+    setReversingInvoice(inv);
+    setReversalReason('');
+    setReverseDialogOpen(true);
+  };
+
+  const handleConfirmReverse = async () => {
+    if (!reversingInvoice || !reversalReason.trim()) return;
+    setReversalSubmitting(true);
+    const result = await onReverse(reversingInvoice.id, reversalReason.trim());
+    setReversalSubmitting(false);
+    if (result.success) {
+      setReverseDialogOpen(false);
+      setReversingInvoice(null);
+    }
+  };
 
   const filteredInvoices = useMemo(() => invoices.filter(inv => {
     const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
@@ -846,9 +880,20 @@ const InvoicesTable = ({
                   </TableCell>
                   <TableCell>{getStatusBadge(inv.status)}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => onPrint(inv.id)}>
-                      <Printer className="h-4 w-4 mr-1" /> Print
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => onPrint(inv.id)}>
+                        <Printer className="h-4 w-4 mr-1" /> Print
+                      </Button>
+                      {inv.status !== 'Pending' && inv.status !== 'Reversed' && (
+                        <Button
+                          variant="outline" size="sm"
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={() => openReverseDialog(inv)}
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" /> Reverse
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               )) : (
@@ -893,10 +938,61 @@ const InvoicesTable = ({
           </div>
         )}
       </CardContent>
+
+      {/* Reversal confirmation dialog */}
+      <Dialog open={reverseDialogOpen} onOpenChange={(open) => { if (!reversalSubmitting) setReverseDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <RotateCcw className="h-5 w-5" /> Reverse Invoice {reversingInvoice?.invoice_number}
+            </DialogTitle>
+            <DialogDescription>
+              This will reverse the invoice's journal entries, restore stock, and — if this
+              invoice has been paid — automatically reverse the linked receipt(s) too.
+              This action cannot be undone; a corrected invoice must be created separately.
+            </DialogDescription>
+          </DialogHeader>
+          {reversingInvoice && reversingInvoice.amount_paid > 0.001 && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                This invoice has {formatNGN(reversingInvoice.amount_paid)} paid against it.
+                The linked payment(s) will be reversed automatically as part of this action.
+              </span>
+            </div>
+          )}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Reason for reversal (required)</label>
+            <Textarea
+              placeholder="e.g. Wrong quantity issued — should have been half truck, not one truck."
+              value={reversalReason}
+              onChange={(e) => setReversalReason(e.target.value)}
+              disabled={reversalSubmitting}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReverseDialogOpen(false)} disabled={reversalSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmReverse}
+              disabled={!reversalReason.trim() || reversalSubmitting}
+            >
+              {reversalSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirm Reversal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
-
+ *  Full customer profile — expands on the brief CustomerInfoCard shown on
+ *  the Ledger tab, using data already present on `data.customer` (no new
+ *  fetch needed).
+ * ─────────────────────────────────────────────────────────────────────────── */
 /* ─── DetailsTab ─────────────────────────────────────────────────────────────
  *  Full customer profile — expands on the brief CustomerInfoCard shown on
  *  the Ledger tab, using data already present on `data.customer` (no new
@@ -1278,44 +1374,46 @@ export default function CustomerLedgerPage() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoicesFetched, setInvoicesFetched] = useState(false);
 
-  useEffect(() => {
+  const fetchLedger = async () => {
     if (!user?.company_id || !id) return;
-    const fetch_ = async () => {
-      setLoading(true);
-      try {
-        const res  = await fetch(
-          `https://hariindustries.net/api/clearbook/get_customer_details.php?company_id=${user.company_id}&customer_id=${id}`,
-        );
-        const json: ApiResponse = await res.json();
+    setLoading(true);
+    try {
+      const res  = await fetch(
+        `https://hariindustries.net/api/clearbook/get_customer_details.php?company_id=${user.company_id}&customer_id=${id}`,
+      );
+      const json: ApiResponse = await res.json();
 
-        const totalDebit    = json.ledger.reduce((s, l) => s + l.debit,  0);
-        const totalCredit   = json.ledger.reduce((s, l) => s + l.credit, 0);
-        // Normalise -0
-        const currentBalance = normaliseZero(json.current_balance);
+      const totalDebit    = json.ledger.reduce((s, l) => s + l.debit,  0);
+      const totalCredit   = json.ledger.reduce((s, l) => s + l.credit, 0);
+      // Normalise -0
+      const currentBalance = normaliseZero(json.current_balance);
 
-        setData({
-          customer:      { ...json.customer, balance: currentBalance },
-          ledger:        json.ledger,
-          balance:       currentBalance,
-          periodSummary: {
-            opening_balance: normaliseZero(json.opening_balance || 0),
-            closing_balance: currentBalance,
-            total_debit:     totalDebit,
-            total_credit:    totalCredit,
-            net_movement:    totalCredit - totalDebit,
-          },
-        });
-      } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Error Loading Ledger', description: e.message });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch_();
+      setData({
+        customer:      { ...json.customer, balance: currentBalance },
+        ledger:        json.ledger,
+        balance:       currentBalance,
+        periodSummary: {
+          opening_balance: normaliseZero(json.opening_balance || 0),
+          closing_balance: currentBalance,
+          total_debit:     totalDebit,
+          total_credit:    totalCredit,
+          net_movement:    totalCredit - totalDebit,
+        },
+      });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Error Loading Ledger', description: e.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLedger();
   }, [user, id, toast]);
 
-  const fetchInvoices = async () => {
-    if (!user?.company_id || !id || invoicesFetched) return;
+  const fetchInvoices = async (force = false) => {
+    if (!user?.company_id || !id) return;
+    if (invoicesFetched && !force) return;
     setInvoicesLoading(true);
     try {
       const res  = await fetch(
@@ -1340,6 +1438,44 @@ export default function CustomerLedgerPage() {
     }
     const printUrl = `https://hariindustries.net/print.php?invoice_id=${invoiceId}&company_id=${user.company_id}&user_id=${user.uid}`;
     window.open(printUrl, '_blank');
+  };
+
+  const handleReverseInvoice = async (invoiceId: number, reason: string): Promise<{ success: boolean }> => {
+    if (!user?.company_id || !user?.uid) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Missing user or company context.' });
+      return { success: false };
+    }
+    try {
+      const res = await fetch('https://hariindustries.net/api/clearbook/reverse-sales-invoice.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: user.company_id,
+          invoice_id: invoiceId,
+          user_id: user.uid,
+          reason,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Reversal failed.');
+
+      toast({
+        title: 'Invoice Reversed',
+        description: json.receipts_reversed > 0
+          ? `Invoice reversed — ${json.receipts_reversed} linked payment(s) were also reversed.`
+          : 'Invoice reversed successfully.',
+        className: 'bg-green-50 border-green-200',
+      });
+
+      // Balances and stock changed — refresh both the ledger and invoice list
+      await fetchLedger();
+      await fetchInvoices(true);
+
+      return { success: true };
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Reversal Failed', description: e.message });
+      return { success: false };
+    }
   };
 
   const handleExportPDF = () => {
@@ -1425,6 +1561,7 @@ export default function CustomerLedgerPage() {
               summary={invoiceSummary}
               isLoading={invoicesLoading}
               onPrint={handlePrintInvoice}
+              onReverse={handleReverseInvoice}
             />
           </TabsContent>
 
