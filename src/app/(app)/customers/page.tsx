@@ -121,7 +121,7 @@ function EditCustomerDialog({ customer, isOpen, onClose, onSaved }: EditCustomer
   const [form, setForm] = useState({
     name: '', status: '', customer_type: '', registration_no: '', tax_id: '',
     primary_phone_number: '', secondary_phone_number: '', email_address: '',
-    address: '', credit_limit: '', payment_terms: '', credit_days: '', preferred_payment: '',
+    address: '', credit_limit: '', payment_terms: '', credit_days: '', preferred_payment: '', 
   });
 
   useEffect(() => {
