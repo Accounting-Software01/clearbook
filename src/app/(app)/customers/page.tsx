@@ -11,6 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -119,17 +127,29 @@ function EditCustomerDialog({ customer, isOpen, onClose, onSaved }: EditCustomer
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState({
-    name: '', status: '', customer_type: '', registration_no: '', tax_id: '',
-    primary_phone_number: '', secondary_phone_number: '', email_address: '',
-    address: '', credit_limit: '', payment_terms: '', credit_days: '', preferred_payment: '', 
+    name: '', 
+    status: 'Active', 
+    customer_type: 'Business', 
+    registration_no: '', 
+    tax_id: '',
+    primary_phone_number: '', 
+    secondary_phone_number: '', 
+    email_address: '',
+    address: '', 
+    credit_limit: '', 
+    payment_terms: '', 
+    credit_days: '', 
+    preferred_payment: '', 
+
+    
   });
 
   useEffect(() => {
     if (customer) {
       setForm({
         name: customer.name ?? '',
-        status: customer.status ?? '',
-        customer_type: customer.customer_type ?? '',
+        status: customer.status || 'Active',
+        customer_type: customer.customer_type || 'Business',
         registration_no: (customer as any).registration_no ?? '',
         tax_id: (customer as any).tax_id ?? '',
         primary_phone_number: customer.primary_phone_number ?? '',
@@ -140,6 +160,7 @@ function EditCustomerDialog({ customer, isOpen, onClose, onSaved }: EditCustomer
         payment_terms: (customer as any).payment_terms ?? '',
         credit_days: (customer as any).credit_days ?? '',
         preferred_payment: (customer as any).preferred_payment ?? '',
+        
       });
     }
   }, [customer]);
@@ -185,6 +206,7 @@ function EditCustomerDialog({ customer, isOpen, onClose, onSaved }: EditCustomer
     { label: 'Payment Terms',       name: 'payment_terms' },
     { label: 'Credit Days',         name: 'credit_days' },
     { label: 'Preferred Payment',   name: 'preferred_payment' },
+    
   ];
 
   return (
@@ -195,19 +217,57 @@ function EditCustomerDialog({ customer, isOpen, onClose, onSaved }: EditCustomer
         </DialogHeader>
         <div className="grid gap-4 py-4">
           {fields.map(({ label, name, required }) => (
-            <div key={name} className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor={name} className="text-right text-sm">
-                {label}{required && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <Input
-                id={name}
-                name={name}
-                value={form[name as keyof typeof form]}
-                onChange={handleChange}
-                className="col-span-3"
-              />
-            </div>
-          ))}
+  <div key={name} className="grid grid-cols-4 items-center gap-4">
+    <Label htmlFor={name} className="text-right text-sm">
+      {label}
+      {required && <span className="text-destructive ml-1">*</span>}
+    </Label>
+
+    <div className="col-span-3">
+      {name === "status" ? (
+        <Select
+          value={form.status}
+          onValueChange={(value) =>
+            setForm((prev) => ({ ...prev, status: value }))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select Status" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectItem value="Active">Active</SelectItem>
+            <SelectItem value="Inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : name === "customer_type" ? (
+        <Select
+          value={form.customer_type}
+          onValueChange={(value) =>
+            setForm((prev) => ({ ...prev, customer_type: value }))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select Customer Type" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectItem value="Business">Business</SelectItem>
+            <SelectItem value="Individual">Individual</SelectItem>
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          id={name}
+          name={name}
+          value={form[name as keyof typeof form]}
+          onChange={handleChange}
+        />
+      )}
+    </div>
+  </div>
+))}
+
         </div>
         <DialogFooter>
           <DialogClose asChild>
