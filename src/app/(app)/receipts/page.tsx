@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, PlusCircle, ArrowLeft, Edit, Trash2, CheckCircle, Printer } from 'lucide-react';
+import { Loader2, PlusCircle, ArrowLeft, Edit, Trash2, CheckCircle, Printer, Info } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -247,9 +247,13 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
         return initial;
     });
 
-
+    // Both "Customer Receipt" and "Advance Payment" now apply automatically
+    // to outstanding invoices on the backend — oldest invoice first — with
+    // any leftover posted as Customer Advance credit. So the outstanding
+    // list is fetched for either type now (not just "Customer Receipt"),
+    // purely as reference info for whoever is entering the receipt.
     useEffect(() => {
-        if (receiptType === 'Customer Receipt' && customerId) {
+        if ((receiptType === 'Customer Receipt' || receiptType === 'Advance Payment') && customerId) {
             setIsFetchingInvoices(true);
             fetch(`https://hariindustries.net/api/clearbook/get_customer_unpaid_invoices.php?company_id=${user?.company_id}&customer_id=${customerId}`)
                 .then(res => res.json())
@@ -294,6 +298,18 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
         }
     };
 
+    // Running total of the customer's outstanding invoices, oldest first —
+    // shown so whoever enters the receipt can see how a given amount will
+    // actually be allocated once posted, since the backend now applies it
+    // automatically rather than to a manually chosen invoice.
+    const totalOutstanding = useMemo(
+        () => unpaidInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount_due) || 0), 0),
+        [unpaidInvoices],
+    );
+
+    const showOutstandingPanel =
+        (receiptType === 'Customer Receipt' || receiptType === 'Advance Payment') && customerId;
+
     return (
         <Card>
             <CardHeader>
@@ -325,14 +341,65 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
                             <SelectContent>{(customers || []).map((cust: Customer) => <SelectItem key={cust.customer_id} value={cust.customer_id}>{cust.customer_name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
-                    
+
+                    {/* ── Outstanding invoices reference panel ──────────────────
+                     *  Both "Customer Receipt" and "Advance Payment" apply
+                     *  automatically to the oldest outstanding invoice(s)
+                     *  first once posted — this is informational only, not
+                     *  a targeting control.
+                     * ─────────────────────────────────────────────────────── */}
+                    {showOutstandingPanel && (
+                        <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                                <span>
+                                    Payments are applied automatically to this customer's oldest outstanding
+                                    invoice(s) first. Any amount left over after all invoices are settled is
+                                    recorded as Customer Advance credit.
+                                </span>
+                            </div>
+
+                            {isFetchingInvoices ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Loading outstanding invoices…
+                                </div>
+                            ) : unpaidInvoices.length === 0 ? (
+                                <p className="text-sm text-muted-foreground py-1">
+                                    No outstanding invoices for this customer — the full amount will be posted as Customer Advance.
+                                </p>
+                            ) : (
+                                <div className="space-y-1">
+                                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                        Outstanding invoices (oldest first)
+                                    </div>
+                                    <ul className="text-sm divide-y">
+                                        {unpaidInvoices.map((inv) => (
+                                            <li key={inv.id} className="flex justify-between py-1">
+                                                <span>{inv.invoice_number}</span>
+                                                <span className="font-medium">{parseFloat(inv.amount_due).toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div className="flex justify-between pt-1 text-sm font-semibold border-t">
+                                        <span>Total outstanding</span>
+                                        <span>{totalOutstanding.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {receiptType === 'Customer Receipt' && (
                          <div className="space-y-2">
-                            <Label htmlFor="invoice_id">Invoice (Optional)</Label>
+                            <Label htmlFor="invoice_id">Quick-fill from invoice (optional)</Label>
                             <Select name="invoice_id" onValueChange={handleInvoiceChange} disabled={isFetchingInvoices || unpaidInvoices.length === 0}>
-                                <SelectTrigger><SelectValue placeholder={isFetchingInvoices ? 'Loading invoices...' : 'Select an unpaid invoice'}/></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder={isFetchingInvoices ? 'Loading invoices...' : 'Select an unpaid invoice to fill the amount'}/></SelectTrigger>
                                 <SelectContent>{unpaidInvoices.map((inv: Invoice) => <SelectItem key={inv.id} value={inv.id.toString()}>{inv.invoice_number} (Due: {inv.amount_due})</SelectItem>)}</SelectContent>
                             </Select>
+                            <p className="text-xs text-muted-foreground">
+                                This only pre-fills the Amount field below — it does not restrict which
+                                invoice(s) the payment is applied to. See the note above.
+                            </p>
                         </div>
                     )}
 
