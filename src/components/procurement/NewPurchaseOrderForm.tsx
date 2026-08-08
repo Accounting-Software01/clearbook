@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { DatePicker } from '@/components/ui/date-picker';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, PlusCircle, Loader2, ChevronsUpDown, Check } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Trash2, PlusCircle, Loader2, ChevronsUpDown, Check, Truck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
@@ -70,8 +71,19 @@ export function NewPurchaseOrderForm() {
         currency: 'NGN',
         payment_terms: '',
         remarks: '',
+        // Freight / shipping — a header-level charge, not tied to any
+        // specific line item, since it's not an inventory item itself.
+        freight_amount: '0',
+        freight_vat_applicable: true,
+        freight_vat_rate: '7.5',
     });
-    const [totals, setTotals] = useState({ subtotal: 0, vat_total: 0, total_amount: 0 });
+    const [totals, setTotals] = useState({
+        subtotal: 0,
+        freight_amount: 0,
+        freight_vat_amount: 0,
+        vat_total: 0,
+        total_amount: 0,
+    });
     const [isLoading, setIsLoading] = useState(false);
     const [isFetchingData, setIsFetchingData] = useState(true);
     const [globalVatRate, setGlobalVatRate] = useState('7.5');
@@ -102,8 +114,12 @@ export function NewPurchaseOrderForm() {
          if (!user?.company_id) return;
         try {
             const details = await api<SupplierDetails>(`purchase-orders.php?action=get_supplier_details&company_id=${user.company_id}&supplier_id=${supplierId}`);
-            setPoHeader(h => ({ ...h, payment_terms: details.payment_terms || '' }));
             const newVatRate = details.vat_rate.toString();
+            setPoHeader(h => ({
+                ...h,
+                payment_terms: details.payment_terms || '',
+                freight_vat_rate: newVatRate,
+            }));
             setGlobalVatRate(newVatRate);
             setLineItems(items => items.map(item => ({ ...item, vat_rate: newVatRate })));
         } catch (error) {
@@ -113,7 +129,7 @@ export function NewPurchaseOrderForm() {
 
     // --- CALCULATIONS ---
     useEffect(() => {
-        const { subtotal, vat_total } = lineItems.reduce((acc, item) => {
+        const { subtotal, vat_total: lines_vat_total } = lineItems.reduce((acc, item) => {
             const quantity = parseFloat(item.quantity) || 0;
             const unit_price = parseFloat(item.unit_price) || 0;
             const vat_rate = parseFloat(item.vat_rate) || 0;
@@ -129,8 +145,22 @@ export function NewPurchaseOrderForm() {
             return acc;
         }, { subtotal: 0, vat_total: 0 });
 
-        setTotals({ subtotal, vat_total, total_amount: subtotal + vat_total });
-    }, [lineItems]);
+        const freight_amount = parseFloat(poHeader.freight_amount) || 0;
+        const freight_vat_rate = parseFloat(poHeader.freight_vat_rate) || 0;
+        const freight_vat_amount = poHeader.freight_vat_applicable
+            ? freight_amount * (freight_vat_rate / 100)
+            : 0;
+
+        const vat_total = lines_vat_total + freight_vat_amount;
+
+        setTotals({
+            subtotal,
+            freight_amount,
+            freight_vat_amount,
+            vat_total,
+            total_amount: subtotal + freight_amount + vat_total,
+        });
+    }, [lineItems, poHeader.freight_amount, poHeader.freight_vat_applicable, poHeader.freight_vat_rate]);
 
     // --- EVENT HANDLERS ---
     const handleHeaderChange = (field: keyof typeof poHeader, value: any) => {
@@ -158,15 +188,18 @@ export function NewPurchaseOrderForm() {
 
     const resetForm = useCallback(() => {
         setLineItems([]);
-        setPoHeader(h => ({ 
-            ...h, 
-            supplier_id: '', 
-            remarks: '', 
-            payment_terms: '', 
-            expected_delivery_date: undefined 
+        setPoHeader(h => ({
+            ...h,
+            supplier_id: '',
+            remarks: '',
+            payment_terms: '',
+            expected_delivery_date: undefined,
+            freight_amount: '0',
+            freight_vat_applicable: true,
+            freight_vat_rate: globalVatRate,
         }));
         fetchData(); // Refetch all initial data
-    }, [fetchData]);
+    }, [fetchData, globalVatRate]);
 
     const handleSubmit = async () => {
          if (!poHeader.supplier_id || lineItems.length === 0 || lineItems.some(i => !i.item_id)) {
@@ -183,6 +216,8 @@ export function NewPurchaseOrderForm() {
                 status: 'Draft',
                 po_date: poHeader.po_date.toISOString().split('T')[0],
                 expected_delivery_date: poHeader.expected_delivery_date?.toISOString().split('T')[0] || null,
+                freight_amount: parseFloat(poHeader.freight_amount) || 0,
+                freight_vat_rate: parseFloat(poHeader.freight_vat_rate) || 0,
                 ...totals
             },
             items: lineItems.map(i => ({ 
@@ -258,12 +293,62 @@ export function NewPurchaseOrderForm() {
                             ))}
                         </TableBody>
                          <TableFooter>
-                            <TableRow><SummaryCell label="Subtotal" value={formatCurrency(totals.subtotal)} /></TableRow>
-                             <TableRow><SummaryCell label="VAT" value={formatCurrency(totals.vat_total)} /></TableRow>
+                            <TableRow><SummaryCell label="Goods Subtotal" value={formatCurrency(totals.subtotal)} /></TableRow>
+                            <TableRow><SummaryCell label="Freight" value={formatCurrency(totals.freight_amount)} /></TableRow>
+                            <TableRow><SummaryCell label="VAT (Goods + Freight)" value={formatCurrency(totals.vat_total)} /></TableRow>
                              <TableRow className="font-bold text-base"><SummaryCell label="Total" value={formatCurrency(totals.total_amount)} /></TableRow>
                         </TableFooter>
                     </Table>
                     <div className="p-2 border-t"><Button variant="link" size="sm" onClick={addLineItem}><PlusCircle className="mr-2 h-4 w-4" />Add Item</Button></div>
+                </div>
+
+                {/* ── Freight / Shipping ─────────────────────────────────────
+                 *  A single header-level charge (not tied to a line item),
+                 *  with its own VAT toggle since freight isn't always taxed
+                 *  the same way as the goods themselves.
+                 * ─────────────────────────────────────────────────────────── */}
+                <div className="border rounded-md p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                        <Truck className="h-4 w-4 text-muted-foreground" />
+                        Freight / Shipping
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <div className="space-y-2">
+                            <Label htmlFor="freight_amount">Freight Amount</Label>
+                            <Input
+                                id="freight_amount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={poHeader.freight_amount}
+                                onChange={e => handleHeaderChange('freight_amount', e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 pb-2">
+                            <Checkbox
+                                id="freight_vat_applicable"
+                                checked={poHeader.freight_vat_applicable}
+                                onCheckedChange={(c) => handleHeaderChange('freight_vat_applicable', !!c)}
+                            />
+                            <Label htmlFor="freight_vat_applicable" className="cursor-pointer">VAT applicable</Label>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="freight_vat_rate">VAT Rate %</Label>
+                            <Input
+                                id="freight_vat_rate"
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                disabled={!poHeader.freight_vat_applicable}
+                                value={poHeader.freight_vat_rate}
+                                onChange={e => handleHeaderChange('freight_vat_rate', e.target.value)}
+                            />
+                        </div>
+                        <div className="text-sm text-muted-foreground pb-2">
+                            VAT on freight: <span className="font-medium text-foreground">{formatCurrency(totals.freight_vat_amount)}</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
