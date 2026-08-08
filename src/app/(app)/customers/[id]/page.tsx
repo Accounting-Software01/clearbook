@@ -1266,11 +1266,30 @@ const ReportsTab = ({
 
 /* ─── PDF export ─────────────────────────────────────────────────────────────── */
 
+// jsPDF's built-in fonts (Helvetica/Times/Courier) do not include the Naira
+// glyph (₦, U+20A6) — it renders as a broken character in the PDF. These
+// PDF-only formatters swap in "NGN" text instead. On-screen rendering
+// (formatNGN / resolveBalance above) is untouched and still shows ₦.
+const formatNGNForPDF = (amount: number): string => {
+  if (typeof amount !== 'number' || isNaN(amount)) return 'NGN 0.00';
+  return 'NGN ' + new Intl.NumberFormat('en-NG', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(normaliseZero(amount)));
+};
+
+const resolveBalanceForPDF = (raw: number): { display: string; label: string } => {
+  const n = normaliseZero(raw);
+  if (n === 0) return { display: 'NGN 0.00', label: 'Settled' };
+  if (n > 0)   return { display: `${formatNGNForPDF(n)} DR`, label: 'Receivable' };
+  return { display: `${formatNGNForPDF(n)} CR`, label: 'We Owe Customer' };
+};
+
 const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], periodSummary?: PeriodSummary) => {
   const doc  = new jsPDF();
   const pw   = doc.internal.pageSize.getWidth();
   const ph   = doc.internal.pageSize.getHeight();
-  const bal  = resolveBalance(customer.balance);
+  const bal  = resolveBalanceForPDF(customer.balance);
 
   doc.setFontSize(16); doc.setTextColor(40, 40, 40);
   doc.text('CLEARBOOKS ACCOUNTING', pw / 2, 15, { align: 'center' });
@@ -1291,7 +1310,7 @@ const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], per
     ['Status:',        customer.status],
     ['Balance:',       bal.display],
     ['Balance Type:',  bal.label],
-    ['Credit Limit:',  formatNGN(customer.credit_limit)],
+    ['Credit Limit:',  formatNGNForPDF(customer.credit_limit)],
     ['Phone:',         customer.primary_phone_number || 'N/A'],
     ['Email:',         customer.email_address || 'N/A'],
   ];
@@ -1306,10 +1325,10 @@ const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], per
     doc.setFontSize(11); doc.setTextColor(40, 40, 40); doc.text('PERIOD SUMMARY', 14, y);
     y += 10; doc.setFontSize(9);
     [
-      ['Opening Balance', resolveBalance(periodSummary.opening_balance).display],
-      ['Total Invoiced (DR)', formatNGN(periodSummary.total_debit)],
-      ['Total Received (CR)', formatNGN(periodSummary.total_credit)],
-      ['Closing Balance', resolveBalance(periodSummary.closing_balance).display],
+      ['Opening Balance', resolveBalanceForPDF(periodSummary.opening_balance).display],
+      ['Total Invoiced (DR)', formatNGNForPDF(periodSummary.total_debit)],
+      ['Total Received (CR)', formatNGNForPDF(periodSummary.total_credit)],
+      ['Closing Balance', resolveBalanceForPDF(periodSummary.closing_balance).display],
     ].forEach(([l, v]) => {
       doc.setTextColor(100, 100, 100); doc.text(l, 14, y);
       doc.setTextColor(40, 40, 40);   doc.text(v, 80, y);
@@ -1323,9 +1342,9 @@ const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], per
     body: ledger.map(t => [
       formatDate(t.date), t.type, t.reference,
       t.description.substring(0, 30) + (t.description.length > 30 ? '…' : ''),
-      t.debit  > 0 ? formatNGN(t.debit)  : '—',
-      t.credit > 0 ? formatNGN(t.credit) : '—',
-      resolveBalance(t.balance).display,
+      t.debit  > 0 ? formatNGNForPDF(t.debit)  : '—',
+      t.credit > 0 ? formatNGNForPDF(t.credit) : '—',
+      resolveBalanceForPDF(t.balance).display,
     ]),
     theme: 'grid',
     headStyles: { fillColor: [40, 167, 69], textColor: 255, fontStyle: 'bold', fontSize: 9 },
