@@ -34,6 +34,12 @@ interface LineItem {
     line_amount: number;
     vat_amount: number;
     line_total: number;
+    // Landed cost — freight allocated to this line, and the resulting
+    // weighted-average unit cost. VAT is intentionally excluded from
+    // both: VAT applies only to goods cost, never to freight, and is
+    // not part of landed inventory cost either way.
+    allocated_freight: number;
+    weighted_unit_cost: number;
 }
 
 // --- HELPERS ---
@@ -51,6 +57,8 @@ const createNewLineItem = (vat_rate: string): LineItem => ({
     line_amount: 0,
     vat_amount: 0,
     line_total: 0,
+    allocated_freight: 0,
+    weighted_unit_cost: 0,
 });
 
 
@@ -72,15 +80,16 @@ export function NewPurchaseOrderForm() {
         payment_terms: '',
         remarks: '',
         // Freight / shipping — a header-level charge, not tied to any
-        // specific line item, since it's not an inventory item itself.
+        // specific line item on its own. VAT NEVER applies to freight
+        // (per accounting rule: VAT is only applicable to actual goods
+        // cost, not freight and not the combined total) — so there is no
+        // VAT field for it at all. Freight IS allocated across line items
+        // for landed-cost purposes; see the totals useEffect below.
         freight_amount: '0',
-        freight_vat_applicable: true,
-        freight_vat_rate: '7.5',
     });
     const [totals, setTotals] = useState({
         subtotal: 0,
         freight_amount: 0,
-        freight_vat_amount: 0,
         vat_total: 0,
         total_amount: 0,
     });
@@ -118,7 +127,6 @@ export function NewPurchaseOrderForm() {
             setPoHeader(h => ({
                 ...h,
                 payment_terms: details.payment_terms || '',
-                freight_vat_rate: newVatRate,
             }));
             setGlobalVatRate(newVatRate);
             setLineItems(items => items.map(item => ({ ...item, vat_rate: newVatRate })));
@@ -128,8 +136,22 @@ export function NewPurchaseOrderForm() {
     }, [user, toast]);
 
     // --- CALCULATIONS ---
+    // Two passes, per the accountant's rule:
+    //   1. Each line's own goods amount and VAT — VAT applies ONLY to
+    //      actual goods cost, never to freight, never to the combined total.
+    //   2. Freight is allocated across lines proportional to each line's
+    //      share of the goods subtotal, then the weighted-average LANDED
+    //      unit cost is computed per line as:
+    //        (line's actual cost + its allocated freight) ÷ quantity bought
+    //      This landed cost is what should be used for inventory
+    //      valuation — it deliberately excludes VAT entirely.
     useEffect(() => {
-        const { subtotal, vat_total: lines_vat_total } = lineItems.reduce((acc, item) => {
+        const freight_amount = parseFloat(poHeader.freight_amount) || 0;
+
+        // Pass 1 — goods cost & VAT (freight has no bearing on this at all)
+        let subtotal = 0;
+        let vat_total = 0;
+        lineItems.forEach(item => {
             const quantity = parseFloat(item.quantity) || 0;
             const unit_price = parseFloat(item.unit_price) || 0;
             const vat_rate = parseFloat(item.vat_rate) || 0;
@@ -140,27 +162,30 @@ export function NewPurchaseOrderForm() {
             item.vat_amount = vat_amount;
             item.line_total = line_amount + vat_amount;
 
-            acc.subtotal += line_amount;
-            acc.vat_total += vat_amount;
-            return acc;
-        }, { subtotal: 0, vat_total: 0 });
+            subtotal += line_amount;
+            vat_total += vat_amount;
+        });
 
-        const freight_amount = parseFloat(poHeader.freight_amount) || 0;
-        const freight_vat_rate = parseFloat(poHeader.freight_vat_rate) || 0;
-        const freight_vat_amount = poHeader.freight_vat_applicable
-            ? freight_amount * (freight_vat_rate / 100)
-            : 0;
+        // Pass 2 — allocate freight by each line's share of goods value,
+        // then compute the weighted-average landed unit cost per line.
+        lineItems.forEach(item => {
+            const quantity = parseFloat(item.quantity) || 0;
+            const share = subtotal > 0 ? item.line_amount / subtotal : 0;
+            const allocated_freight = freight_amount * share;
 
-        const vat_total = lines_vat_total + freight_vat_amount;
+            item.allocated_freight = allocated_freight;
+            item.weighted_unit_cost = quantity > 0
+                ? (item.line_amount + allocated_freight) / quantity
+                : 0;
+        });
 
         setTotals({
             subtotal,
             freight_amount,
-            freight_vat_amount,
-            vat_total,
+            vat_total, // goods VAT only — freight is never VATable
             total_amount: subtotal + freight_amount + vat_total,
         });
-    }, [lineItems, poHeader.freight_amount, poHeader.freight_vat_applicable, poHeader.freight_vat_rate]);
+    }, [lineItems, poHeader.freight_amount]);
 
     // --- EVENT HANDLERS ---
     const handleHeaderChange = (field: keyof typeof poHeader, value: any) => {
@@ -195,11 +220,9 @@ export function NewPurchaseOrderForm() {
             payment_terms: '',
             expected_delivery_date: undefined,
             freight_amount: '0',
-            freight_vat_applicable: true,
-            freight_vat_rate: globalVatRate,
         }));
         fetchData(); // Refetch all initial data
-    }, [fetchData, globalVatRate]);
+    }, [fetchData]);
 
     const handleSubmit = async () => {
          if (!poHeader.supplier_id || lineItems.length === 0 || lineItems.some(i => !i.item_id)) {
@@ -217,13 +240,18 @@ export function NewPurchaseOrderForm() {
                 po_date: poHeader.po_date.toISOString().split('T')[0],
                 expected_delivery_date: poHeader.expected_delivery_date?.toISOString().split('T')[0] || null,
                 freight_amount: parseFloat(poHeader.freight_amount) || 0,
-                freight_vat_rate: parseFloat(poHeader.freight_vat_rate) || 0,
                 ...totals
             },
             items: lineItems.map(i => ({ 
                 ...i, 
                 quantity: parseFloat(i.quantity) || 0,
-                unit_price: parseFloat(i.unit_price) || 0
+                unit_price: parseFloat(i.unit_price) || 0,
+                // Landed cost — the accountant's weighted-average formula:
+                // (actual cost + allocated freight) ÷ quantity. This is what
+                // should be used for inventory valuation when goods are
+                // received, NOT the raw unit_price above.
+                allocated_freight: i.allocated_freight,
+                weighted_unit_cost: i.weighted_unit_cost,
             }))
         };
 
@@ -277,6 +305,7 @@ export function NewPurchaseOrderForm() {
                                 <TableHead>VAT?</TableHead>
                                 <TableHead>VAT Rate %</TableHead>
                                 <TableHead className="text-right">Line Total</TableHead>
+                                <TableHead className="text-right">Landed Unit Cost</TableHead>
                                 <TableHead></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -294,8 +323,8 @@ export function NewPurchaseOrderForm() {
                         </TableBody>
                          <TableFooter>
                             <TableRow><SummaryCell label="Goods Subtotal" value={formatCurrency(totals.subtotal)} /></TableRow>
-                            <TableRow><SummaryCell label="Freight" value={formatCurrency(totals.freight_amount)} /></TableRow>
-                            <TableRow><SummaryCell label="VAT (Goods + Freight)" value={formatCurrency(totals.vat_total)} /></TableRow>
+                            <TableRow><SummaryCell label="Freight (no VAT)" value={formatCurrency(totals.freight_amount)} /></TableRow>
+                            <TableRow><SummaryCell label="VAT (on goods only)" value={formatCurrency(totals.vat_total)} /></TableRow>
                              <TableRow className="font-bold text-base"><SummaryCell label="Total" value={formatCurrency(totals.total_amount)} /></TableRow>
                         </TableFooter>
                     </Table>
@@ -303,16 +332,18 @@ export function NewPurchaseOrderForm() {
                 </div>
 
                 {/* ── Freight / Shipping ─────────────────────────────────────
-                 *  A single header-level charge (not tied to a line item),
-                 *  with its own VAT toggle since freight isn't always taxed
-                 *  the same way as the goods themselves.
+                 *  A single header-level charge, allocated across line items
+                 *  to compute each item's weighted-average LANDED unit cost:
+                 *    (actual cost + allocated freight) ÷ quantity bought
+                 *  VAT is NEVER applied to freight, per accounting rule —
+                 *  there is deliberately no VAT control here at all.
                  * ─────────────────────────────────────────────────────────── */}
                 <div className="border rounded-md p-4 space-y-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
                         <Truck className="h-4 w-4 text-muted-foreground" />
                         Freight / Shipping
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                         <div className="space-y-2">
                             <Label htmlFor="freight_amount">Freight Amount</Label>
                             <Input
@@ -324,29 +355,9 @@ export function NewPurchaseOrderForm() {
                                 onChange={e => handleHeaderChange('freight_amount', e.target.value)}
                             />
                         </div>
-                        <div className="flex items-center gap-2 pb-2">
-                            <Checkbox
-                                id="freight_vat_applicable"
-                                checked={poHeader.freight_vat_applicable}
-                                onCheckedChange={(c) => handleHeaderChange('freight_vat_applicable', !!c)}
-                            />
-                            <Label htmlFor="freight_vat_applicable" className="cursor-pointer">VAT applicable</Label>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="freight_vat_rate">VAT Rate %</Label>
-                            <Input
-                                id="freight_vat_rate"
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                disabled={!poHeader.freight_vat_applicable}
-                                value={poHeader.freight_vat_rate}
-                                onChange={e => handleHeaderChange('freight_vat_rate', e.target.value)}
-                            />
-                        </div>
-                        <div className="text-sm text-muted-foreground pb-2">
-                            VAT on freight: <span className="font-medium text-foreground">{formatCurrency(totals.freight_vat_amount)}</span>
+                        <div className="text-sm text-muted-foreground pb-2 md:col-span-2">
+                            VAT is not applicable to freight — it's added to the total payable and allocated
+                            across line items below to compute each item's weighted-average landed unit cost.
                         </div>
                     </div>
                 </div>
@@ -368,7 +379,7 @@ export function NewPurchaseOrderForm() {
 
 const SummaryCell = ({ label, value }: { label: string, value: string }) => (
     <>
-        <TableCell colSpan={6} className="text-right font-semibold">{label}</TableCell>
+        <TableCell colSpan={7} className="text-right font-semibold">{label}</TableCell>
         <TableCell className="text-right">{value}</TableCell>
         <TableCell></TableCell>
     </>
@@ -424,6 +435,12 @@ function LineItemRow({ item, onItemChange, onRemove, onMaterialSelect, materials
             <TableCell className="text-center"><Checkbox checked={item.vat_applicable} onCheckedChange={(c) => onItemChange(item.id, 'vat_applicable', !!c)} /></TableCell>
             <TableCell><Input type="number" value={item.vat_rate} onChange={e => onItemChange(item.id, 'vat_rate', e.target.value)} disabled={!item.vat_applicable} min="0" max="100" className="w-20"/></TableCell>
             <TableCell className="text-right font-bold">{formatCurrency(item.line_total)}</TableCell>
+            <TableCell className="text-right text-muted-foreground">
+                {formatCurrency(item.weighted_unit_cost)}
+                {item.allocated_freight > 0 && (
+                    <div className="text-xs">+{formatCurrency(item.allocated_freight)} freight</div>
+                )}
+            </TableCell>
             <TableCell><Button variant="ghost" size="icon" onClick={() => onRemove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
         </TableRow>
     );
