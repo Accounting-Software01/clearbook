@@ -301,11 +301,11 @@ export function NewPurchaseOrderForm() {
                             <TableRow>
                                 <TableHead className="w-[35%]">Item</TableHead>
                                 <TableHead>Qty</TableHead>
-                                <TableHead>Unit Price</TableHead>
+                                <TableHead>Material Cost</TableHead>
                                 <TableHead>VAT?</TableHead>
                                 <TableHead>VAT Rate %</TableHead>
                                 <TableHead className="text-right">Line Total</TableHead>
-                                <TableHead className="text-right">Landed Unit Cost</TableHead>
+                                <TableHead className="text-right">Unit Price (after freight)</TableHead>
                                 <TableHead></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -357,7 +357,8 @@ export function NewPurchaseOrderForm() {
                         </div>
                         <div className="text-sm text-muted-foreground pb-2 md:col-span-2">
                             VAT is not applicable to freight — it's added to the total payable and allocated
-                            across line items below to compute each item's weighted-average landed unit cost.
+                            across line items below. Each item's <strong>Unit Price</strong> is calculated
+                            after freight is added to its material cost.
                         </div>
                     </div>
                 </div>
@@ -435,10 +436,12 @@ function LineItemRow({ item, onItemChange, onRemove, onMaterialSelect, materials
             <TableCell className="text-center"><Checkbox checked={item.vat_applicable} onCheckedChange={(c) => onItemChange(item.id, 'vat_applicable', !!c)} /></TableCell>
             <TableCell><Input type="number" value={item.vat_rate} onChange={e => onItemChange(item.id, 'vat_rate', e.target.value)} disabled={!item.vat_applicable} min="0" max="100" className="w-20"/></TableCell>
             <TableCell className="text-right font-bold">{formatCurrency(item.line_total)}</TableCell>
-            <TableCell className="text-right text-muted-foreground">
+            <TableCell className="text-right font-bold">
                 {formatCurrency(item.weighted_unit_cost)}
                 {item.allocated_freight > 0 && (
-                    <div className="text-xs">+{formatCurrency(item.allocated_freight)} freight</div>
+                    <div className="text-xs font-normal text-muted-foreground">
+                        (material {formatCurrency(parseFloat(item.unit_price) || 0)} + freight {formatCurrency(item.allocated_freight)})
+                    </div>
                 )}
             </TableCell>
             <TableCell><Button variant="ghost" size="icon" onClick={() => onRemove(item.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
