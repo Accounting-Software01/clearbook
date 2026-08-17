@@ -28,16 +28,22 @@ interface LineItem {
     item_id: number | null;
     description: string;
     quantity: string;
-    unit_price: string;
+    // TOTAL cost of materials for this line, entered directly — an
+    // independent aggregate figure, NOT a per-unit price to be
+    // multiplied by quantity. E.g. "supplier billed ₦40,000 for this
+    // whole batch" — you type 40000, regardless of how many units that
+    // batch contains.
+    material_cost: string;
     vat_applicable: boolean;
     vat_rate: string;
-    line_amount: number;
+    line_amount: number;   // = material_cost as entered, no × quantity
     vat_amount: number;
     line_total: number;
     // Landed cost — freight allocated to this line, and the resulting
-    // weighted-average unit cost. VAT is intentionally excluded from
-    // both: VAT applies only to goods cost, never to freight, and is
-    // not part of landed inventory cost either way.
+    // weighted-average unit cost:
+    //   (material_cost + allocated_freight) ÷ quantity
+    // VAT is intentionally excluded from both: VAT applies only to
+    // goods cost, never to freight, and is not part of landed cost.
     allocated_freight: number;
     weighted_unit_cost: number;
 }
@@ -51,7 +57,7 @@ const createNewLineItem = (vat_rate: string): LineItem => ({
     item_id: null,
     description: '',
     quantity: '1',
-    unit_price: '0',
+    material_cost: '0',
     vat_applicable: true,
     vat_rate: vat_rate,
     line_amount: 0,
@@ -148,14 +154,16 @@ export function NewPurchaseOrderForm() {
     useEffect(() => {
         const freight_amount = parseFloat(poHeader.freight_amount) || 0;
 
-        // Pass 1 — goods cost & VAT (freight has no bearing on this at all)
+        // Pass 1 — goods cost & VAT. material_cost is entered as the TOTAL
+        // for the line already (not per-unit), so line_amount = material_cost
+        // directly. VAT applies only to this actual goods cost, never to
+        // freight, never to the combined total.
         let subtotal = 0;
         let vat_total = 0;
         lineItems.forEach(item => {
-            const quantity = parseFloat(item.quantity) || 0;
-            const unit_price = parseFloat(item.unit_price) || 0;
+            const material_cost = parseFloat(item.material_cost) || 0;
             const vat_rate = parseFloat(item.vat_rate) || 0;
-            const line_amount = quantity * unit_price;
+            const line_amount = material_cost;
             const vat_amount = item.vat_applicable ? line_amount * (vat_rate / 100) : 0;
 
             item.line_amount = line_amount;
@@ -167,7 +175,8 @@ export function NewPurchaseOrderForm() {
         });
 
         // Pass 2 — allocate freight by each line's share of goods value,
-        // then compute the weighted-average landed unit cost per line.
+        // then compute the final Unit Price as:
+        //   (material_cost + allocated_freight) ÷ quantity
         lineItems.forEach(item => {
             const quantity = parseFloat(item.quantity) || 0;
             const share = subtotal > 0 ? item.line_amount / subtotal : 0;
@@ -203,12 +212,20 @@ export function NewPurchaseOrderForm() {
     };
 
     const handleMaterialSelect = (id: string, material: RawMaterial) => {
-        setLineItems(prev => prev.map(item => item.id === id ? {
-            ...item,
-            item_id: material.id,
-            description: `${material.name} (${material.item_code})`,
-            unit_price: material.standard_cost.toString(),
-        } : item));
+        setLineItems(prev => prev.map(item => {
+            if (item.id !== id) return item;
+            const quantity = parseFloat(item.quantity) || 1;
+            // Suggested TOTAL based on this material's stored average cost —
+            // a starting point only. Overwrite with the real total the
+            // supplier actually charged for this batch.
+            const suggested_total = (material.standard_cost * quantity).toString();
+            return {
+                ...item,
+                item_id: material.id,
+                description: `${material.name} (${material.item_code})`,
+                material_cost: suggested_total,
+            };
+        }));
     };
 
     const resetForm = useCallback(() => {
@@ -242,17 +259,29 @@ export function NewPurchaseOrderForm() {
                 freight_amount: parseFloat(poHeader.freight_amount) || 0,
                 ...totals
             },
-            items: lineItems.map(i => ({ 
-                ...i, 
-                quantity: parseFloat(i.quantity) || 0,
-                unit_price: parseFloat(i.unit_price) || 0,
-                // Landed cost — the accountant's weighted-average formula:
-                // (actual cost + allocated freight) ÷ quantity. This is what
-                // should be used for inventory valuation when goods are
-                // received, NOT the raw unit_price above.
-                allocated_freight: i.allocated_freight,
-                weighted_unit_cost: i.weighted_unit_cost,
-            }))
+            items: lineItems.map(i => {
+                const quantity = parseFloat(i.quantity) || 0;
+                const material_cost_total = parseFloat(i.material_cost) || 0;
+                // purchase_order_items.unit_price is an existing per-unit
+                // column on the backend — derive it here as a reference
+                // figure (pre-freight, materials only) since the actual
+                // entry point (material_cost) is now a line total, not a
+                // per-unit price. line_amount remains the authoritative
+                // total and is what VAT/freight allocation are based on.
+                const derived_unit_price = quantity > 0 ? material_cost_total / quantity : 0;
+                return {
+                    ...i,
+                    quantity,
+                    unit_price: derived_unit_price,
+                    material_cost: material_cost_total,
+                    // Landed cost — the accountant's weighted-average formula:
+                    // (material_cost total + allocated freight) ÷ quantity.
+                    // This is what should be used for inventory valuation
+                    // when goods are received, NOT unit_price above.
+                    allocated_freight: i.allocated_freight,
+                    weighted_unit_cost: i.weighted_unit_cost,
+                };
+            })
         };
 
         try {
@@ -301,7 +330,7 @@ export function NewPurchaseOrderForm() {
                             <TableRow>
                                 <TableHead className="w-[35%]">Item</TableHead>
                                 <TableHead>Qty</TableHead>
-                                <TableHead>Material Cost</TableHead>
+                                <TableHead>Material Cost (Total)</TableHead>
                                 <TableHead>VAT?</TableHead>
                                 <TableHead>VAT Rate %</TableHead>
                                 <TableHead className="text-right">Line Total</TableHead>
@@ -432,7 +461,7 @@ function LineItemRow({ item, onItemChange, onRemove, onMaterialSelect, materials
                 </Popover>
             </TableCell>
             <TableCell><Input type="number" value={item.quantity} onChange={e => onItemChange(item.id, 'quantity', e.target.value)} min="0.01" step="0.01" className="w-20"/></TableCell>
-            <TableCell><Input type="number" value={item.unit_price} onChange={e => onItemChange(item.id, 'unit_price', e.target.value)} min="0" step="0.01" className="text-right w-28" /></TableCell>
+            <TableCell><Input type="number" value={item.material_cost} onChange={e => onItemChange(item.id, 'material_cost', e.target.value)} min="0" step="0.01" className="text-right w-28" placeholder="Total for this batch" /></TableCell>
             <TableCell className="text-center"><Checkbox checked={item.vat_applicable} onCheckedChange={(c) => onItemChange(item.id, 'vat_applicable', !!c)} /></TableCell>
             <TableCell><Input type="number" value={item.vat_rate} onChange={e => onItemChange(item.id, 'vat_rate', e.target.value)} disabled={!item.vat_applicable} min="0" max="100" className="w-20"/></TableCell>
             <TableCell className="text-right font-bold">{formatCurrency(item.line_total)}</TableCell>
@@ -440,7 +469,7 @@ function LineItemRow({ item, onItemChange, onRemove, onMaterialSelect, materials
                 {formatCurrency(item.weighted_unit_cost)}
                 {item.allocated_freight > 0 && (
                     <div className="text-xs font-normal text-muted-foreground">
-                        (material {formatCurrency(parseFloat(item.unit_price) || 0)} + freight {formatCurrency(item.allocated_freight)})
+                        ({formatCurrency(item.line_amount)} material + {formatCurrency(item.allocated_freight)} freight) ÷ {parseFloat(item.quantity) || 0}
                     </div>
                 )}
             </TableCell>
