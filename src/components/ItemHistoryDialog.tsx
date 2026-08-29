@@ -26,14 +26,19 @@ interface InventoryItem {
   name: string;
 }
 
-// **FIXED**: This interface now matches the actual API response data
+// This interface matches the ACTUAL API response field names from
+// get-item-history.php. A previous edit renamed this field to
+// `total_value`, but the backend has always sent `value_change` — that
+// mismatch made every value in this table silently read as undefined
+// (showing as '-' or '₦0.00' depending on which cell's fallback caught
+// it). Reverted to match the real backend field name.
 interface LedgerEntry {
     date: string;
     type: string;
     description: string;
-    quantity: number; // Corrected from quantity_change
+    quantity: number;
     unit_cost: number | null;
-    total_value: number | null; // Corrected from value_change
+    value_change: number | null;
     balance_quantity: number;
     balance_avg_cost: number | null;
     balance_total_value: number | null;
@@ -134,7 +139,6 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
               <TableBody>
                 {history && history.length > 0 ? (
                   history.map((entry, index) => {
-                    // **FIXED**: Logic now uses `entry.quantity` which exists in your data.
                     const isPositive = (entry.quantity ?? 0) > 0;
                     return (
                       <TableRow key={index} className={entry.type === 'Opening Balance' ? 'bg-secondary/50' : ''}>
@@ -144,15 +148,15 @@ const ItemHistoryDialog: React.FC<ItemHistoryDialogProps> = ({ open, onOpenChang
                           <div className="text-xs text-muted-foreground">{entry.description}</div>
                         </TableCell>
                         
-                        {/* INFLOW - **FIXED**: Now reads from `quantity` and `total_value` */}
+                        {/* INFLOW - reads from `quantity` and `value_change`, the real backend field names */}
                         <TableCell className="text-right border-l text-green-600">{isPositive ? (entry.quantity ?? 0).toLocaleString() : ''}</TableCell>
                         <TableCell className="text-right text-green-600">{isPositive ? formatCurrency(entry.unit_cost) : ''}</TableCell>
-                        <TableCell className="text-right border-r text-green-600">{isPositive ? formatCurrency(entry.total_value) : ''}</TableCell>
+                        <TableCell className="text-right border-r text-green-600">{isPositive ? formatCurrency(entry.value_change) : ''}</TableCell>
 
-                        {/* OUTFLOW - **FIXED**: Now reads from `quantity` and `total_value` */}
+                        {/* OUTFLOW - reads from `quantity` and `value_change`, the real backend field names */}
                         <TableCell className="text-right text-red-600">{!isPositive ? Math.abs(entry.quantity ?? 0).toLocaleString() : ''}</TableCell>
                         <TableCell className="text-right text-red-600">{!isPositive ? formatCurrency(entry.unit_cost) : ''}</TableCell>
-                        <TableCell className="text-right border-r text-red-600">{!isPositive ? formatCurrency(Math.abs(entry.total_value ?? 0)) : ''}</TableCell>
+                        <TableCell className="text-right border-r text-red-600">{!isPositive ? formatCurrency(Math.abs(entry.value_change ?? 0)) : ''}</TableCell>
 
                         {/* BALANCE - Reads from the correct balance fields, which were already correct */}
                         <TableCell className="text-right font-bold">{(entry.balance_quantity ?? 0).toLocaleString()}</TableCell>
