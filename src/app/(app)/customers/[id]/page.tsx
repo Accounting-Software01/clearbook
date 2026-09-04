@@ -1292,7 +1292,8 @@ const generatePDF = (customer: CustomerProfile, ledger: LedgerTransaction[], per
   const bal  = resolveBalanceForPDF(customer.balance);
 
   doc.setFontSize(16); doc.setTextColor(40, 40, 40);
-  doc.text('CLEARBOOKS ACCOUNTING', pw / 2, 15, { align: 'center' });
+  
+  doc.text('HARI INDUSTRIES LIMITED', pw / 2, 15, { align: 'center' });
   doc.setFontSize(10); doc.setTextColor(100, 100, 100);
   doc.text('Customer Ledger Report', pw / 2, 22, { align: 'center' });
   doc.setFontSize(9);
