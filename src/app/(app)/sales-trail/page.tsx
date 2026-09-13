@@ -91,6 +91,11 @@ const getStatusText = (status: string) => {
     return status || '—';
 };
 
+// Free-item detection: a line billed at zero is a free item — matches how
+// free items are already posted elsewhere in this system (DR Promotion
+// Expense / CR Inventory at cost, with the customer billed unit_price 0).
+const isFreeItem = (item: SalesTrailItem) => (item.unit_price === 0 || item.line_subtotal === 0) && item.quantity > 0;
+
 // ─── Export to Excel / CSV ────────────────────────────────────────────────────
 
 const exportToExcel = (items: SalesTrailItem[], filter: FilterState) => {
@@ -102,12 +107,25 @@ const exportToExcel = (items: SalesTrailItem[], filter: FilterState) => {
         'Quantity': item.quantity,
         'Unit Price (₦)': item.unit_price,
         'Line Subtotal (₦)': item.line_subtotal,
+        'Free Item': isFreeItem(item) ? 'Yes' : 'No',
         'Invoice Total (₦)': item.total_amount,
         'Status': getStatusText(item.status),
     }));
 
-    // Add summary row
-    const totalAmount = items.reduce((sum, item) => sum + item.total_amount, 0);
+    // Summary row — sums UNIQUE invoice totals only, not per-line-item
+    // repeated totals. Summing item.total_amount across every row (the
+    // previous approach) double/triple/quadruple-counts revenue for any
+    // invoice with more than one line item, since every line on the same
+    // invoice repeats that invoice's full total. line_subtotal remains
+    // correct to sum per-line (and correctly ₦0 for free items) — it's
+    // total_amount specifically that must be deduplicated by invoice.
+    const uniqueInvoiceTotals = new Map<string, number>();
+    items.forEach(item => {
+        if (!uniqueInvoiceTotals.has(item.invoice_number)) {
+            uniqueInvoiceTotals.set(item.invoice_number, item.total_amount);
+        }
+    });
+    const totalAmount = Array.from(uniqueInvoiceTotals.values()).reduce((sum, v) => sum + v, 0);
     const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     const totalSubtotal = items.reduce((sum, item) => sum + item.line_subtotal, 0);
 
@@ -120,6 +138,7 @@ const exportToExcel = (items: SalesTrailItem[], filter: FilterState) => {
         'Quantity': totalQuantity,
         'Unit Price (₦)': '',
         'Line Subtotal (₦)': totalSubtotal,
+        'Free Item': '',
         'Invoice Total (₦)': totalAmount,
         'Status': '',
     });
@@ -204,9 +223,20 @@ const SalesTrailPage = () => {
         return true;
     }) : [];
 
-    // Calculate summary from filtered items
+    // Calculate summary from filtered items. Total Sales Value is summed
+    // over UNIQUE invoices only — see the same fix and rationale as in
+    // exportToExcel above. Everything else here (item counts, invoice
+    // count, customer count) was already correctly deduplicated before;
+    // total revenue was the one figure silently multiplying itself.
+    const uniqueInvoiceTotalsFiltered = new Map<string, number>();
+    filteredItems.forEach(item => {
+        if (!uniqueInvoiceTotalsFiltered.has(item.invoice_number)) {
+            uniqueInvoiceTotalsFiltered.set(item.invoice_number, item.total_amount);
+        }
+    });
+
     const filteredSummary = {
-        totalAmount: filteredItems.reduce((sum, item) => sum + item.total_amount, 0),
+        totalAmount: Array.from(uniqueInvoiceTotalsFiltered.values()).reduce((sum, v) => sum + v, 0),
         totalItems: filteredItems.reduce((sum, item) => sum + item.quantity, 0),
         uniqueInvoices: new Set(filteredItems.map(item => item.invoice_number)).size,
         uniqueCustomers: new Set(filteredItems.map(item => item.customer_name)).size,
@@ -253,11 +283,21 @@ const SalesTrailPage = () => {
             
             setItems(salesData);
             
-            // Calculate summary from all data
+            // Calculate summary from all data. Total sales value here also
+            // deduplicates by invoice_number for the same reason as above —
+            // this state isn't currently rendered (filteredSummary is used
+            // in the UI instead), but kept correct rather than left as a
+            // second, differently-wrong copy of the same bug.
             if (salesData.length > 0) {
                 const uniqueInvoices = new Set(salesData.map((item: SalesTrailItem) => item.invoice_number));
                 const uniqueCustomers = new Set(salesData.map((item: SalesTrailItem) => item.customer_name));
-                const totalAmount = salesData.reduce((sum: number, item: SalesTrailItem) => sum + item.total_amount, 0);
+                const invoiceTotalsMap = new Map<string, number>();
+                salesData.forEach((item: SalesTrailItem) => {
+                    if (!invoiceTotalsMap.has(item.invoice_number)) {
+                        invoiceTotalsMap.set(item.invoice_number, item.total_amount);
+                    }
+                });
+                const totalAmount = Array.from(invoiceTotalsMap.values()).reduce((sum, v) => sum + v, 0);
                 const totalItems = salesData.reduce((sum: number, item: SalesTrailItem) => sum + item.quantity, 0);
                 
                 setSummary({
@@ -588,7 +628,9 @@ const SalesTrailPage = () => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredItems.map((item, index) => (
+                                    {filteredItems.map((item, index) => {
+                                        const free = isFreeItem(item);
+                                        return (
                                         <TableRow key={`${item.invoice_number}-${index}`}>
                                             <TableCell className="font-mono text-sm font-medium">
                                                 {item.invoice_number}
@@ -601,6 +643,11 @@ const SalesTrailPage = () => {
                                             </TableCell>
                                             <TableCell>
                                                 {item.item_name}
+                                                {free && (
+                                                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">
+                                                        Free
+                                                    </span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right font-mono">
                                                 {item.quantity.toLocaleString()}
@@ -620,7 +667,8 @@ const SalesTrailPage = () => {
                                                 </span>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                        );
+                                    })}
                                 </TableBody>
                             </Table>
                         </div>
