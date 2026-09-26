@@ -14,7 +14,14 @@ export interface LedgerEntry {
   id: number;
   date: string;
   transaction_type: string;
-  reference: string | null;
+  reference_type: string | null;
+  reference_id: number | null;
+  batch_number: string | null;
+  item_id: number;
+  sku: string | null;
+  quantity: number;
+  unit_cost: number;
+  total_value: number;
   in_qty: number;
   in_cost: number;
   in_value: number;
@@ -27,7 +34,7 @@ export interface LedgerEntry {
 }
 
 interface ItemLedgerProps {
-  companyId: number;
+  companyId: string;      // CHANGED: string, not number
   userRole: string | undefined;
 }
 
@@ -36,16 +43,22 @@ const formatCurrency = (amount: number) =>
 
 const formatDate = (d: string) => {
   if (!d) return '—';
-  try { return new Date(d).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: '2-digit' }); }
-  catch { return d; }
+  try {
+    return new Date(d).toLocaleDateString('en-NG', {
+      year: 'numeric', month: 'short', day: '2-digit',
+    });
+  } catch {
+    return d;
+  }
 };
 
 /**
- * Ledger View — shows ALL items' transactions in one unified ledger.
- * Option A behavior: replaces the summary table entirely.
+ * Ledger view — shows ALL items' transactions in one unified ledger.
+ * Replaces the summary table entirely when active.
  */
 const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
   const { toast } = useToast();
+
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +75,7 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
     setError(null);
     try {
       const params = new URLSearchParams({
-        company_id: String(companyId),
+        company_id: companyId,               // CHANGED: string, not String(number)
         user_role: userRole || '',
       });
       if (fromDate) params.append('from', fromDate);
@@ -75,7 +88,7 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
       );
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || res.statusText);
+        throw new Error(errData.message || `HTTP ${res.status} ${res.statusText}`);
       }
       const data = await res.json();
       setEntries(Array.isArray(data.ledger) ? data.ledger : []);
@@ -96,6 +109,7 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
 
   const hasFilters = !!(fromDate || toDate || itemFilter || txnFilter);
 
+  // --- Totals across the current filter result ---
   const totals = entries.reduce(
     (acc, e) => ({
       in_qty: acc.in_qty + (e.in_qty || 0),
@@ -106,7 +120,16 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
     { in_qty: 0, in_value: 0, out_qty: 0, out_value: 0 }
   );
 
+  // Last row's running balance is the "current" balance for the filter window.
   const lastEntry = entries[entries.length - 1];
+
+  // -----------------------------------------------------------------
+  // Header/body/footer cell counts must match.
+  //   3 group columns  ->  Date, Item, Transaction
+  //   3 + 3 + 3 data   ->  In Qty/Cost/Value | Out Qty/Cost/Value | Running Qty/Avg/Value
+  //   Total data cols  =  12
+  // -----------------------------------------------------------------
+  const TOTAL_COLS = 12;
 
   return (
     <div className="space-y-4">
@@ -132,25 +155,41 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
               <Label htmlFor="from" className="text-xs flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> From
               </Label>
-              <Input id="from" type="date" className="w-40" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              <Input
+                id="from" type="date" className="w-40"
+                value={fromDate}
+                onChange={e => setFromDate(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="to" className="text-xs flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> To
               </Label>
-              <Input id="to" type="date" className="w-40" value={toDate} onChange={e => setToDate(e.target.value)} />
+              <Input
+                id="to" type="date" className="w-40"
+                value={toDate}
+                onChange={e => setToDate(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="item" className="text-xs flex items-center gap-1">
                 <Filter className="h-3 w-3" /> Item ID / SKU
               </Label>
-              <Input id="item" placeholder="e.g. 42 or SKU-001" className="w-48" value={itemFilter} onChange={e => setItemFilter(e.target.value)} />
+              <Input
+                id="item" placeholder="e.g. 42 or SKU-001" className="w-48"
+                value={itemFilter}
+                onChange={e => setItemFilter(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="txn" className="text-xs flex items-center gap-1">
                 <Filter className="h-3 w-3" /> Transaction Type
               </Label>
-              <Input id="txn" placeholder="e.g. Sale, Production" className="w-48" value={txnFilter} onChange={e => setTxnFilter(e.target.value)} />
+              <Input
+                id="txn" placeholder="e.g. Sale, Production" className="w-48"
+                value={txnFilter}
+                onChange={e => setTxnFilter(e.target.value)}
+              />
             </div>
             <Button onClick={fetchLedger} disabled={isLoading}>Apply</Button>
             {hasFilters && (
@@ -180,19 +219,27 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
               <p>No transactions recorded{hasFilters ? ' for the selected filters' : ''}.</p>
             </div>
           ) : (
+            /* FIX: force a minimum width so all 12 columns are visible and
+               horizontally scrollable instead of collapsing to zero width. */
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[1300px]">
                 <TableHeader>
-                  {/* Grouped Header Row */}
+                  {/* Grouped header row */}
                   <TableRow>
                     <TableHead rowSpan={2} className="align-bottom">Date</TableHead>
                     <TableHead rowSpan={2} className="align-bottom">Item</TableHead>
                     <TableHead rowSpan={2} className="align-bottom">Transaction</TableHead>
-                    <TableHead colSpan={3} className="text-center border-l">In (Receipts / Production)</TableHead>
-                    <TableHead colSpan={3} className="text-center border-l">Out (Issues / Sales)</TableHead>
-                    <TableHead colSpan={3} className="text-center border-l">Running Balance</TableHead>
+                    <TableHead colSpan={3} className="text-center border-l">
+                      In (Receipts / Production)
+                    </TableHead>
+                    <TableHead colSpan={3} className="text-center border-l">
+                      Out (Issues / Sales)
+                    </TableHead>
+                    <TableHead colSpan={3} className="text-center border-l">
+                      Running Balance
+                    </TableHead>
                   </TableRow>
-                  {/* Sub Header Row */}
+                  {/* Sub-header row */}
                   <TableRow>
                     <TableHead className="text-right border-l">Qty</TableHead>
                     <TableHead className="text-right">Cost</TableHead>
@@ -205,19 +252,26 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                     <TableHead className="text-right">Value</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {entries.map((entry, idx) => (
                     <TableRow key={entry.id ?? idx}>
-                      <TableCell className="whitespace-nowrap">{formatDate(entry.date)}</TableCell>
-                      <TableCell className="font-medium">
-                        {(entry as any).item_name || (entry as any).item_sku || `#${(entry as any).item_id ?? ''}`}
+                      <TableCell className="whitespace-nowrap">
+                        {formatDate(entry.date)}
                       </TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {entry.sku ? `#${entry.sku}` : `#${entry.item_id}`}
+                      </TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">
                         {entry.transaction_type}
-                        {entry.reference && (
-                          <span className="text-muted-foreground ml-1 text-xs">({entry.reference})</span>
+                        {entry.batch_number && (
+                          <span className="text-muted-foreground ml-1 text-xs">
+                            ({entry.batch_number})
+                          </span>
                         )}
                       </TableCell>
+
+                      {/* In */}
                       <TableCell className="text-right font-mono border-l">
                         {entry.in_qty ? entry.in_qty.toLocaleString() : '—'}
                       </TableCell>
@@ -227,6 +281,8 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                       <TableCell className="text-right font-mono">
                         {entry.in_value ? formatCurrency(entry.in_value) : '—'}
                       </TableCell>
+
+                      {/* Out */}
                       <TableCell className="text-right font-mono border-l">
                         {entry.out_qty ? entry.out_qty.toLocaleString() : '—'}
                       </TableCell>
@@ -236,6 +292,8 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                       <TableCell className="text-right font-mono">
                         {entry.out_value ? formatCurrency(entry.out_value) : '—'}
                       </TableCell>
+
+                      {/* Running */}
                       <TableCell className="text-right font-mono border-l font-semibold">
                         {entry.running_qty.toLocaleString()}
                       </TableCell>
@@ -248,10 +306,13 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                     </TableRow>
                   ))}
                 </TableBody>
+
                 {userRole !== 'staff' && (
                   <TableFooter>
                     <TableRow>
                       <TableCell colSpan={3} className="font-bold">Totals</TableCell>
+
+                      {/* In: qty | (no cost) | value */}
                       <TableCell className="text-right font-mono border-l font-bold">
                         {totals.in_qty.toLocaleString()}
                       </TableCell>
@@ -259,6 +320,8 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                       <TableCell className="text-right font-mono font-bold">
                         {formatCurrency(totals.in_value)}
                       </TableCell>
+
+                      {/* Out: qty | (no cost) | value */}
                       <TableCell className="text-right font-mono border-l font-bold">
                         {totals.out_qty.toLocaleString()}
                       </TableCell>
@@ -266,8 +329,10 @@ const ItemLedger = ({ companyId, userRole }: ItemLedgerProps) => {
                       <TableCell className="text-right font-mono font-bold">
                         {formatCurrency(totals.out_value)}
                       </TableCell>
+
+                      {/* Running: last row's values */}
                       <TableCell className="text-right font-mono border-l font-bold">
-                        {lastEntry?.running_qty.toLocaleString() ?? 0}
+                        {lastEntry?.running_qty.toLocaleString() ?? '0'}
                       </TableCell>
                       <TableCell className="text-right font-mono font-bold">
                         {formatCurrency(lastEntry?.running_avg_cost ?? 0)}
