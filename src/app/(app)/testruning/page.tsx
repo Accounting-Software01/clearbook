@@ -1,43 +1,28 @@
-
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter
 } from "@/components/ui/table";
 import { 
-    DropdownMenu, 
-    DropdownMenuContent, 
-    DropdownMenuItem, 
-    DropdownMenuTrigger, 
-    DropdownMenuSeparator 
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, 
+    DropdownMenuTrigger, DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp, AlertTriangle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp, AlertTriangle, MoreHorizontal, Pencil, Trash2, BookOpen, List } from 'lucide-react';
 import { RegisterItemDialog } from '@/components/RegisterItemDialog';
 import { PriceTierManagerDialog } from '@/components/PriceTierManagerDialog';
 import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
-import { EditProductDialog } from '@/components/inventory/EditProductDialog'; // Corrected import path
+import { EditProductDialog } from '@/components/inventory/EditProductDialog';
 import { ResolveOrphansDialog, OrphanItem } from '@/components/inventory/ResolveOrphansDialog';
+import ItemLedger from '@/components/inventory/ItemLedger'; // ✅ NEW IMPORT
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
 interface InventoryItem {
@@ -56,6 +41,8 @@ const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
 };
 
+type ViewMode = 'summary' | 'ledger'; // ✅ NEW TYPE
+
 const FinishedGoodsPage = () => {
     const { user } = useAuth();
     const { toast } = useToast();
@@ -63,6 +50,9 @@ const FinishedGoodsPage = () => {
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // ✅ NEW: View toggle state
+    const [viewMode, setViewMode] = useState<ViewMode>('summary');
 
     // Dialog states
     const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
@@ -188,16 +178,58 @@ const FinishedGoodsPage = () => {
                  <Alert className="mb-6 border-amber-500/50 text-amber-900 dark:text-amber-200"><AlertTriangle className="h-4 w-4 text-amber-500" /><AlertTitle>Data Inconsistency Detected</AlertTitle><AlertDescription>We found {orphans.length} product account(s) that are not registered as items.<Button variant="link" className="p-0 h-auto ml-2 text-amber-900 dark:text-amber-200 font-bold" onClick={() => setIsResolveOrphansDialogOpen(true)}>Click here to resolve.</Button></AlertDescription></Alert>
             )}
 
-            <div className="flex justify-between items-center mb-4">
-                <div><h1 className="text-2xl font-bold">Finished Goods</h1><p className="text-muted-foreground">Track and manage all registered products.</p></div>
+            {/* ✅ NEW: Header with View Toggle */}
+            <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        {viewMode === 'summary' ? 'Finished Goods' : 'Item Ledger'}
+                    </h1>
+                    <p className="text-muted-foreground">
+                        {viewMode === 'summary'
+                            ? 'Track and manage all registered products.'
+                            : 'Detailed transaction history and running balance.'}
+                    </p>
+                </div>
+
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={fetchInventory} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />Refresh</Button>
-                    {user?.role === 'admin' && <Button size="sm" variant="outline" onClick={() => setIsOpeningBalanceDialogOpen(true)}><BookUp className="mr-2 h-4 w-4" />Set Opening Balances</Button>}
-                    <Button size="sm" onClick={() => setIsRegisterItemDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" />Register New Item</Button>
+                    {/* ✅ View Toggle */}
+                    <div className="inline-flex rounded-md border bg-muted p-0.5 mr-2">
+                        <Button
+                            size="sm"
+                            variant={viewMode === 'summary' ? 'default' : 'ghost'}
+                            className="h-7 px-3 rounded-sm"
+                            onClick={() => setViewMode('summary')}
+                        >
+                            <List className="mr-1.5 h-3.5 w-3.5" />
+                            Summary
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={viewMode === 'ledger' ? 'default' : 'ghost'}
+                            className="h-7 px-3 rounded-sm"
+                            onClick={() => setViewMode('ledger')}
+                        >
+                            <BookOpen className="mr-1.5 h-3.5 w-3.5" />
+                            Ledger
+                        </Button>
+                    </div>
+
+                    {viewMode === 'summary' && (
+                        <>
+                            <Button variant="outline" size="sm" onClick={fetchInventory} disabled={isLoading}><RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />Refresh</Button>
+                            {user?.role === 'admin' && <Button size="sm" variant="outline" onClick={() => setIsOpeningBalanceDialogOpen(true)}><BookUp className="mr-2 h-4 w-4" />Set Opening Balances</Button>}
+                            <Button size="sm" onClick={() => setIsRegisterItemDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" />Register New Item</Button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {isLoading ? (
+            {/* ✅ Conditional render based on view mode */}
+            {viewMode === 'ledger' ? (
+                user?.company_id ? (
+                    <ItemLedger companyId={user.company_id} userRole={user?.role} />
+                ) : null
+            ) : isLoading ? (
                 <div className="flex justify-center items-center py-16"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>
             ) : error ? (
                 <div className="flex flex-col items-center justify-center py-16 bg-destructive/10 text-destructive rounded-lg"><AlertCircle className="h-10 w-10 mb-2" /><p className="text-lg font-semibold">An Error Occurred</p><p>{error}</p></div>
