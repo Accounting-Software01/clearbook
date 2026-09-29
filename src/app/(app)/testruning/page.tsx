@@ -4,9 +4,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter
 } from "@/components/ui/table";
-import { 
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, 
-    DropdownMenuTrigger, DropdownMenuSeparator 
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuTrigger, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, AlertCircle, RefreshCw, Settings, BookUp, AlertTriangle, MoreHorizontal, Pencil, Trash2, BookOpen, List } from 'lucide-react';
@@ -16,7 +16,7 @@ import ItemHistoryDialog from '@/components/ItemHistoryDialog';
 import { RecordOpeningBalanceDialog } from '@/components/RecordOpeningBalanceDialog';
 import { EditProductDialog } from '@/components/inventory/EditProductDialog';
 import { ResolveOrphansDialog, OrphanItem } from '@/components/inventory/ResolveOrphansDialog';
-import ItemLedger from '@/components/inventory/ItemLedger'; // ✅ NEW IMPORT
+import ItemLedger from '@/components/inventory/ItemLedger';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -41,7 +41,7 @@ const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
 };
 
-type ViewMode = 'summary' | 'ledger'; // ✅ NEW TYPE
+type ViewMode = 'summary' | 'ledger';
 
 const FinishedGoodsPage = () => {
     const { user } = useAuth();
@@ -51,10 +51,8 @@ const FinishedGoodsPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // ✅ NEW: View toggle state
     const [viewMode, setViewMode] = useState<ViewMode>('summary');
 
-    // Dialog states
     const [isRegisterItemDialogOpen, setIsRegisterItemDialogOpen] = useState(false);
     const [isPriceTierDialogOpen, setIsPriceTierDialogOpen] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
@@ -106,7 +104,6 @@ const FinishedGoodsPage = () => {
         fetchInventory();
     };
 
-    // --- ACTION HANDLERS ---
     const handleEditClick = (item: InventoryItem) => {
         setItemToManage(item);
         setIsEditDialogOpen(true);
@@ -116,7 +113,7 @@ const FinishedGoodsPage = () => {
         setItemToManage(item);
         setIsDeleteDialogOpen(true);
     };
-    
+
     const handleManageTiersClick = (item: InventoryItem) => {
         setItemToManage(item);
         setIsPriceTierDialogOpen(true);
@@ -150,14 +147,13 @@ const FinishedGoodsPage = () => {
 
     return (
         <>
-            {/* --- DIALOGS --- */}
             <RegisterItemDialog open={isRegisterItemDialogOpen} onOpenChange={setIsRegisterItemDialogOpen} onSuccess={handleDataUpdateSuccess} />
             <EditProductDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} item={itemToManage} onSuccess={handleDataUpdateSuccess} />
             <PriceTierManagerDialog open={isPriceTierDialogOpen} onOpenChange={setIsPriceTierDialogOpen} product={itemToManage ? { id: itemToManage.id, name: itemToManage.name } : null} />
             {user?.company_id && <ResolveOrphansDialog open={isResolveOrphansDialogOpen} onOpenChange={setIsResolveOrphansDialogOpen} orphans={orphans} companyId={user.company_id} onSuccess={handleDataUpdateSuccess} />}
             {selectedItem && <ItemHistoryDialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen} item={selectedItem} itemType="product" />}
             <RecordOpeningBalanceDialog open={isOpeningBalanceDialogOpen} onOpenChange={setIsOpeningBalanceDialogOpen} onSuccess={handleDataUpdateSuccess} itemType="finished_good" />
-            
+
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                  <AlertDialogContent>
                     <AlertDialogHeader>
@@ -178,21 +174,19 @@ const FinishedGoodsPage = () => {
                  <Alert className="mb-6 border-amber-500/50 text-amber-900 dark:text-amber-200"><AlertTriangle className="h-4 w-4 text-amber-500" /><AlertTitle>Data Inconsistency Detected</AlertTitle><AlertDescription>We found {orphans.length} product account(s) that are not registered as items.<Button variant="link" className="p-0 h-auto ml-2 text-amber-900 dark:text-amber-200 font-bold" onClick={() => setIsResolveOrphansDialogOpen(true)}>Click here to resolve.</Button></AlertDescription></Alert>
             )}
 
-            {/* ✅ NEW: Header with View Toggle */}
             <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
                 <div>
                     <h1 className="text-2xl font-bold">
-                        {viewMode === 'summary' ? 'Finished Goods' : 'Item Ledger'}
+                        {viewMode === 'summary' ? 'Finished Goods' : 'Weighted-Average Ledger'}
                     </h1>
                     <p className="text-muted-foreground">
                         {viewMode === 'summary'
                             ? 'Track and manage all registered products.'
-                            : 'Detailed transaction history and running balance.'}
+                            : 'Pick a product to trace its weighted-average cost over time.'}
                     </p>
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* ✅ View Toggle */}
                     <div className="inline-flex rounded-md border bg-muted p-0.5 mr-2">
                         <Button
                             size="sm"
@@ -224,10 +218,14 @@ const FinishedGoodsPage = () => {
                 </div>
             </div>
 
-            {/* ✅ Conditional render based on view mode */}
             {viewMode === 'ledger' ? (
                 user?.company_id ? (
-                    <ItemLedger companyId={user.company_id} userRole={user?.role} />
+                    // ✅ items is passed in so the ledger can build a product picker
+                    <ItemLedger
+                        companyId={user.company_id}
+                        userRole={user?.role}
+                        items={items.map(i => ({ id: i.id, name: i.name, sku: i.sku }))}
+                    />
                 ) : null
             ) : isLoading ? (
                 <div className="flex justify-center items-center py-16"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>
