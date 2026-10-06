@@ -828,12 +828,17 @@ const calculateTotalFinishedPieces = () => {
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-600">PREFORMS</CardTitle></CardHeader>
                   <CardContent>
                     <div className="space-y-1 text-sm">
-                      <div className="flex justify-between"><span>Bags Used:</span><span className="font-semibold">{selectedViewBatch.preform_bags} bags</span></div>
-                      <div className="flex justify-between"><span>Preforms Taken:</span><span className="font-semibold">{selectedViewBatch.preforms_taken?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between"><span>Bottles Blown:</span><span className="font-semibold">{selectedViewBatch.bottles_produced?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold text-green-600">{selectedViewBatch.bottles_filled?.toLocaleString()} pcs</span></div>
-                      <div className="flex justify-between"><span>Waste Bottles:</span><span className="font-semibold text-red-600">{selectedViewBatch.bottles_damaged?.toLocaleString()} pcs</span></div>
-                    </div>
+  <div className="flex justify-between"><span>Preforms Taken:</span><span className="font-semibold">{selectedViewBatch.preforms_taken?.toLocaleString()} pcs</span></div>
+  <div className="flex justify-between text-blue-700 font-semibold">
+    <span>Equivalent (KG):</span>
+    <span>
+      {(((selectedViewBatch.preforms_taken || 0) * (selectedViewBatch.preform_type === '18g' ? 18 : 14)) / 1000).toFixed(3)} KG
+    </span>
+  </div>
+  <div className="flex justify-between"><span>Bottles Blown:</span><span className="font-semibold">{selectedViewBatch.bottles_produced?.toLocaleString()} pcs</span></div>
+  <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold text-green-600">{selectedViewBatch.bottles_filled?.toLocaleString()} pcs</span></div>
+  <div className="flex justify-between"><span>Waste Bottles:</span><span className="font-semibold text-red-600">{selectedViewBatch.bottles_damaged?.toLocaleString()} pcs</span></div>
+</div>
                   </CardContent>
                 </Card>
                 <Card>
