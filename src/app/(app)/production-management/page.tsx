@@ -475,7 +475,7 @@ const calculateTotalFinishedPieces = () => {
 
   const processBlowingStage = async () => {
     if (blowingBatch.preforms_taken === 0) {
-      toast({ title: 'Validation Error', description: 'Please enter preforms taken (bags)', variant: 'destructive' });
+      toast({ title: 'Validation Error', description: 'Please enter preforms taken (pieces)', variant: 'destructive' });
       return;
     }
     const totalFinishedPieces = calculateTotalFinishedPieces();
@@ -1079,13 +1079,11 @@ const calculateTotalFinishedPieces = () => {
                       </Select>
                     </div>
                     <div>
-                      <Label>Bags Taken</Label>
-                      <Input type="number" min="0" value={blowingBatch.preform_bags || 0}
+                      <Label>Preforms Taken (Pieces)</Label>
+                      <Input type="number" min="0" value={blowingBatch.preforms_taken || 0}
                         onChange={e => {
-                          const bags = Math.max(0, parseInt(e.target.value) || 0);
-                          const kgPerBag = blowingBatch.preform_type === '18g' ? 30 : 25;
-                          const pieces = Math.round((bags * kgPerBag * 1000) / (blowingBatch.preform_type === '18g' ? 18 : 14));
-                          setBlowingBatch({ ...blowingBatch, preform_bags: bags, preforms_taken: pieces });
+                          const pieces = Math.max(0, parseInt(e.target.value) || 0);
+                          setBlowingBatch({ ...blowingBatch, preforms_taken: pieces });
                         }} />
                     </div>
                   </div>
@@ -1093,6 +1091,12 @@ const calculateTotalFinishedPieces = () => {
                     <div className="flex justify-between">
                       <span>Preforms Taken:</span>
                       <span className="font-bold">{blowingBatch.preforms_taken.toLocaleString()} pcs</span>
+                    </div>
+                    <div className="flex justify-between text-blue-700 font-semibold">
+                      <span>Equivalent (KG):</span>
+                      <span>
+                        {((blowingBatch.preforms_taken * (blowingBatch.preform_type === '18g' ? 18 : 14)) / 1000).toFixed(3)} KG
+                      </span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
                       <span>Available in stock:</span>
