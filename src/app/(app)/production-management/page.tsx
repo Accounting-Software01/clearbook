@@ -92,6 +92,7 @@ interface InjectionBatch {
   purge_weight_kg: number;
   bags_produced: number;
   preform_weight_grams: number;
+  bag_size_kg: 25 | 30; // NEW: weight of one bag (standard 30kg or mini 25kg)
 }
 
 interface BlowingBatch {
@@ -163,14 +164,15 @@ const ProductionModule = () => {
 
   const CAPS_PER_CARTON = 9000;
 
-  
-  const getPalletPacks = (product: string) => {
-  if (product === '50cl') return 120;
-  if (product === '33cl') return 100; // ← confirm this figure, same as backend
-  return 100; // 75cl
-};
+  // Default bag size per preform weight (operator can override with the Bag Size selector)
+  const getDefaultBagSize = (weightGrams: number): 25 | 30 => (weightGrams === 18 ? 30 : 25);
 
-  
+  const getPalletPacks = (product: string) => {
+    if (product === '50cl') return 120;
+    if (product === '33cl') return 100; // ← confirm this figure, same as backend
+    return 100; // 75cl
+  };
+
   const getPacksPerProduct = (product: string) => product === '33cl' ? 20 : 12;
 
   const [injectionBatch, setInjectionBatch] = useState<InjectionBatch>({
@@ -188,6 +190,7 @@ const ProductionModule = () => {
     purge_weight_kg: 0,
     bags_produced: 0,
     preform_weight_grams: 18,
+    bag_size_kg: 30,
   });
   const [badPreformsKgInput, setBadPreformsKgInput] = useState<string>('0');
 
@@ -308,12 +311,17 @@ const ProductionModule = () => {
     ? ((injectionTotalOutputKg / injectionTotalInputKg) * 100).toFixed(1)
     : 0;
 
+  // Total kg in the produced bags = bags × bag size
+  const injectionBagsTotalKg = injectionBatch.bags_produced * injectionBatch.bag_size_kg;
+
+  // Good preforms = (bags × bag size kg × 1000) / preform weight (g)
   const calculateGoodPreforms = () => {
     if (injectionBatch.bags_produced > 0 && injectionBatch.preform_weight_grams > 0) {
-      const kgPerBag = injectionBatch.preform_weight_grams === 18 ? 30 : 25;
-      const totalKg = injectionBatch.bags_produced * kgPerBag;
+      const totalKg = injectionBatch.bags_produced * injectionBatch.bag_size_kg;
       const pieces = (totalKg * 1000) / injectionBatch.preform_weight_grams;
       setInjectionBatch(prev => ({ ...prev, good_preforms_qty: Math.round(pieces) }));
+    } else {
+      setInjectionBatch(prev => ({ ...prev, good_preforms_qty: 0 }));
     }
   };
 
@@ -324,21 +332,14 @@ const ProductionModule = () => {
     setBadPreformsKgInput(kgValue.toFixed(3));
   }, [injectionBatch.preform_weight_grams]); // only on type change, NOT bad_preforms_qty
 
+  const calculateTotalFinishedPieces = () => {
+    const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
+    const palletPacks = getPalletPacks(blowingBatch.finished_product);
+    return (blowingBatch.finished_pallets * palletPacks * packsPerProduct)
+      + (blowingBatch.finished_packs * packsPerProduct)
+      + blowingBatch.finished_pieces;
+  };
 
-
-
-
-
-const calculateTotalFinishedPieces = () => {
-  const packsPerProduct = getPacksPerProduct(blowingBatch.finished_product);
-  const palletPacks = getPalletPacks(blowingBatch.finished_product);
-  return (blowingBatch.finished_pallets * palletPacks * packsPerProduct)
-    + (blowingBatch.finished_packs * packsPerProduct)
-    + blowingBatch.finished_pieces;
-};
-
-
-  
   useEffect(() => {
     if (injectionBatch.production_date && injectionBatch.status === 'draft' && !injectionBatch.batch_number) {
       setInjectionBatch(prev => ({ ...prev, batch_number: generateInjectionBatchNumber(prev.production_date) }));
@@ -351,9 +352,10 @@ const calculateTotalFinishedPieces = () => {
     }
   }, [blowingBatch.production_date, blowingBatch.status]);
 
+  // Recalculate good preforms whenever bags, preform weight OR bag size changes
   useEffect(() => {
     calculateGoodPreforms();
-  }, [injectionBatch.bags_produced, injectionBatch.preform_weight_grams]);
+  }, [injectionBatch.bags_produced, injectionBatch.preform_weight_grams, injectionBatch.bag_size_kg]);
 
   const viewBatchDetails = async (batchId: number, type: 'injection' | 'blowing') => {
     setIsLoading(true);
@@ -388,6 +390,7 @@ const calculateTotalFinishedPieces = () => {
       purge_weight_kg: 0,
       bags_produced: 0,
       preform_weight_grams: 18,
+      bag_size_kg: 30,
     });
     setBadPreformsKgInput('0');
     setIsInjectionModalOpen(true);
@@ -686,7 +689,12 @@ const calculateTotalFinishedPieces = () => {
                         <td className="p-2">{batch.production_date}</td>
                         <td className="p-2">{batch.preform_type}</td>
                         <td className="p-2 text-right">{batch.resin_used_kg.toLocaleString()}</td>
-                        <td className="p-2 text-right">{batch.bags_produced.toLocaleString()}</td>
+                        <td className="p-2 text-right">
+                          {batch.bags_produced.toLocaleString()}
+                          {batch.bag_size_kg ? (
+                            <span className="text-xs text-muted-foreground"> × {batch.bag_size_kg}kg</span>
+                          ) : null}
+                        </td>
                         <td className="p-2 text-right font-semibold text-green-600">{batch.good_preforms_qty.toLocaleString()}</td>
                         <td className="p-2">{getStatusBadge(batch.status)}</td>
                         <td className="p-2">
@@ -734,7 +742,6 @@ const calculateTotalFinishedPieces = () => {
                         <td className="p-2 text-right">{batch.preforms_taken.toLocaleString()}</td>
                         <td className="p-2 text-right">{batch.finished_pallets.toLocaleString()}</td>
                         <td className="p-2 text-right font-semibold text-green-600">
-                          
                           {((batch.finished_pallets * getPalletPacks(batch.finished_product)) + batch.finished_packs).toLocaleString()}
                         </td>
                         <td className="p-2">{getStatusBadge(batch.status)}</td>
@@ -806,6 +813,9 @@ const calculateTotalFinishedPieces = () => {
                   <CardContent>
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between"><span>Preform Type:</span><span className="font-semibold">{selectedViewBatch.preform_type}</span></div>
+                      {selectedViewBatch.bag_size_kg ? (
+                        <div className="flex justify-between"><span>Bag Size:</span><span className="font-semibold">{selectedViewBatch.bag_size_kg} KG</span></div>
+                      ) : null}
                       <div className="flex justify-between"><span>Bags Produced:</span><span className="font-semibold">{selectedViewBatch.bags_produced?.toLocaleString()}</span></div>
                       <div className="flex justify-between"><span>Good Preforms:</span><span className="font-semibold text-green-600">{selectedViewBatch.good_preforms_qty?.toLocaleString()} pcs</span></div>
                     </div>
@@ -828,17 +838,17 @@ const calculateTotalFinishedPieces = () => {
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-600">PREFORMS</CardTitle></CardHeader>
                   <CardContent>
                     <div className="space-y-1 text-sm">
-  <div className="flex justify-between"><span>Preforms Taken:</span><span className="font-semibold">{selectedViewBatch.preforms_taken?.toLocaleString()} pcs</span></div>
-  <div className="flex justify-between text-blue-700 font-semibold">
-    <span>Equivalent (KG):</span>
-    <span>
-      {(((selectedViewBatch.preforms_taken || 0) * (selectedViewBatch.preform_type === '18g' ? 18 : 14)) / 1000).toFixed(3)} KG
-    </span>
-  </div>
-  <div className="flex justify-between"><span>Bottles Blown:</span><span className="font-semibold">{selectedViewBatch.bottles_produced?.toLocaleString()} pcs</span></div>
-  <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold text-green-600">{selectedViewBatch.bottles_filled?.toLocaleString()} pcs</span></div>
-  <div className="flex justify-between"><span>Waste Bottles:</span><span className="font-semibold text-red-600">{selectedViewBatch.bottles_damaged?.toLocaleString()} pcs</span></div>
-</div>
+                      <div className="flex justify-between"><span>Preforms Taken:</span><span className="font-semibold">{selectedViewBatch.preforms_taken?.toLocaleString()} pcs</span></div>
+                      <div className="flex justify-between text-blue-700 font-semibold">
+                        <span>Equivalent (KG):</span>
+                        <span>
+                          {(((selectedViewBatch.preforms_taken || 0) * (selectedViewBatch.preform_type === '18g' ? 18 : 14)) / 1000).toFixed(3)} KG
+                        </span>
+                      </div>
+                      <div className="flex justify-between"><span>Bottles Blown:</span><span className="font-semibold">{selectedViewBatch.bottles_produced?.toLocaleString()} pcs</span></div>
+                      <div className="flex justify-between"><span>Bottles Filled:</span><span className="font-semibold text-green-600">{selectedViewBatch.bottles_filled?.toLocaleString()} pcs</span></div>
+                      <div className="flex justify-between"><span>Waste Bottles:</span><span className="font-semibold text-red-600">{selectedViewBatch.bottles_damaged?.toLocaleString()} pcs</span></div>
+                    </div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -874,7 +884,6 @@ const calculateTotalFinishedPieces = () => {
                       <div className="flex justify-between border-t pt-2 mt-2">
                         <span>Total Packs:</span>
                         <span className="font-bold text-green-600">
-                          
                           {((selectedViewBatch.finished_pallets * getPalletPacks(selectedViewBatch.finished_product)) + selectedViewBatch.finished_packs).toLocaleString()}
                         </span>
                       </div>
@@ -952,7 +961,13 @@ const calculateTotalFinishedPieces = () => {
                     <Select value={injectionBatch.preform_weight_grams.toString()}
                       onValueChange={val => {
                         const weight = parseInt(val);
-                        setInjectionBatch({ ...injectionBatch, preform_weight_grams: weight, preform_type: weight === 18 ? '18g' : '14g' });
+                        setInjectionBatch({
+                          ...injectionBatch,
+                          preform_weight_grams: weight,
+                          preform_type: weight === 18 ? '18g' : '14g',
+                          // reset bag size to the usual default for this preform; operator can still change it
+                          bag_size_kg: getDefaultBagSize(weight),
+                        });
                       }}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -963,9 +978,26 @@ const calculateTotalFinishedPieces = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
+                      <Label>Bag Size</Label>
+                      <Select value={injectionBatch.bag_size_kg.toString()}
+                        onValueChange={val => setInjectionBatch({ ...injectionBatch, bag_size_kg: parseInt(val) as 25 | 30 })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="30">30kg Bag</SelectItem>
+                          <SelectItem value="25">25kg Mini Bag</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
                       <Label>Bags Produced</Label>
                       <Input type="number" min="0" value={injectionBatch.bags_produced}
                         onChange={e => handleNumberChange(setInjectionBatch, 'bags_produced', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Total Bags Weight (KG)</Label>
+                      <Input value={injectionBagsTotalKg.toLocaleString()} readOnly className="bg-gray-100" />
                     </div>
                     <div>
                       <Label>Good Preforms (Auto)</Label>
@@ -1078,8 +1110,8 @@ const calculateTotalFinishedPieces = () => {
                         onValueChange={(val: any) => setBlowingBatch({ ...blowingBatch, preform_type: val, preform_bags: 0, preforms_taken: 0 })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="18g">18g (30kg/bag)</SelectItem>
-                          <SelectItem value="14g">14g (25kg/bag)</SelectItem>
+                          <SelectItem value="18g">18g Preform</SelectItem>
+                          <SelectItem value="14g">14g Preform</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1417,9 +1449,7 @@ const calculateTotalFinishedPieces = () => {
                   <div className="flex justify-between border-t pt-2 mt-2">
                     <span>Total Finished Packs:</span>
                     <span className="font-bold text-green-600">
-                      
                       {((blowingBatch.finished_pallets * getPalletPacks(blowingBatch.finished_product)) + blowingBatch.finished_packs).toLocaleString()}
-                      
                     </span>
                   </div>
                   <div className="flex justify-between">
