@@ -673,8 +673,7 @@ const ReceiptsPage = () => {
     );
   };
 
- return renderContent();
+  return renderContent();
 };
 
-export default ReceiptsPage;
 export default ReceiptsPage;
