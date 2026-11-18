@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, PlusCircle, ArrowLeft, Edit, Trash2, CheckCircle, Printer, Info } from 'lucide-react';
 import {
@@ -88,12 +87,15 @@ interface Invoice {
     amount_due: string;
 }
 
+const formatAmount = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(value);
+
 // ======================================================
 // PRINTABLE VOUCHER COMPONENT
 // ======================================================
 const PrintableContent = ({ receipt }: { receipt: Receipt | null }) => {
     if (!receipt || !receipt.company_info) return <div className="p-8 text-center">Receipt or company information not available.</div>;
-    
+
     const { company_name, address, phone, email, logo_path } = receipt.company_info;
 
     return (
@@ -127,10 +129,10 @@ const PrintableContent = ({ receipt }: { receipt: Receipt | null }) => {
                 <div className="border-t border-b border-gray-400 my-6 py-2">
                     <div className="flex justify-between items-center text-xl font-bold">
                         <span>Total Amount</span>
-                        <span>{new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(receipt.amount)}</span>
+                        <span>{formatAmount(receipt.amount)}</span>
                     </div>
                 </div>
-                
+
                 <div className="mt-12 grid grid-cols-3 gap-8 text-center">
                     <div>
                         <p className="border-t border-gray-400 pt-2">Prepared By</p>
@@ -148,9 +150,19 @@ const PrintableContent = ({ receipt }: { receipt: Receipt | null }) => {
 // ======================================================
 // DETAIL VIEW
 // ======================================================
-const ReceiptDetailView = ({ receipt, onEdit, onPost, onBack, onDelete, isPosting, onPrintA4 }: { receipt: Receipt | null; onEdit: (receipt: Receipt) => void; onPost: (id: number) => void; onBack: () => void; onDelete: (id: number) => void; isPosting: boolean; onPrintA4: () => void; }) => {
+const ReceiptDetailView = ({ receipt, onEdit, onPost, onBack, onDelete, onReverse, isPosting, isReversing, onPrintA4 }: {
+    receipt: Receipt | null;
+    onEdit: (receipt: Receipt) => void;
+    onPost: (id: number) => void;
+    onBack: () => void;
+    onDelete: (id: number) => void;
+    onReverse: (receipt: Receipt) => void;
+    isPosting: boolean;
+    isReversing: boolean;
+    onPrintA4: () => void;
+}) => {
     if (!receipt) return null;
-    
+
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -167,6 +179,17 @@ const ReceiptDetailView = ({ receipt, onEdit, onPost, onBack, onDelete, isPostin
                         </Button>
                     )}
                     {receipt.status.toLowerCase() === 'draft' && <Button onClick={() => onEdit(receipt)}><Edit className="mr-2 h-4 w-4" /> Edit</Button>}
+                    {receipt.status.toLowerCase() === 'posted' && (
+                        <Button
+                            variant="outline"
+                            className="border-amber-500 text-amber-600 hover:bg-amber-50"
+                            onClick={() => onReverse(receipt)}
+                            disabled={isReversing}
+                        >
+                            {isReversing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Reverse
+                        </Button>
+                    )}
                     <Button variant="outline" onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" /> Back to List</Button>
                 </div>
             </div>
@@ -179,7 +202,7 @@ const ReceiptDetailView = ({ receipt, onEdit, onPost, onBack, onDelete, isPostin
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                                     <p className="font-medium text-muted-foreground">Reference:</p><p>{receipt.reference}</p>
                                     <p className="font-medium text-muted-foreground">Date:</p><p>{format(new Date(receipt.date), 'dd MMM yyyy')}</p>
-                                    <p className="font-medium text-muted-foreground">Amount:</p><p className="font-bold text-green-600">{new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2 }).format(receipt.amount)}</p>
+                                    <p className="font-medium text-muted-foreground">Amount:</p><p className="font-bold text-green-600">{formatAmount(receipt.amount)}</p>
                                     <p className="font-medium text-muted-foreground">Type:</p><p>{receipt.receipt_type}</p>
                                     <p className="font-medium text-muted-foreground">Customer:</p><p>{receipt.customer_name || '-'}</p>
                                     <p className="font-medium text-muted-foreground">Payment Method:</p><div><Badge variant="secondary">{receipt.payment_method}</Badge></div>
@@ -225,7 +248,7 @@ const ReceiptDetailView = ({ receipt, onEdit, onPost, onBack, onDelete, isPostin
 const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, receiptAccounts, customers }: {
     formMode: 'create' | 'edit';
     selectedReceipt: Receipt | null;
-    onSave: (event: React.FormEvent<HTMLFormElement>, selectedInvoiceIds: number[]) => void;
+    onSave: (event: React.FormEvent<HTMLFormElement>) => void;
     onCancel: () => void;
     isSaving: boolean;
     receiptAccounts: Account[];
@@ -236,61 +259,29 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
     const [unpaidInvoices, setUnpaidInvoices] = useState<Invoice[]>([]);
     const [isFetchingInvoices, setIsFetchingInvoices] = useState(false);
 
-    const [receiptType, setReceiptType] = useState(selectedReceipt?.receipt_type || 'Customer Receipt');
-    const [customerId, setCustomerId] = useState<string | null>(selectedReceipt?.customer_id || null);
+    const [receiptType, setReceiptType] = useState<string>(selectedReceipt?.receipt_type || 'Customer Receipt');
+    const [customerId, setCustomerId] = useState<string | null>(
+        selectedReceipt?.customer_id ? String(selectedReceipt.customer_id) : null
+    );
     const [amount, setAmount] = useState(selectedReceipt?.amount.toString() || '');
-    const [selectedInvoices, setSelectedInvoices] = useState<Record<number, boolean>>(() => {
-        const initial: Record<number, boolean> = {};
-        if (selectedReceipt?.invoice_ids) {
-            selectedReceipt.invoice_ids.forEach(id => { initial[id] = true; });
-        }
-        return initial;
-    });
 
-    // Both "Customer Receipt" and "Advance Payment" now apply automatically
-    // to outstanding invoices on the backend — oldest invoice first — with
-    // any leftover posted as Customer Advance credit. So the outstanding
-    // list is fetched for either type now (not just "Customer Receipt"),
-    // purely as reference info for whoever is entering the receipt.
+    // Both "Customer Receipt" and "Advance Payment" are applied automatically
+    // to outstanding invoices on the backend — oldest invoice first — with any
+    // leftover posted as Customer Advance credit. The outstanding list is
+    // fetched for either type purely as reference info.
     useEffect(() => {
         if ((receiptType === 'Customer Receipt' || receiptType === 'Advance Payment') && customerId) {
             setIsFetchingInvoices(true);
             fetch(`https://hariindustries.net/api/clearbook/get_customer_unpaid_invoices.php?company_id=${user?.company_id}&customer_id=${customerId}`)
                 .then(res => res.json())
-                .then(data => {
-                    setUnpaidInvoices(data || []);
-                    // If editing, ensure the selected invoice amount is calculated
-                    if (formMode === 'edit') {
-                        recalculateAmount(selectedInvoices, data || []);
-                    }
-                })
+                .then(data => setUnpaidInvoices(Array.isArray(data) ? data : []))
                 .catch(() => toast({ variant: 'destructive', title: 'Error fetching invoices' }))
                 .finally(() => setIsFetchingInvoices(false));
         } else {
             setUnpaidInvoices([]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [receiptType, customerId, user?.company_id, toast]);
-    
-    const recalculateAmount = (currentSelection: Record<number, boolean>, invoices: Invoice[]) => {
-        let total = 0;
-        for (const id in currentSelection) {
-            if (currentSelection[id]) {
-                const inv = invoices.find(i => i.id === parseInt(id));
-                if (inv) {
-                    total += parseFloat(inv.amount_due);
-                }
-            }
-        }
-        setAmount(total.toFixed(2));
-    };
 
-    const handleInvoiceSelectionChange = (invoiceId: number, isChecked: boolean) => {
-        const newSelection = { ...selectedInvoices, [invoiceId]: isChecked };
-        setSelectedInvoices(newSelection);
-        recalculateAmount(newSelection, unpaidInvoices);
-    };
-    
     const handleInvoiceChange = (invoiceId: string) => {
         const selectedInvoice = unpaidInvoices.find(inv => inv.id.toString() === invoiceId);
         if (selectedInvoice) {
@@ -298,10 +289,6 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
         }
     };
 
-    // Running total of the customer's outstanding invoices, oldest first —
-    // shown so whoever enters the receipt can see how a given amount will
-    // actually be allocated once posted, since the backend now applies it
-    // automatically rather than to a manually chosen invoice.
     const totalOutstanding = useMemo(
         () => unpaidInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount_due) || 0), 0),
         [unpaidInvoices],
@@ -338,16 +325,11 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
                         <Label htmlFor="customer_id">Customer *</Label>
                         <Select name="customer_id" value={customerId || ''} onValueChange={setCustomerId} required>
                             <SelectTrigger><SelectValue placeholder="Select a customer"/></SelectTrigger>
-                            <SelectContent>{(customers || []).map((cust: Customer) => <SelectItem key={cust.customer_id} value={cust.customer_id}>{cust.customer_name}</SelectItem>)}</SelectContent>
+                            <SelectContent>{(customers || []).map((cust: Customer) => <SelectItem key={cust.customer_id} value={String(cust.customer_id)}>{cust.customer_name}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
 
-                    {/* ── Outstanding invoices reference panel ──────────────────
-                     *  Both "Customer Receipt" and "Advance Payment" apply
-                     *  automatically to the oldest outstanding invoice(s)
-                     *  first once posted — this is informational only, not
-                     *  a targeting control.
-                     * ─────────────────────────────────────────────────────── */}
+                    {/* Outstanding invoices reference panel — informational only. */}
                     {showOutstandingPanel && (
                         <div className="rounded-md border bg-muted/30 p-3 space-y-2">
                             <div className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -415,9 +397,9 @@ const ReceiptForm = ({ formMode, selectedReceipt, onSave, onCancel, isSaving, re
                         <Label htmlFor="receipt_account_id">Cash/Bank Account *</Label>
                         <Select name="receipt_account_id" defaultValue={String(selectedReceipt?.receipt_account_id || '')} required><SelectTrigger><SelectValue placeholder="Select Cash/Bank Account" /></SelectTrigger><SelectContent>{receiptAccounts.map((acc: Account) => <SelectItem key={acc.id} value={String(acc.id)}>{acc.account_code} - {acc.account_name}</SelectItem>)}</SelectContent></Select>
                     </div>
-                    
+
                     <div className="space-y-2"><Label htmlFor="description">Description</Label><Textarea id="description" name="description" placeholder="e.g. Payment for invoice #123" defaultValue={selectedReceipt?.description}/></div>
-                    
+
                     <div className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>Cancel</Button>
                       <Button type="submit" disabled={isSaving}>{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {formMode === 'create' ? 'Save Draft' : 'Save Changes'}</Button>
@@ -441,10 +423,11 @@ const ReceiptsPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | 'view'>('create');
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+  const [isReversing, setIsReversing] = useState(false);
 
   const companyId = user?.company_id;
   const userId = user?.uid;
@@ -485,7 +468,7 @@ const ReceiptsPage = () => {
       }
   }, [companyId, userId, fetchReceipts, fetchData]);
 
-  const receiptAccounts = useMemo(() => 
+  const receiptAccounts = useMemo(() =>
       accounts.filter(acc => acc.account_type === 'Asset' && (acc.account_name.toLowerCase().includes('cash') || acc.account_name.toLowerCase().includes('bank')))
   , [accounts]);
 
@@ -493,22 +476,6 @@ const ReceiptsPage = () => {
   const handleView = (receipt: Receipt) => { setFormMode('view'); setSelectedReceipt(receipt); setIsFormOpen(true); };
   const handleEdit = (receipt: Receipt) => { setFormMode('edit'); setSelectedReceipt(receipt); setIsFormOpen(true); };
   const handleCancel = () => setIsFormOpen(false);
-
-  const handleAction = (action: string, receipt: Receipt) => {
-    setSelectedReceipt(receipt);
-    switch (action) {
-        case 'view': handleView(receipt); break;
-        case 'edit': handleEdit(receipt); break;
-        case 'post': handlePost(receipt.id); break;
-        case 'delete': handleDelete(receipt.id); break;
-        case 'reverse': handleReverse(receipt.id); break;
-        case 'print_a4':
-             setTimeout(() => handlePrint(), 0); // Use timeout to ensure state is updated
-            break;
-        default: break;
-
-    }
-  }
 
   const apiCall = async (url: string, method: string, body?: any) => {
       if (!companyId || !userId) {
@@ -532,18 +499,13 @@ const ReceiptsPage = () => {
   };
 
   const handlePost = async (receiptId: number) => {
-    // Add a check for companyId and userId
     if (!companyId || !userId) {
         toast({ variant: "destructive", title: "Authentication Error" });
         return;
     }
 
     setIsPosting(true);
-
-    // Add company_id and user_id to the URL
     const url = `https://hariindustries.net/api/clearbook/receipts.php?action=post&id=${receiptId}&company_id=${companyId}&user_id=${userId}`;
-    
-    // Use the generic apiCall and pass the updated URL
     const data = await apiCall(url, 'POST');
 
     if (data) {
@@ -552,11 +514,11 @@ const ReceiptsPage = () => {
         setIsFormOpen(false);
     }
     setIsPosting(false);
-};
+  };
 
   const handleDelete = async (receiptId: number) => {
       if (confirm("Are you sure you want to delete this DRAFT receipt?")) {
-          const data = await apiCall(`https://hariindustries.net/api/clearbook/receipts.php?id=${receiptId}`, 'DELETE');
+          const data = await apiCall(`https://hariindustries.net/api/clearbook/receipts.php?id=${receiptId}`, 'DELETE', {});
           if (data) {
               toast({ title: "Success!", description: "Draft receipt has been deleted." });
               fetchReceipts();
@@ -564,21 +526,57 @@ const ReceiptsPage = () => {
           }
       }
   };
-  
-  const handleReverse = async (receiptId: number) => {
-      if (confirm("Are you sure you want to reverse this POSTED receipt?")) {
-           const data = await apiCall(`https://hariindustries.net/api/clearbook/receipts.php?action=reverse&id=${receiptId}`, 'POST');
-           if (data) {
-               toast({ title: "Success!", description: "Receipt has been reversed." });
-               fetchReceipts();
-           }
+
+  // Reverse a POSTED receipt: the backend posts an exact mirror journal
+  // (Cr bank/cash + Dr receivables / customer advances), restores invoice
+  // balances, and marks the receipt as Reversed.
+  const handleReverse = async (receipt: Receipt) => {
+      if (isReversing || receipt.status.toLowerCase() !== 'posted') return;
+
+      const amt = formatAmount(receipt.amount);
+      const isAdvance = receipt.receipt_type === 'Advance Payment';
+
+      const message =
+          `Reverse receipt ${receipt.reference} (${amt})?\n\n` +
+          `• ${amt} will be removed from ${receipt.cash_bank_account}\n` +
+          (isAdvance
+              ? `• ${receipt.customer_name}'s advance will be reduced and any invoices it paid will be re-opened\n`
+              : `• ${receipt.customer_name}'s balance will be restored (invoices paid by this receipt are re-opened)\n`) +
+          `\nThis cannot be undone.`;
+
+      if (!confirm(message)) return;
+
+      setIsReversing(true);
+      const url = `https://hariindustries.net/api/clearbook/receipts.php?action=reverse&id=${receipt.id}&company_id=${companyId}&user_id=${userId}`;
+      // Pass {} as body so company_id and user_id are also sent in the request body.
+      const data = await apiCall(url, 'POST', {});
+      if (data) {
+          toast({ title: "Receipt reversed", description: `${receipt.reference} has been reversed.` });
+          await fetchReceipts();
+          setIsFormOpen(false);
       }
+      setIsReversing(false);
+  };
+
+  const handleAction = (action: string, receipt: Receipt) => {
+    setSelectedReceipt(receipt);
+    switch (action) {
+        case 'view': handleView(receipt); break;
+        case 'edit': handleEdit(receipt); break;
+        case 'post': handlePost(receipt.id); break;
+        case 'delete': handleDelete(receipt.id); break;
+        case 'reverse': handleReverse(receipt); break;
+        case 'print_a4':
+             setTimeout(() => handlePrint(), 0); // Use timeout to ensure state is updated
+            break;
+        default: break;
+    }
   };
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       setIsSaving(true);
-      
+
       const formData = new FormData(event.currentTarget);
       const formValues = Object.fromEntries(formData.entries());
       const payload = { ...formValues, amount: Number(formValues.amount) };
@@ -595,17 +593,32 @@ const ReceiptsPage = () => {
       }
       setIsSaving(false);
   };
-  
+
   const renderContent = () => {
     if (isLoading && receiptsData.length === 0) return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-    
+
     if (isFormOpen) {
         if (formMode === 'view') {
-            return <ReceiptDetailView receipt={selectedReceipt!} onEdit={handleEdit} onPost={handlePost} onBack={handleCancel} onDelete={handleDelete} isPosting={isPosting} onPrintA4={() => handleAction('print_a4', selectedReceipt!)} />;
+            return (
+                <Fragment>
+                    <div style={{ display: 'none' }}><div ref={printRef}>{selectedReceipt && <PrintableContent receipt={selectedReceipt}/>}</div></div>
+                    <ReceiptDetailView
+                        receipt={selectedReceipt}
+                        onEdit={handleEdit}
+                        onPost={handlePost}
+                        onBack={handleCancel}
+                        onDelete={handleDelete}
+                        onReverse={handleReverse}
+                        isPosting={isPosting}
+                        isReversing={isReversing}
+                        onPrintA4={() => handleAction('print_a4', selectedReceipt!)}
+                    />
+                </Fragment>
+            );
         }
-        return <ReceiptForm formMode={formMode} selectedReceipt={selectedReceipt} onSave={handleSave} onCancel={handleCancel} isSaving={isSaving} receiptAccounts={receiptAccounts} customers={customers} />;
+        return <ReceiptForm formMode={formMode as 'create' | 'edit'} selectedReceipt={selectedReceipt} onSave={handleSave} onCancel={handleCancel} isSaving={isSaving} receiptAccounts={receiptAccounts} customers={customers} />;
     }
-    
+
     return (
         <Fragment>
             <div style={{ display: 'none' }}><div ref={printRef}>{selectedReceipt && <PrintableContent receipt={selectedReceipt}/>}</div></div>
@@ -644,7 +657,7 @@ const ReceiptsPage = () => {
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem onClick={() => handleAction('print_a4', receipt)}>Print A4</DropdownMenuItem>
                                                     <DropdownMenuSeparator />
-                                                    <DropdownMenuItem onClick={() => handleAction('reverse', receipt)} disabled={receipt.status.toLowerCase() !== 'posted'} className="text-amber-600">Reverse</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleAction('reverse', receipt)} disabled={receipt.status.toLowerCase() !== 'posted' || isReversing} className="text-amber-600">Reverse</DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleAction('delete', receipt)} disabled={receipt.status.toLowerCase() !== 'draft'} className="text-red-600">Delete</DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -658,9 +671,10 @@ const ReceiptsPage = () => {
             </Card>
         </Fragment>
     );
-  }
-  
-  return renderContent();
+  };
+
+ return renderContent();
 };
 
+export default ReceiptsPage;
 export default ReceiptsPage;
